@@ -46,6 +46,38 @@ export async function writeClipboard(text: string): Promise<void> {
   }
 }
 
+/**
+ * Puts an image file on the clipboard (pasteable into chat apps, Office, browsers).
+ * Windows sets both a bitmap and a "PNG" format so apps that support it keep transparency.
+ */
+export async function copyImageToClipboard(path: string): Promise<void> {
+  switch (process.platform) {
+    case "win32":
+      // Path arrives on stdin, so nothing needs escaping. powershell.exe runs STA, which the clipboard API needs.
+      await powershell(
+        [
+          "Add-Type -AssemblyName System.Windows.Forms, System.Drawing;",
+          "$p = [Console]::In.ReadToEnd();",
+          "$bytes = [IO.File]::ReadAllBytes($p);",
+          "$img = [Drawing.Image]::FromStream((New-Object IO.MemoryStream(,$bytes)));",
+          "$data = New-Object Windows.Forms.DataObject;",
+          "$data.SetImage($img);",
+          "$data.SetData('PNG', (New-Object IO.MemoryStream(,$bytes)));",
+          "[Windows.Forms.Clipboard]::SetDataObject($data, $true);",
+        ].join(" "),
+        path,
+      );
+      return;
+    case "darwin":
+      await run("osascript", ["-e", `set the clipboard to (read (POSIX file ${JSON.stringify(path)}) as «class PNGf»)`]);
+      return;
+    default:
+      await (process.env.WAYLAND_DISPLAY
+        ? run("sh", ["-c", 'wl-copy --type image/png < "$0"', path])
+        : run("xclip", ["-selection", "clipboard", "-t", "image/png", "-i", path]));
+  }
+}
+
 export type OpenTarget = { kind: "url"; value: string } | { kind: "path"; value: string };
 
 /** Classifies and validates what `open` may launch: web/mail URLs, or existing local paths. */

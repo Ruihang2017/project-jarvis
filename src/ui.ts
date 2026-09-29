@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { createInterface, type Interface } from "node:readline/promises";
 import { styleText } from "node:util";
 import type { Session } from "./session.js";
@@ -5,8 +6,12 @@ import { runCommand } from "./commands.js";
 import { MarkdownStream } from "./markdown.js";
 import { describeChange, terminalInteractions } from "./prompts.js";
 import type { RateLimitWindow, ThreadItem, ThreadTokenUsage, TurnStatus } from "./protocol/v2/index.js";
+import { saveGeneratedImage } from "./images.js";
+import { loadSettings } from "./settings.js";
+import { detectSixel, preview, renderPreview } from "./sixel.js";
+import { openWithDefaultApp } from "./system.js";
 import { describeToolCall } from "./tools.js";
-import { displayCommand, truncate } from "./util.js";
+import { displayCommand, tildify, truncate } from "./util.js";
 
 const dim = (s: string) => styleText("dim", s);
 const USER_PROMPT = styleText("cyan", "you › ");
@@ -79,6 +84,10 @@ interface RenderControl {
 let activeRender: RenderControl | null = null;
 
 export async function repl(session: Session): Promise<void> {
+  // Must run before readline owns stdin (it reads the terminal's DA1 reply).
+  const mode = loadSettings().inlinePreview ?? "auto";
+  preview.enabled = mode === "on" ? tty : mode === "auto" ? await detectSixel() : false;
+
   const rl = createInterface({ input: process.stdin, output: process.stdout, terminal: tty });
   const input = new LineInput(rl);
   let quitting = false;
@@ -164,15 +173,23 @@ export async function runTurn(session: Session, text: string, opts: TurnOptions 
   let usage: ThreadTokenUsage | null = null;
   let started = false;
   let indicator = false;
+  let ticker: NodeJS.Timeout | null = null;
 
   // Transient one-line indicator (tty only), shown only at the start of a line.
-  const showIndicator = (s: string) => {
+  // With `tick`, it redraws every second with the elapsed time (for slow tools like image generation).
+  const showIndicator = (s: string, tick = false) => {
     if (!tty || (started && !md.endsWithNewline)) return;
     clearIndicator();
     out(dim(s));
     indicator = true;
+    if (tick) {
+      const since = Date.now();
+      ticker = setInterval(() => out("\r\x1b[K" + dim(`${s} ${Math.round((Date.now() - since) / 1000)}s`)), 1000);
+    }
   };
   const clearIndicator = () => {
+    if (ticker) clearInterval(ticker);
+    ticker = null;
     if (!indicator) return;
     out("\r\x1b[K");
     indicator = false;
@@ -209,6 +226,13 @@ export async function runTurn(session: Session, text: string, opts: TurnOptions 
   let result: TurnStatus | "error";
   try {
     const images = session.pendingImages.splice(0);
+    const notes: string[] = [];
+    // Carry the last generated image forward unless the user attached their own.
+    if (session.lastGeneratedImage && !images.length && existsSync(session.lastGeneratedImage)) {
+      images.push(session.lastGeneratedImage);
+      notes.push("[Jarvis] The attached image is the one you generated in your previous reply. If I ask for changes, edit this image.");
+    }
+    session.lastGeneratedImage = null;
     const turn = await session.send(text, {
       onDelta: (t) => {
         start();
@@ -216,7 +240,7 @@ export async function runTurn(session: Session, text: string, opts: TurnOptions 
       },
       onItemStarted: (item) => {
         const busy = activityLabel(item);
-        if (busy) showIndicator(busy);
+        if (busy) showIndicator(busy, item.type === "imageGeneration");
         // Separate consecutive assistant messages within one turn.
         else if (item.type === "agentMessage" && started) {
           endLine();
@@ -224,12 +248,16 @@ export async function runTurn(session: Session, text: string, opts: TurnOptions 
         }
       },
       onItemCompleted: (item) => {
-        for (const line of activityNotes(item)) note(line);
+        const lines = item.type === "imageGeneration" ? imageNotes(item, session, text) : activityNotes(item);
+        for (const line of lines) note(line);
+        if (item.type === "imageGeneration" && session.lastGeneratedImage && preview.enabled) {
+          out(renderPreview(session.lastGeneratedImage));
+        }
         if (activityLabel(item)) showIndicator("thinking…");
       },
       onTokenUsage: (u) => (usage = u),
       onError: (e, retry) => note(`[error${retry ? ", retrying" : ""}] ${e.message}`),
-    }, images);
+    }, images, notes);
     result = turn.status;
     if (turn.status === "interrupted") note("[interrupted]");
     else if (turn.status === "failed") note(`[failed] ${turn.error?.message ?? ""}`);
@@ -246,9 +274,31 @@ export async function runTurn(session: Session, text: string, opts: TurnOptions 
   return result;
 }
 
+/** Saves a finished generation, opens it if configured, and returns the lines to show. */
+function imageNotes(item: Extract<ThreadItem, { type: "imageGeneration" }>, session: Session, prompt: string): string[] {
+  if (item.failure) {
+    const reset = item.failure.resetsAt ? `; resets in ${Math.max(1, Math.round((item.failure.resetsAt - Date.now() / 1000) / 60))}m` : "";
+    return [`🖼 image generation unavailable: usage limit reached${reset}`];
+  }
+  if (item.status !== "completed") return [`🖼 image generation ${item.status}`];
+  try {
+    const rec = saveGeneratedImage(item, { threadId: session.threadId ?? "", prompt });
+    session.lastGeneratedImage = rec.path;
+    if (loadSettings().autoOpenImages !== false) openWithDefaultApp(rec.path);
+    const size = rec.width ? ` · ${rec.width}×${rec.height}` : "";
+    const lines = [`🖼 ${tildify(rec.path)}${size}`];
+    if (rec.revisedPrompt) lines.push(`   "${truncate(rec.revisedPrompt, 110)}"`);
+    return lines;
+  } catch (e) {
+    return [`🖼 couldn't save image: ${e instanceof Error ? e.message : String(e)}`];
+  }
+}
+
 /** Indicator text while a tool item runs; null for items that aren't tool activity. */
 function activityLabel(item: ThreadItem): string | null {
   switch (item.type) {
+    case "imageGeneration":
+      return "🎨 generating image…";
     case "webSearch":
       return "searching the web…";
     case "commandExecution":

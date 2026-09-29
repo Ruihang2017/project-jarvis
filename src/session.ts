@@ -71,6 +71,11 @@ export class Session {
   mode: Mode = "chat";
   /** Local image paths queued by /image; sent with (and cleared by) the next message. */
   pendingImages: string[] = [];
+  /**
+   * Latest image generated in this thread, re-attached to the next message: generated images
+   * don't enter the model context, so without this, edits would apply to an older image.
+   */
+  lastGeneratedImage: string | null = null;
   interactions: Interactions = declineAll;
   // Approval requests don't carry the diff; remember it from the fileChange item.
   private fileChanges = new Map<string, FileUpdateChange[]>();
@@ -176,6 +181,7 @@ export class Session {
     // Dynamic tools can only be registered at thread start (thread/resume has no such field).
     const res = await this.client.request<ThreadStartResponse>("thread/start", { ...this.threadSettings(), dynamicTools: TOOL_SPECS });
     this.threadId = res.thread.id;
+    this.lastGeneratedImage = null;
     return res;
   }
 
@@ -195,6 +201,7 @@ export class Session {
       ...this.threadSettings(),
     });
     this.threadId = res.thread.id;
+    this.lastGeneratedImage = null;
     return res;
   }
 
@@ -230,7 +237,7 @@ export class Session {
   private activeTurn: ActiveTurn | null = null;
 
   /** Sends one user message and resolves when the turn completes. */
-  async send(text: string, cb: TurnCallbacks = {}, images: string[] = []): Promise<Turn> {
+  async send(text: string, cb: TurnCallbacks = {}, images: string[] = [], notes: string[] = []): Promise<Turn> {
     if (this.activeTurn) throw new Error("a turn is already in progress");
     // Register before any await so interrupt() during thread creation is honored.
     const active: ActiveTurn = { threadId: "", turnId: null, started: false, interruptRequested: false };
@@ -295,6 +302,7 @@ export class Session {
           input: [
             { type: "text", text, text_elements: [] },
             ...images.map((path) => ({ type: "localImage" as const, path })),
+            ...notes.map((note) => ({ type: "text" as const, text: note, text_elements: [] })),
           ],
           model: this.model,
           effort: this.effort,

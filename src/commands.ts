@@ -1,9 +1,13 @@
-import { existsSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, extname, resolve } from "node:path";
 import { styleText } from "node:util";
 import type { RateLimitWindow, Thread, ThreadItem } from "./protocol/v2/index.js";
+import { listImages, stripRequest } from "./images.js";
 import { MODES, type Mode, type Session } from "./session.js";
+import { imagesDir, loadSettings, updateSettings } from "./settings.js";
+import { preview, renderPreview } from "./sixel.js";
+import { copyImageToClipboard, openWithDefaultApp } from "./system.js";
 import { tildify, truncate } from "./util.js";
 
 const MODE_HELP: Record<Mode, string> = {
@@ -167,6 +171,85 @@ const COMMANDS: Record<string, Command> = {
     },
   },
 
+  "/images": {
+    usage: "/images [cmd]",
+    help: "Generated images: show|open|copy <n>, folder, dir [path|reset], autoopen on|off, preview auto|on|off",
+    run: async (args) => {
+      const [sub = "", ...rest] = args.split(/\s+/).filter(Boolean);
+      const arg = rest.join(" ");
+      const pick = (n: string) => {
+        const rec = listImages(IMAGE_LIST_LIMIT)[Number(n) - 1];
+        if (!/^\d+$/.test(n) || !rec) throw new Error(`no image #${n || "?"}; /images lists them`);
+        return rec;
+      };
+      switch (sub) {
+        case "": {
+          const recs = listImages(IMAGE_LIST_LIMIT);
+          if (!recs.length) return console.log(dim(`[no images yet; saved to ${tildify(imagesDir())}]`));
+          recs.forEach((r, i) => {
+            const d = new Date(r.createdAt);
+            const when = `${d.toLocaleDateString("sv")} ${d.toLocaleTimeString("sv").slice(0, 5)}`; // local "YYYY-MM-DD HH:MM"
+            const size = r.width ? ` · ${r.width}×${r.height}` : "";
+            console.log(`${String(i + 1).padStart(3)}. ${truncate(stripRequest(r.prompt) || basename(r.path), 50)}  ${dim(when + size)}`);
+          });
+          return console.log(dim(`  /images show|open|copy <n> · saved in ${tildify(imagesDir())}`));
+        }
+        case "open": {
+          const rec = pick(arg);
+          openWithDefaultApp(rec.path);
+          return console.log(dim(`[opened ${basename(rec.path)}]`));
+        }
+        case "copy": {
+          const rec = pick(arg);
+          await copyImageToClipboard(rec.path);
+          return console.log(dim(`[copied ${basename(rec.path)} to clipboard — paste it anywhere]`));
+        }
+        case "show": {
+          const rec = pick(arg);
+          if (!preview.enabled) {
+            return console.log(dim("[inline preview is off or unsupported here; /images preview on to force, or /images open]"));
+          }
+          const out = renderPreview(rec.path);
+          if (out) process.stdout.write(out);
+          else console.log(dim("[can't preview this file type]"));
+          return;
+        }
+        case "preview": {
+          if (arg !== "auto" && arg !== "on" && arg !== "off") {
+            const setting = loadSettings().inlinePreview ?? "auto";
+            return console.log(`preview: ${setting} (${preview.enabled ? "active" : "inactive"} in this terminal)`);
+          }
+          updateSettings({ inlinePreview: arg });
+          if (arg !== "auto") preview.enabled = arg === "on" && Boolean(process.stdout.isTTY);
+          return console.log(dim(`[preview: ${arg}${arg === "auto" ? "; takes effect next start" : ""}]`));
+        }
+        case "folder":
+          openWithDefaultApp(imagesDir());
+          return console.log(dim(`[opened ${tildify(imagesDir())}]`));
+        case "dir": {
+          if (!arg) return console.log(`images folder: ${tildify(imagesDir())}`);
+          if (arg === "reset") {
+            updateSettings({ imagesDir: undefined });
+            return console.log(dim(`[images folder reset to ${tildify(imagesDir())}]`));
+          }
+          const dir = resolve(process.cwd(), arg.replace(/^(["'])(.*)\1$/, "$2").replace(/^~(?=$|[\\/])/, homedir()));
+          mkdirSync(dir, { recursive: true });
+          updateSettings({ imagesDir: dir });
+          return console.log(dim(`[new images will be saved to ${tildify(dir)}; existing ones stay where they are]`));
+        }
+        case "autoopen": {
+          if (arg !== "on" && arg !== "off") {
+            return console.log(`autoopen: ${loadSettings().autoOpenImages === false ? "off" : "on"}`);
+          }
+          updateSettings({ autoOpenImages: arg === "on" });
+          return console.log(dim(`[auto-open ${arg}]`));
+        }
+        default:
+          console.log(dim(`[unknown /images option "${sub}"]`));
+      }
+    },
+  },
+
   "/exit": {
     usage: "/exit",
     help: "Quit (also /quit)",
@@ -200,6 +283,7 @@ async function findThread(arg: string, session: Session): Promise<Thread | undef
 }
 
 const MAX_IMAGES = 5;
+const IMAGE_LIST_LIMIT = 15;
 const IMAGE_EXTS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp"]);
 
 /** Accepts "Copy as path" quoting, ~ and paths relative to where jarvis was started. */
