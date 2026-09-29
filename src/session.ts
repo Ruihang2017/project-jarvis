@@ -69,6 +69,8 @@ export class Session {
   model = config.model;
   effort = config.effort;
   mode: Mode = "chat";
+  /** Local image paths queued by /image; sent with (and cleared by) the next message. */
+  pendingImages: string[] = [];
   interactions: Interactions = declineAll;
   // Approval requests don't carry the diff; remember it from the fileChange item.
   private fileChanges = new Map<string, FileUpdateChange[]>();
@@ -228,7 +230,7 @@ export class Session {
   private activeTurn: ActiveTurn | null = null;
 
   /** Sends one user message and resolves when the turn completes. */
-  async send(text: string, cb: TurnCallbacks = {}): Promise<Turn> {
+  async send(text: string, cb: TurnCallbacks = {}, images: string[] = []): Promise<Turn> {
     if (this.activeTurn) throw new Error("a turn is already in progress");
     // Register before any await so interrupt() during thread creation is honored.
     const active: ActiveTurn = { threadId: "", turnId: null, started: false, interruptRequested: false };
@@ -290,7 +292,10 @@ export class Session {
       this.client
         .request<TurnStartResponse>("turn/start", {
           threadId,
-          input: [{ type: "text", text, text_elements: [] }],
+          input: [
+            { type: "text", text, text_elements: [] },
+            ...images.map((path) => ({ type: "localImage" as const, path })),
+          ],
           model: this.model,
           effort: this.effort,
           // Per-turn so /mode applies to the current thread immediately.

@@ -126,8 +126,14 @@ export async function repl(session: Session): Promise<void> {
   session.rateLimits().catch(() => {}); // seed the status line; failures just hide limits
   console.log(dim(`Jarvis · ${session.model} · effort ${session.effort} · ${session.mode} mode · /help for commands`));
 
-  rl.setPrompt(USER_PROMPT);
-  rl.prompt();
+  // Shows pending /image attachments in the prompt, e.g. "you [🖼 2] › ".
+  const showPrompt = () => {
+    const n = session.pendingImages.length;
+    rl.setPrompt(n ? styleText("cyan", `you [🖼 ${n}] › `) : USER_PROMPT);
+    rl.prompt();
+  };
+
+  showPrompt();
   for (let raw = await input.next(); raw !== null; raw = await input.next()) {
     const line = raw.trim();
     if (line.startsWith("/")) {
@@ -135,7 +141,7 @@ export async function repl(session: Session): Promise<void> {
     } else if (line) {
       await runTurn(session, line);
     }
-    if (!input.closed) rl.prompt();
+    if (!input.closed) showPrompt();
   }
 
   quitting = true;
@@ -202,6 +208,7 @@ export async function runTurn(session: Session, text: string, opts: TurnOptions 
   showIndicator("thinking…");
   let result: TurnStatus | "error";
   try {
+    const images = session.pendingImages.splice(0);
     const turn = await session.send(text, {
       onDelta: (t) => {
         start();
@@ -222,7 +229,7 @@ export async function runTurn(session: Session, text: string, opts: TurnOptions 
       },
       onTokenUsage: (u) => (usage = u),
       onError: (e, retry) => note(`[error${retry ? ", retrying" : ""}] ${e.message}`),
-    });
+    }, images);
     result = turn.status;
     if (turn.status === "interrupted") note("[interrupted]");
     else if (turn.status === "failed") note(`[failed] ${turn.error?.message ?? ""}`);

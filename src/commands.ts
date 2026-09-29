@@ -1,10 +1,13 @@
+import { existsSync, statSync } from "node:fs";
+import { homedir } from "node:os";
+import { basename, extname, resolve } from "node:path";
 import { styleText } from "node:util";
 import type { RateLimitWindow, Thread, ThreadItem } from "./protocol/v2/index.js";
 import { MODES, type Mode, type Session } from "./session.js";
-import { truncate } from "./util.js";
+import { tildify, truncate } from "./util.js";
 
 const MODE_HELP: Record<Mode, string> = {
-  chat: "answers only; no commands or file changes",
+  chat: "answers only; no commands or file changes (clipboard/open tools still work)",
   assist: "may run commands and edit files (starts in ~/.jarvis/workspace); asks before every action",
 };
 
@@ -140,6 +143,30 @@ const COMMANDS: Record<string, Command> = {
     },
   },
 
+  "/image": {
+    usage: "/image [path|clear]",
+    help: "Attach an image to your next message (no args: list attached)",
+    run: async (args, session) => {
+      if (!args) {
+        if (!session.pendingImages.length) return console.log(dim("[no images attached]"));
+        for (const p of session.pendingImages) console.log(`  🖼 ${tildify(p)}`);
+        return;
+      }
+      if (args === "clear") {
+        session.pendingImages = [];
+        return console.log(dim("[attachments cleared]"));
+      }
+      const path = resolveImagePath(args);
+      const model = (await session.listModels()).find((m) => m.id === session.model);
+      if (model && !model.inputModalities.includes("image")) {
+        return console.log(dim(`[${session.model} doesn't accept images; /model to switch]`));
+      }
+      if (session.pendingImages.length >= MAX_IMAGES) return console.log(dim(`[at most ${MAX_IMAGES} images per message]`));
+      session.pendingImages.push(path);
+      console.log(dim(`[attached ${basename(path)} (${formatBytes(statSync(path).size)}) — sent with your next message]`));
+    },
+  },
+
   "/exit": {
     usage: "/exit",
     help: "Quit (also /quit)",
@@ -170,6 +197,26 @@ async function findThread(arg: string, session: Session): Promise<Thread | undef
   const matches = threads.filter((t) => t.id === arg || shortId(t.id) === arg || t.id.endsWith(arg));
   if (matches.length > 1) throw new Error(`"${arg}" matches ${matches.length} conversations; use more characters`);
   return matches[0];
+}
+
+const MAX_IMAGES = 5;
+const IMAGE_EXTS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp"]);
+
+/** Accepts "Copy as path" quoting, ~ and paths relative to where jarvis was started. */
+function resolveImagePath(arg: string): string {
+  const raw = arg.trim().replace(/^(["'])(.*)\1$/, "$2");
+  const path = resolve(process.cwd(), raw.replace(/^~(?=$|[\\/])/, homedir()));
+  if (!existsSync(path) || !statSync(path).isFile()) throw new Error(`no such file: ${path}`);
+  if (!IMAGE_EXTS.has(extname(path).toLowerCase())) {
+    throw new Error(`unsupported image type ${extname(path) || "(none)"}; use ${[...IMAGE_EXTS].join(" ")}`);
+  }
+  return path;
+}
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
 // Thread ids are UUIDv7: the prefix is a timestamp, so show the random tail.
