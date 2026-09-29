@@ -1,13 +1,6 @@
-import { spawn } from "node:child_process";
 import { homedir } from "node:os";
 
-export function openBrowser(url: string) {
-  const [cmd, args] =
-    process.platform === "win32"
-      ? ["rundll32", ["url.dll,FileProtocolHandler", url]]
-      : [process.platform === "darwin" ? "open" : "xdg-open", [url]];
-  spawn(cmd, args, { stdio: "ignore", detached: true }).on("error", () => {}).unref();
-}
+export { openWithDefaultApp as openBrowser } from "./system.js";
 
 /** Shortens paths under the home directory to `~/…` for display. */
 export function tildify(path: string): string {

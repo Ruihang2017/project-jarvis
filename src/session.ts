@@ -25,6 +25,7 @@ import type {
   TurnError,
 } from "./protocol/v2/index.js";
 import { CodexClient } from "./rpc.js";
+import { TOOL_SPECS, ToolRunner } from "./tools.js";
 import { config, PERSONA } from "./config.js";
 
 export interface TurnCallbacks {
@@ -71,6 +72,7 @@ export class Session {
   interactions: Interactions = declineAll;
   // Approval requests don't carry the diff; remember it from the fileChange item.
   private fileChanges = new Map<string, FileUpdateChange[]>();
+  private tools = new ToolRunner(config.workspace);
 
   constructor() {
     const codexHome = ensureCodexHome();
@@ -98,6 +100,8 @@ export class Session {
         return ui.askUser(req.params);
       case "mcpServer/elicitation/request":
         return ui.elicit(req.params);
+      case "item/tool/call":
+        return this.tools.call(req.params, ui);
       // Legacy v1 approvals; v2 threads shouldn't send these.
       case "execCommandApproval":
       case "applyPatchApproval":
@@ -126,7 +130,8 @@ export class Session {
   async init(): Promise<GetAccountResponse> {
     await this.client.request<InitializeResponse>("initialize", {
       clientInfo: { name: "jarvis", title: "Jarvis", version: "0.1.0" },
-      capabilities: null,
+      // Needed for dynamicTools (Jarvis tools); experimental fields may change across codex versions.
+      capabilities: { experimentalApi: true, requestAttestation: false },
     });
     this.client.notify("initialized");
     return this.client.request<GetAccountResponse>("account/read", { refreshToken: false });
@@ -166,7 +171,8 @@ export class Session {
   }
 
   async newThread(): Promise<ThreadStartResponse> {
-    const res = await this.client.request<ThreadStartResponse>("thread/start", this.threadSettings());
+    // Dynamic tools can only be registered at thread start (thread/resume has no such field).
+    const res = await this.client.request<ThreadStartResponse>("thread/start", { ...this.threadSettings(), dynamicTools: TOOL_SPECS });
     this.threadId = res.thread.id;
     return res;
   }

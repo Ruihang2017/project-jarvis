@@ -11,6 +11,7 @@ import type {
   ToolRequestUserInputParams,
   ToolRequestUserInputResponse,
 } from "./protocol/v2/index.js";
+import type { ToolDecision } from "./tools.js";
 
 /** Everything the server may ask the user mid-turn. The UI supplies a terminal implementation. */
 export interface Interactions {
@@ -20,6 +21,8 @@ export interface Interactions {
   approvePermissions(req: PermissionsRequestApprovalParams): Promise<PermissionsRequestApprovalResponse>;
   askUser(req: ToolRequestUserInputParams): Promise<ToolRequestUserInputResponse>;
   elicit(req: McpServerElicitationRequestParams): Promise<McpServerElicitationRequestResponse>;
+  /** Jarvis-side approval for its own dynamic tools; `preview` shows what would be shared. */
+  approveTool(tool: string, summary: string, preview?: string): Promise<ToolDecision>;
 }
 
 /** Non-interactive fallback (one-shot mode, tests): refuse everything. */
@@ -29,4 +32,5 @@ export const declineAll: Interactions = {
   approvePermissions: async () => ({ permissions: {}, scope: "turn" }),
   askUser: async () => ({ answers: {} }),
   elicit: async () => ({ action: "decline", content: null, _meta: null }),
+  approveTool: async () => "decline",
 };

@@ -12,7 +12,7 @@
     "dev": "tsx src/index.ts",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "gen:protocol": "codex app-server generate-ts --out src/protocol"
+    "gen:protocol": "codex app-server generate-ts --experimental --out src/protocol"
   },
   "engines": {
     "node": ">=24"

@@ -7,6 +7,7 @@ import type {
   McpServerElicitationRequestResponse,
   ToolRequestUserInputAnswer,
 } from "./protocol/v2/index.js";
+import type { ToolDecision } from "./tools.js";
 import { diffStats, displayCommand, openBrowser, tildify } from "./util.js";
 
 const dim = (s: string) => styleText("dim", s);
@@ -164,6 +165,12 @@ export function terminalInteractions(asker: Asker, onCancel: () => void): Intera
     elicit: (req) =>
       withPrompt(async (): Promise<McpServerElicitationRequestResponse> => {
         const decline = { action: "decline" as const, content: null, _meta: null };
+        // Experimental verification challenge; there's no way to complete it from a terminal.
+        if (req.mode === "openai/userVerification") {
+          console.log(`${warn("?")} ${bold(req.serverName)} · ${req.title}: ${req.description}`);
+          console.log(dim("  (user verification isn't supported in Jarvis; declined)"));
+          return decline;
+        }
         console.log(`${warn("?")} ${bold(req.serverName)} · ${req.message}`);
         if (req.mode === "url") {
           console.log(`  ${req.url}`);
@@ -200,6 +207,19 @@ export function terminalInteractions(asker: Asker, onCancel: () => void): Intera
           { key: "n", label: "decline", value: false },
         ]);
         return ok ? { action: "accept", content: content as any, _meta: null } : decline;
+      }),
+
+    approveTool: (tool, summary, preview) =>
+      withPrompt(async () => {
+        console.log(warn(`⚠ Allow ${bold(tool)}?`));
+        console.log(`  ${summary}`);
+        if (preview !== undefined) console.log(dim(`  ${preview}`));
+        const decision = await choose<ToolDecision>([
+          { key: "y", label: "yes", value: "accept" },
+          { key: "a", label: `always allow ${tool} (this session)`, value: "acceptForSession" },
+          { key: "n", label: "no", value: "decline" },
+        ]);
+        return decision ?? "decline";
       }),
   };
 }

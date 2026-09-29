@@ -5,6 +5,7 @@ import { runCommand } from "./commands.js";
 import { MarkdownStream } from "./markdown.js";
 import { describeChange, terminalInteractions } from "./prompts.js";
 import type { RateLimitWindow, ThreadItem, ThreadTokenUsage, TurnStatus } from "./protocol/v2/index.js";
+import { describeToolCall } from "./tools.js";
 import { displayCommand, truncate } from "./util.js";
 
 const dim = (s: string) => styleText("dim", s);
@@ -277,8 +278,13 @@ function activityNotes(item: ThreadItem): string[] {
       return item.changes.map((c) => `✎ ${describeChange(c)}${item.status === "failed" ? " · failed" : ""}`);
     case "mcpToolCall":
       return [`⚙ ${item.server}.${item.tool} · ${item.status === "failed" ? "failed" : "ok"}${item.durationMs != null ? " · " + secs(item.durationMs) : ""}`];
-    case "dynamicToolCall":
-      return [`⚙ ${item.tool} · ${item.success === false || item.status === "failed" ? "failed" : "ok"}`];
+    case "dynamicToolCall": {
+      // Jarvis's own tools report declines/errors as failed calls; surface the reason.
+      const failed = item.success === false || item.status === "failed";
+      const reason = item.contentItems?.find((c) => c.type === "inputText");
+      const suffix = failed ? ` · ${reason && reason.type === "inputText" ? truncate(reason.text, 80) : "failed"}` : "";
+      return [`⚙ ${describeToolCall(item.tool, item.arguments)}${suffix}`];
+    }
     default:
       return [];
   }
