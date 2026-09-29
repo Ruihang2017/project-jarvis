@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-import { spawn } from "node:child_process";
 import { Session } from "./session.js";
 import { repl, runTurn } from "./ui.js";
+import { openBrowser } from "./util.js";
 
 // `jarvis` → interactive REPL; `jarvis "question"` → one-shot streamed answer.
 async function main() {
@@ -34,14 +34,6 @@ async function main() {
   } finally {
     session.close();
   }
-}
-
-function openBrowser(url: string) {
-  const [cmd, args] =
-    process.platform === "win32"
-      ? ["rundll32", ["url.dll,FileProtocolHandler", url]]
-      : [process.platform === "darwin" ? "open" : "xdg-open", [url]];
-  spawn(cmd, args, { stdio: "ignore", detached: true }).on("error", () => {}).unref();
 }
 
 main().catch((err) => {

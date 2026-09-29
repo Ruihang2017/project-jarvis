@@ -22,7 +22,9 @@ export class RpcError extends Error {
     message: string,
     readonly data?: unknown,
   ) {
-    super(`${method}: ${message} (${code})`);
+    // Upstream failures can embed whole HTML pages (e.g. a Cloudflare challenge); keep messages readable.
+    const short = message.length > 300 ? `${message.slice(0, 300)}… [truncated]` : message;
+    super(`${method}: ${short} (${code})`);
   }
 }
 

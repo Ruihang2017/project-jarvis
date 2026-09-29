@@ -1,8 +1,13 @@
 import { mkdirSync } from "node:fs";
 import { ensureCodexHome } from "./home.js";
-import type { InitializeResponse, ServerNotification } from "./protocol/index.js";
+import { declineAll, type Interactions } from "./interactions.js";
+import type { InitializeResponse, ServerNotification, ServerRequest } from "./protocol/index.js";
 import type {
   AccountLoginCompletedNotification,
+  AskForApproval,
+  FileUpdateChange,
+  SandboxMode,
+  SandboxPolicy,
   GetAccountRateLimitsResponse,
   GetAccountResponse,
   LoginAccountResponse,
@@ -31,6 +36,25 @@ export interface TurnCallbacks {
   onError?: (err: TurnError, willRetry: boolean) => void;
 }
 
+export type Mode = "chat" | "assist";
+
+/** chat: answers only. assist: may run commands / edit files inside the workspace, asking first when escalating. */
+export const MODES: Record<Mode, { sandbox: SandboxMode; approvalPolicy: AskForApproval; sandboxPolicy: SandboxPolicy }> = {
+  chat: {
+    sandbox: "read-only",
+    approvalPolicy: "never",
+    sandboxPolicy: { type: "readOnly", networkAccess: false },
+  },
+  // Approval is the safeguard: "untrusted" asks before every command and patch. Not workspace-write
+  // because on Windows (codex 0.156.1) it doesn't confine approved commands anyway, and approved
+  // apply_patch calls hang inside its sandbox helper.
+  assist: {
+    sandbox: "danger-full-access",
+    approvalPolicy: "untrusted",
+    sandboxPolicy: { type: "dangerFullAccess" },
+  },
+};
+
 interface ActiveTurn {
   threadId: string;
   turnId: string | null;
@@ -43,23 +67,44 @@ export class Session {
   threadId: string | null = null;
   model = config.model;
   effort = config.effort;
+  mode: Mode = "chat";
+  interactions: Interactions = declineAll;
+  // Approval requests don't carry the diff; remember it from the fileChange item.
+  private fileChanges = new Map<string, FileUpdateChange[]>();
 
   constructor() {
     const codexHome = ensureCodexHome();
     this.client = new CodexClient(config.codexBin, [], { ...process.env, CODEX_HOME: codexHome });
-    // Chat mode never grants tool access; decline anything that slips through.
-    this.client.onServerRequest(async (req) => {
-      switch (req.method) {
-        case "item/commandExecution/requestApproval":
-        case "item/fileChange/requestApproval":
-          return { decision: "decline" };
-        default:
-          throw new Error(`unsupported server request: ${req.method}`);
-      }
-    });
+    this.client.onServerRequest((req) => this.handleServerRequest(req));
     this.client.on("notification", (n) => {
       if (n.method === "account/rateLimits/updated") this.mergeRateLimits(n.params.rateLimits);
+      if (n.method === "item/started" && n.params.item.type === "fileChange") {
+        this.fileChanges.set(n.params.item.id, n.params.item.changes);
+      }
+      if (n.method === "item/completed") this.fileChanges.delete(n.params.item.id);
     });
+  }
+
+  private async handleServerRequest(req: ServerRequest): Promise<unknown> {
+    const ui = this.interactions;
+    switch (req.method) {
+      case "item/commandExecution/requestApproval":
+        return { decision: await ui.approveCommand(req.params) };
+      case "item/fileChange/requestApproval":
+        return { decision: await ui.approveFileChange(req.params, this.fileChanges.get(req.params.itemId) ?? []) };
+      case "item/permissions/requestApproval":
+        return ui.approvePermissions(req.params);
+      case "item/tool/requestUserInput":
+        return ui.askUser(req.params);
+      case "mcpServer/elicitation/request":
+        return ui.elicit(req.params);
+      // Legacy v1 approvals; v2 threads shouldn't send these.
+      case "execCommandApproval":
+      case "applyPatchApproval":
+        return { decision: "abort" };
+      default:
+        throw new Error(`unsupported server request: ${req.method}`);
+    }
   }
 
   /** Latest known plan limits; seeded by rateLimits(), kept fresh by server pushes. */
@@ -107,14 +152,14 @@ export class Session {
     if (!result.success) throw new Error(`login failed: ${result.error ?? "unknown error"}`);
   }
 
-  /** Settings shared by thread/start and thread/resume so resumed threads stay in chat mode. */
+  /** Settings shared by thread/start and thread/resume so resumed threads get Jarvis's mode and persona. */
   private threadSettings() {
     mkdirSync(config.workspace, { recursive: true });
     return {
       model: this.model,
       cwd: config.workspace,
-      sandbox: "read-only" as const,
-      approvalPolicy: "never" as const,
+      sandbox: MODES[this.mode].sandbox,
+      approvalPolicy: MODES[this.mode].approvalPolicy,
       developerInstructions: PERSONA,
       config: { model_reasoning_effort: this.effort },
     };
@@ -242,6 +287,9 @@ export class Session {
           input: [{ type: "text", text, text_elements: [] }],
           model: this.model,
           effort: this.effort,
+          // Per-turn so /mode applies to the current thread immediately.
+          approvalPolicy: MODES[this.mode].approvalPolicy,
+          sandboxPolicy: MODES[this.mode].sandboxPolicy,
         })
         .then((res) => {
           active.turnId ??= res.turn.id;

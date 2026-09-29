@@ -1,6 +1,12 @@
 import { styleText } from "node:util";
 import type { RateLimitWindow, Thread, ThreadItem } from "./protocol/v2/index.js";
-import type { Session } from "./session.js";
+import { MODES, type Mode, type Session } from "./session.js";
+import { truncate } from "./util.js";
+
+const MODE_HELP: Record<Mode, string> = {
+  chat: "answers only; no commands or file changes",
+  assist: "may run commands and edit files (starts in ~/.jarvis/workspace); asks before every action",
+};
 
 const dim = (s: string) => styleText("dim", s);
 const bold = (s: string) => styleText("bold", s);
@@ -113,6 +119,27 @@ const COMMANDS: Record<string, Command> = {
     },
   },
 
+  "/mode": {
+    usage: "/mode [chat|assist]",
+    help: "Show or switch mode (assist can run commands and edit files, with your approval)",
+    run: async (args, session) => {
+      if (!args) {
+        for (const m of Object.keys(MODES) as Mode[]) {
+          console.log(`${m === session.mode ? "*" : " "} ${m.padEnd(7)} ${dim(MODE_HELP[m])}`);
+        }
+        return;
+      }
+      if (!(args in MODES)) return console.log(dim(`[unknown mode "${args}"; chat or assist]`));
+      session.mode = args as Mode;
+      console.log(dim(`[mode: ${args}]`));
+      if (args === "assist" && process.platform === "win32") {
+        console.log(
+          styleText("yellow", "  No sandbox on Windows: every command asks first, and approved commands run with your full user permissions."),
+        );
+      }
+    },
+  },
+
   "/exit": {
     usage: "/exit",
     help: "Quit (also /quit)",
@@ -173,11 +200,6 @@ function formatWindow(w: RateLimitWindow): string {
 function bar(pct: number, width = 20): string {
   const filled = Math.min(width, Math.round((pct / 100) * width));
   return "█".repeat(filled) + dim("░".repeat(width - filled));
-}
-
-function truncate(s: string, n: number): string {
-  const flat = s.replace(/\s+/g, " ").trim();
-  return flat.length > n ? flat.slice(0, n - 1) + "…" : flat;
 }
 
 function duration(secs: number): string {
