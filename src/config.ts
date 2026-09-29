@@ -1,13 +1,13 @@
-import { homedir } from "node:os";
 import { join } from "node:path";
+import { appDataDir } from "./settings.js";
 
 export const config = {
   model: process.env.JARVIS_MODEL ?? "gpt-6-luna",
   effort: process.env.JARVIS_EFFORT ?? "low",
   // Threads run here so the agent never touches a real project directory.
-  workspace: process.env.JARVIS_WORKSPACE ?? join(homedir(), ".jarvis", "workspace"),
+  workspace: process.env.JARVIS_WORKSPACE ?? join(appDataDir(), "workspace"),
   // Separate CODEX_HOME: own login, config and thread history; nothing inherited from ~/.codex.
-  codexHome: process.env.JARVIS_CODEX_HOME ?? join(homedir(), ".jarvis", "codex-home"),
+  codexHome: process.env.JARVIS_CODEX_HOME ?? join(appDataDir(), "codex-home"),
   codexBin: process.env.JARVIS_CODEX_BIN ?? "codex",
 };
 

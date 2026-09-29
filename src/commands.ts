@@ -12,7 +12,7 @@ import { tildify, truncate } from "./util.js";
 
 const MODE_HELP: Record<Mode, string> = {
   chat: "answers only; no commands or file changes (clipboard/open tools still work)",
-  assist: "may run commands and edit files (starts in ~/.jarvis/workspace); asks before every action",
+  assist: "may run commands and edit files (starts in the Jarvis workspace); asks before every action",
 };
 
 const dim = (s: string) => styleText("dim", s);
