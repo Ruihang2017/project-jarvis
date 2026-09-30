@@ -11,6 +11,7 @@ import { describe as describeMemory } from "./memory/store.js";
 import { MemoryTidier } from "./memory/tidy.js";
 import { parseDuration } from "./reminders/schedule.js";
 import { describeReminder } from "./reminders/tools.js";
+import { installTask, removeTask, TASK_NAME, taskStatus } from "./background/task.js";
 import { preview, renderPreview } from "./sixel.js";
 import { copyImageToClipboard, openWithDefaultApp } from "./system.js";
 import { tildify, truncate } from "./util.js";
@@ -406,6 +407,31 @@ const COMMANDS: Record<string, Command> = {
         default:
           console.log(dim(`[unknown /remind option "${sub}"]`));
       }
+    },
+  },
+
+  "/background": {
+    usage: "/background [on|off]",
+    help: "Background reminders (a scheduled task that runs every minute, even when Jarvis is closed)",
+    run: async (args) => {
+      if (args === "on") {
+        const r = await installTask();
+        updateSettings({ backgroundSuggested: true });
+        if (!r.ok) return console.log(dim(`[couldn't turn on background reminders: ${r.message}]`));
+        console.log(dim(`[background reminders on — task ${TASK_NAME} checks every minute, even when Jarvis is closed]`));
+        return console.log(dim("  /background off removes it · notifications may be muted by Windows Focus / Do Not Disturb"));
+      }
+      if (args === "off") {
+        const r = await removeTask();
+        return console.log(dim(r.ok ? `[background reminders off (${r.message})]` : `[couldn't remove task: ${r.message}]`));
+      }
+      if (args) return console.log(dim("[usage: /background on|off]"));
+      const s = await taskStatus();
+      if (!s.installed) return console.log(`background: ${bold("off")} ${dim("— reminders only fire while Jarvis is open; /background on")}`);
+      console.log(`background: ${bold(s.enabled ? "on" : "disabled")} ${dim(`(${TASK_NAME})`)}`);
+      const beat = s.heartbeat && !Number.isNaN(s.heartbeat.getTime()) ? `${Math.round((Date.now() - s.heartbeat.getTime()) / 1000)}s ago` : "never";
+      console.log(dim(`  last tick: ${beat} · last run: ${s.lastRun ?? "?"} (result ${s.lastResult ?? "?"}) · next: ${s.nextRun ?? "?"}`));
+      for (const p of s.problems) console.log(styleText("yellow", `  ⚠ ${p}`));
     },
   },
 

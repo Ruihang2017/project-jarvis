@@ -74,6 +74,20 @@ a.setStatus(later.id, "cancelled");
 eq("cancelled never fires", a.claimDue(new Date(2026, 9, 3)).some((f) => f.reminder.id === later.id), false);
 eq("recentlyFired lists one-offs", a.recentlyFired(24 * 365 * 5).map((r) => r.id).includes(once.id), true);
 
+// --- notification text (background tick) ---
+const { reminderToast } = await import("../src/background/tick.js");
+const dailyNow = a.get(daily.id)!;
+eq(
+  "toast for repeating shows next",
+  reminderToast({ reminder: dailyNow, occurrence: "2026-10-01T09:00" }, new Date(2026, 9, 1, 9, 0)),
+  { title: "⏰ 看周报", body: `09:00 · next ${formatDue(dailyNow.dueAt, new Date(2026, 9, 1))} (every day)`, tag: `reminder-${daily.id}` },
+);
+eq(
+  "toast for missed one-off shows lateness",
+  reminderToast({ reminder: a.get(once.id)!, occurrence: "2026-10-01T08:59" }, new Date(2026, 9, 1, 11, 0)).body,
+  "08:59 · 2h 1m late",
+);
+
 a.close();
 b.close();
 for (const e of ["", "-wal", "-shm"]) rmSync(path + e, { force: true });

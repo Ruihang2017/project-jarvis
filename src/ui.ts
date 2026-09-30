@@ -7,7 +7,9 @@ import { MarkdownStream } from "./markdown.js";
 import { describeChange, terminalInteractions } from "./prompts.js";
 import type { RateLimitWindow, ThreadItem, ThreadTokenUsage, TurnStatus } from "./protocol/v2/index.js";
 import { saveGeneratedImage } from "./images.js";
-import { loadSettings } from "./settings.js";
+import { loadSettings, updateSettings } from "./settings.js";
+import { showToast } from "./background/notify.js";
+import { reminderToast } from "./background/tick.js";
 import { detectSixel, preview, renderPreview } from "./sixel.js";
 import { openWithDefaultApp } from "./system.js";
 import { describeToolCall } from "./tools.js";
@@ -202,6 +204,8 @@ export async function repl(session: Session): Promise<void> {
       if (fired.length) {
         if (tty) process.stdout.write("\x07"); // bell: flashes the tab/taskbar if Jarvis isn't focused
         notify(fired.map(reminderNotice));
+        // Also a desktop notification, in case the terminal isn't the window in front.
+        for (const f of fired) void showToast(reminderToast(f));
       }
     } catch (e) {
       if (process.env.JARVIS_DEBUG) console.error(dim(`[reminder check failed] ${e instanceof Error ? e.message : String(e)}`));
@@ -332,6 +336,11 @@ export async function runTurn(session: Session, text: string, opts: TurnOptions 
       },
       onItemCompleted: (item) => {
         const lines = item.type === "imageGeneration" ? imageNotes(item, session, text) : activityNotes(item);
+        // After the first reminder, suggest background reminders once.
+        if (item.type === "dynamicToolCall" && item.tool === "reminder_create" && item.success !== false && !loadSettings().backgroundSuggested) {
+          updateSettings({ backgroundSuggested: true });
+          lines.push("🔔 Reminders only pop up while Jarvis is open. /background on makes them work when it's closed too.");
+        }
         for (const line of lines) note(line);
         if (item.type === "imageGeneration" && session.lastGeneratedImage && preview.enabled) {
           out(renderPreview(session.lastGeneratedImage));

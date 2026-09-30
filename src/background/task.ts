@@ -1,0 +1,126 @@
+/**
+ * The background runner: one per-user Windows scheduled task that runs `jarvis tick` every minute
+ * (and at logon) through a hidden-window VBS launcher. No resident process, survives reboots.
+ */
+import { execFile } from "node:child_process";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { appDataDir } from "../settings.js";
+
+export const TASK_NAME = "Jarvis\\Tick";
+const launcherPath = () => join(appDataDir(), "tick.vbs");
+export const heartbeatPath = () => join(appDataDir(), "tick-heartbeat.txt");
+
+/** dist/index.js of this checkout (works whether we're running from src via tsx or from dist). */
+export function cliEntry(): string {
+  const root = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
+  return join(root, "dist", "index.js");
+}
+
+function run(cmd: string, args: string[]): Promise<{ ok: boolean; out: string }> {
+  return new Promise((done) => {
+    execFile(cmd, args, { windowsHide: true, encoding: "utf8" }, (err, stdout, stderr) =>
+      done({ ok: !err, out: (stdout + stderr).trim() }),
+    );
+  });
+}
+
+const xmlEscape = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+/** DOMAIN\user of the current user; a logon trigger without one means "any user", which needs admin. */
+const currentUser = () => [process.env.USERDOMAIN, process.env.USERNAME].filter(Boolean).join("\\");
+
+function taskXml(launcher: string): string {
+  const start = new Date(Date.now() + 60_000).toISOString().slice(0, 19);
+  const user = xmlEscape(currentUser());
+  // Battery settings matter: the defaults skip runs on battery, which would silence reminders on a laptop.
+  return `<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo><Description>Jarvis: fires due reminders and the daily brief. Remove with /background off.</Description></RegistrationInfo>
+  <Triggers>
+    <TimeTrigger><StartBoundary>${start}</StartBoundary><Enabled>true</Enabled><Repetition><Interval>PT1M</Interval><StopAtDurationEnd>false</StopAtDurationEnd></Repetition></TimeTrigger>
+    <LogonTrigger><Enabled>true</Enabled><UserId>${user}</UserId></LogonTrigger>
+  </Triggers>
+  <Principals><Principal id="Author"><UserId>${user}</UserId><LogonType>InteractiveToken</LogonType><RunLevel>LeastPrivilege</RunLevel></Principal></Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <AllowHardTerminate>true</AllowHardTerminate>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
+    <IdleSettings><StopOnIdleEnd>false</StopOnIdleEnd><RestartOnIdle>false</RestartOnIdle></IdleSettings>
+    <AllowStartOnDemand>true</AllowStartOnDemand>
+    <Enabled>true</Enabled>
+    <Hidden>true</Hidden>
+    <RunOnlyIfIdle>false</RunOnlyIfIdle>
+    <WakeToRun>false</WakeToRun>
+    <ExecutionTimeLimit>PT2M</ExecutionTimeLimit>
+    <Priority>7</Priority>
+  </Settings>
+  <Actions Context="Author"><Exec><Command>wscript.exe</Command><Arguments>//B //Nologo "${xmlEscape(launcher)}"</Arguments></Exec></Actions>
+</Task>`;
+}
+
+/** Writes the hidden launcher and registers (or replaces) the task. */
+export async function installTask(): Promise<{ ok: boolean; message: string }> {
+  if (process.platform !== "win32") return { ok: false, message: "background reminders are Windows-only for now" };
+  const entry = cliEntry();
+  if (!existsSync(entry)) return { ok: false, message: `${entry} not found — run npm run build first` };
+  const launcher = launcherPath();
+  // Window style 0 = hidden; False = don't wait. Quotes doubled for VBScript string literals.
+  const cmdline = `"${process.execPath}" "${entry}" tick`.replace(/"/g, '""');
+  writeFileSync(launcher, `CreateObject("WScript.Shell").Run "${cmdline}", 0, False\r\n`, "latin1");
+  const xmlFile = join(tmpdir(), `jarvis-task-${process.pid}.xml`);
+  writeFileSync(xmlFile, "﻿" + taskXml(launcher), "utf16le"); // schtasks wants UTF-16 with BOM
+  const res = await run("schtasks", ["/Create", "/TN", TASK_NAME, "/XML", xmlFile, "/F"]);
+  return { ok: res.ok, message: res.ok ? "registered" : res.out };
+}
+
+export async function removeTask(): Promise<{ ok: boolean; message: string }> {
+  const res = await run("schtasks", ["/Delete", "/TN", TASK_NAME, "/F"]);
+  const gone = res.ok || /cannot find|does not exist/i.test(res.out);
+  return { ok: gone, message: res.ok ? "removed" : gone ? "wasn't installed" : res.out };
+}
+
+export interface TaskStatus {
+  installed: boolean;
+  enabled?: boolean;
+  lastRun?: string;
+  lastResult?: string;
+  nextRun?: string;
+  /** Last time a tick actually ran (from its heartbeat file). */
+  heartbeat?: Date;
+  /** Problems that would stop ticks from working (moved Node, missing build). */
+  problems: string[];
+}
+
+export async function taskStatus(): Promise<TaskStatus> {
+  const q = await run("schtasks", ["/Query", "/TN", TASK_NAME, "/V", "/FO", "LIST"]);
+  const problems: string[] = [];
+  if (!q.ok) return { installed: false, problems };
+  const field = (name: string) => new RegExp(`^${name}:\\s*(.+)$`, "mi").exec(q.out)?.[1]?.trim();
+  // Read the launcher the task actually runs (not this process's data dir, which env vars can move).
+  const launcherFile = /"([^"]+\.vbs)"/i.exec(field("Task To Run") ?? "")?.[1] ?? launcherPath();
+  const launcher = existsSync(launcherFile) ? readFileSync(launcherFile, "latin1") : "";
+  const paths = [...launcher.matchAll(/""([^"]+?)""/g)].map((m) => m[1]!);
+  for (const p of paths) if (!existsSync(p)) problems.push(`missing ${p} — run /background on again`);
+  if (!launcher) problems.push("launcher missing — run /background on again");
+  let heartbeat: Date | undefined;
+  try {
+    heartbeat = new Date(readFileSync(join(dirname(launcherFile), "tick-heartbeat.txt"), "utf8").trim());
+  } catch {
+    // never ran
+  }
+  return {
+    installed: true,
+    enabled: field("Scheduled Task State") !== "Disabled",
+    lastRun: field("Last Run Time"),
+    lastResult: field("Last Result"),
+    nextRun: field("Next Run Time"),
+    heartbeat,
+    problems,
+  };
+}

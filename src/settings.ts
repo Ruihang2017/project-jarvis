@@ -27,6 +27,8 @@ export interface Settings {
   inlinePreview?: "auto" | "on" | "off";
   /** Automatic memory extraction after conversations; default true. Explicit "remember" always works. */
   memoryLearning?: boolean;
+  /** Whether Jarvis already suggested /background on after the first reminder. */
+  backgroundSuggested?: boolean;
 }
 
 const settingsPath = () => join(appDataDir(), "settings.json");
