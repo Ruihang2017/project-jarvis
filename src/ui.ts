@@ -15,6 +15,9 @@ import { RELATED_CHECK } from "./memory/tools.js";
 import { MemoryLearner } from "./memory/learn.js";
 import { recallFor } from "./memory/recall.js";
 import { MemoryTidier } from "./memory/tidy.js";
+import { nowNote } from "./reminders/prompt.js";
+import { formatDue, lateness } from "./reminders/schedule.js";
+import type { Fired } from "./reminders/store.js";
 import { displayCommand, tildify, truncate } from "./util.js";
 
 const dim = (s: string) => styleText("dim", s);
@@ -22,6 +25,14 @@ const USER_PROMPT = styleText("cyan", "you › ");
 const BOT_PREFIX = styleText("magenta", "jarvis › ");
 const tty = Boolean(process.stdout.isTTY);
 const color = tty && !process.env.NO_COLOR;
+const REMINDER_POLL_MS = Number(process.env.JARVIS_REMINDER_POLL_MS ?? 20_000);
+
+/** "⏰ 09:00 交报销 · 2h 5m late · next Fri 10-02 09:00" */
+function reminderNotice({ reminder: r, occurrence }: Fired): string {
+  const late = lateness(occurrence);
+  const next = r.status === "scheduled" && r.repeat ? `next ${formatDue(r.dueAt)}` : `/remind snooze ${r.id} 10m`;
+  return `⏰ ${occurrence.slice(11)} ${r.text}${late ? ` · ${late}` : ""} · ${next}`;
+}
 
 /**
  * Routes input lines: while a prompt (approval/question) is waiting, the next line answers it;
@@ -183,7 +194,24 @@ export async function repl(session: Session): Promise<void> {
     if (learner.enabled()) notify(await new MemoryTidier(session).runIfDue());
   })().catch(learnFailed);
 
+  // Reminders due while Jarvis is open (the background task handles the rest). Claiming is
+  // atomic, so a reminder shows here or as a background notification, never both.
+  const checkReminders = () => {
+    try {
+      const fired = session.reminders.claimDue();
+      if (fired.length) {
+        if (tty) process.stdout.write("\x07"); // bell: flashes the tab/taskbar if Jarvis isn't focused
+        notify(fired.map(reminderNotice));
+      }
+    } catch (e) {
+      if (process.env.JARVIS_DEBUG) console.error(dim(`[reminder check failed] ${e instanceof Error ? e.message : String(e)}`));
+    }
+  };
+  const reminderTimer = setInterval(checkReminders, REMINDER_POLL_MS);
+  reminderTimer.unref();
+
   showPrompt();
+  checkReminders(); // anything that came due while Jarvis was closed
   for (let raw = await input.next(); raw !== null; raw = await input.next()) {
     atPrompt = false;
     const line = raw.trim();
@@ -196,6 +224,7 @@ export async function repl(session: Session): Promise<void> {
   }
 
   quitting = true;
+  clearInterval(reminderTimer);
   rl.close();
 }
 
@@ -287,6 +316,7 @@ export async function runTurn(session: Session, text: string, opts: TurnOptions 
       notes.push("[Jarvis] The attached image is the one you generated in your previous reply. If I ask for changes, edit this image.");
     }
     session.lastGeneratedImage = null;
+    notes.push(nowNote());
     const recalled = recallFor(text, session.memory, session.recalledIds);
     if (recalled) notes.push(recalled.note);
     const turn = await session.send(text, {

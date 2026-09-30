@@ -29,6 +29,8 @@ import { CodexClient } from "./rpc.js";
 import { TOOL_SPECS, ToolRunner } from "./tools.js";
 import { memoryInstructions } from "./memory/prompt.js";
 import { MemoryStore } from "./memory/store.js";
+import { REMINDER_INSTRUCTIONS } from "./reminders/prompt.js";
+import { ReminderStore } from "./reminders/store.js";
 import { config, PERSONA } from "./config.js";
 
 export interface TurnCallbacks {
@@ -85,7 +87,8 @@ export class Session {
   // Approval requests don't carry the diff; remember it from the fileChange item.
   private fileChanges = new Map<string, FileUpdateChange[]>();
   readonly memory = new MemoryStore();
-  private tools = new ToolRunner(config.workspace, this.memory);
+  readonly reminders = new ReminderStore();
+  private tools = new ToolRunner(config.workspace, this.memory, this.reminders);
 
   constructor() {
     const codexHome = ensureCodexHome();
@@ -200,7 +203,7 @@ export class Session {
       sandbox: MODES[this.mode].sandbox,
       approvalPolicy: MODES[this.mode].approvalPolicy,
       // Rebuilt on every start/resume so the thread sees the current long-term core.
-      developerInstructions: PERSONA + memoryInstructions(this.memory),
+      developerInstructions: PERSONA + memoryInstructions(this.memory) + REMINDER_INSTRUCTIONS,
       config: { model_reasoning_effort: this.effort },
     };
   }
@@ -414,5 +417,6 @@ export class Session {
   close() {
     this.client.close();
     this.memory.close();
+    this.reminders.close();
   }
 }

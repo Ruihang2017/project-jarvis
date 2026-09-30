@@ -58,6 +58,9 @@ export interface Summary {
   rolledInto: number | null;
 }
 
+/** memory.db location (also holds reminders); JARVIS_MEMORY_DB overrides. */
+export const memoryDbPath = () => process.env.JARVIS_MEMORY_DB ?? join(appDataDir(), "memory.db");
+
 /** Short-term items without an explicit date expire after this many days. */
 export const SHORT_TERM_DAYS = 30;
 /** Rough budget for the always-injected profile block (~800 tokens). */
@@ -72,7 +75,7 @@ export class MemoryStore {
   /** Ids saved during this Jarvis process, newest last, for /memory undo. */
   private createdThisSession: number[] = [];
 
-  constructor(path = process.env.JARVIS_MEMORY_DB ?? join(appDataDir(), "memory.db")) {
+  constructor(path = memoryDbPath()) {
     mkdirSync(join(path, ".."), { recursive: true });
     this.db = new DatabaseSync(path);
     this.db.exec(`

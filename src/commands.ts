@@ -9,6 +9,8 @@ import { appDataDir, imagesDir, loadSettings, updateSettings } from "./settings.
 import { secretReason } from "./memory/guard.js";
 import { describe as describeMemory } from "./memory/store.js";
 import { MemoryTidier } from "./memory/tidy.js";
+import { parseDuration } from "./reminders/schedule.js";
+import { describeReminder } from "./reminders/tools.js";
 import { preview, renderPreview } from "./sixel.js";
 import { copyImageToClipboard, openWithDefaultApp } from "./system.js";
 import { tildify, truncate } from "./util.js";
@@ -357,6 +359,52 @@ const COMMANDS: Record<string, Command> = {
           return console.log(dim(sub === "pause" ? "[automatic learning paused; explicit \"remember\" still works]" : "[automatic learning resumed]"));
         default:
           console.log(dim(`[unknown /memory option "${sub}"]`));
+      }
+    },
+  },
+
+  "/remind": {
+    usage: "/remind [cmd]",
+    help: "Reminders: list; done|cancel <id>; snooze <id> [10m|1h]. Set one by just asking (\"remind me …\")",
+    run: async (args, session) => {
+      const rem = session.reminders;
+      const [sub = "", idArg, dur] = args.split(/\s+/).filter(Boolean);
+      const pick = () => {
+        const r = rem.get(Number(String(idArg ?? "").replace(/^#/, "")));
+        if (!r) throw new Error(`no reminder #${idArg ?? "?"}`);
+        return r;
+      };
+      switch (sub) {
+        case "": {
+          const upcoming = rem.upcoming();
+          const fired = rem.recentlyFired();
+          if (!upcoming.length && !fired.length) return console.log(dim('[no reminders — try "明天 9 点提醒我…"]'));
+          if (upcoming.length) console.log(bold(`Upcoming (${upcoming.length})`));
+          for (const r of upcoming) console.log(`  ${describeReminder(r)}`);
+          if (fired.length) console.log(bold("Went off (last 24h)"));
+          for (const r of fired) console.log(`  ${describeReminder(r)}`);
+          return console.log(dim("  /remind done|cancel <id> · /remind snooze <id> 10m"));
+        }
+        case "done": {
+          const r = pick();
+          if (r.repeat && r.status === "scheduled") return console.log(dim(`[#${r.id} repeats; /remind cancel ${r.id} to stop it]`));
+          rem.setStatus(r.id, "done");
+          return console.log(dim(`[done ${describeReminder(r)}]`));
+        }
+        case "cancel": {
+          const r = pick();
+          rem.setStatus(r.id, "cancelled");
+          return console.log(dim(`[cancelled ${describeReminder(r)}]`));
+        }
+        case "snooze": {
+          const r = pick();
+          const minutes = parseDuration(dur);
+          if (minutes === null) return console.log(dim("[usage: /remind snooze <id> 10m|1h|90]"));
+          const s = rem.snooze(r.id, minutes);
+          return console.log(dim(s?.status === "scheduled" ? `[snoozed ${describeReminder(s)}]` : `[#${r.id} can't be snoozed (${r.status})]`));
+        }
+        default:
+          console.log(dim(`[unknown /remind option "${sub}"]`));
       }
     },
   },

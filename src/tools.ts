@@ -13,6 +13,8 @@ import { openWithDefaultApp, readClipboard, resolveOpenTarget, writeClipboard } 
 import { tildify, truncate } from "./util.js";
 import type { MemoryStore } from "./memory/store.js";
 import { describeMemoryCall, MEMORY_TOOLS } from "./memory/tools.js";
+import type { ReminderStore } from "./reminders/store.js";
+import { describeReminderCall, REMINDER_TOOLS } from "./reminders/tools.js";
 
 const MAX_CLIPBOARD_CHARS = 50_000;
 
@@ -32,6 +34,7 @@ export interface PreparedCall {
 export interface ToolContext {
   workspace: string;
   memory: MemoryStore;
+  reminders: ReminderStore;
   threadId: string;
 }
 
@@ -45,6 +48,7 @@ export interface Tool {
 
 const TOOLS: Tool[] = [
   ...MEMORY_TOOLS,
+  ...REMINDER_TOOLS,
   {
     name: "clipboard_read",
     description:
@@ -129,7 +133,7 @@ export function describeToolCall(tool: string, args: unknown, ok = true): string
     case "open":
       return `⚙ open ${truncate(String(a.target ?? ""), 80)}`;
     default:
-      return describeMemoryCall(tool, a, ok) ?? `⚙ ${tool}`;
+      return describeMemoryCall(tool, a, ok) ?? describeReminderCall(tool, a, ok) ?? `⚙ ${tool}`;
   }
 }
 
@@ -142,6 +146,7 @@ export class ToolRunner {
   constructor(
     private readonly workspace: string,
     private readonly memory: MemoryStore,
+    private readonly reminders: ReminderStore,
   ) {}
 
   async call(req: DynamicToolCallParams, ui: Interactions): Promise<DynamicToolCallResponse> {
@@ -152,7 +157,7 @@ export class ToolRunner {
     const args = req.arguments && typeof req.arguments === "object" && !Array.isArray(req.arguments) ? req.arguments : {};
     let call: PreparedCall;
     try {
-      call = await tool.prepare(args as Record<string, unknown>, { workspace: this.workspace, memory: this.memory, threadId: req.threadId });
+      call = await tool.prepare(args as Record<string, unknown>, { workspace: this.workspace, memory: this.memory, reminders: this.reminders, threadId: req.threadId });
     } catch (e) {
       return fail(`Invalid call: ${e instanceof Error ? e.message : String(e)}`);
     }
