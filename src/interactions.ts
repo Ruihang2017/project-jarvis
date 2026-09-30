@@ -22,7 +22,9 @@ export interface Interactions {
   askUser(req: ToolRequestUserInputParams): Promise<ToolRequestUserInputResponse>;
   elicit(req: McpServerElicitationRequestParams): Promise<McpServerElicitationRequestResponse>;
   /** Jarvis-side approval for its own dynamic tools; `preview` shows what would be shared. */
-  approveTool(tool: string, summary: string, preview?: string): Promise<ToolDecision>;
+  approveTool(tool: string, summary: string, preview?: string, allowAlways?: boolean): Promise<ToolDecision>;
+  /** The server withdrew its request (e.g. a tool call timed out): close any open prompt. */
+  cancelPending?(): void;
 }
 
 /** Non-interactive fallback (one-shot mode, tests): refuse everything. */

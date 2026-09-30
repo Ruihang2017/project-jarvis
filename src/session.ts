@@ -19,6 +19,7 @@ import type {
   ThreadListResponse,
   ThreadResumeResponse,
   ThreadTokenUsage,
+  ThreadTurnsListResponse,
   ThreadStartResponse,
   TurnStartResponse,
   Turn,
@@ -26,6 +27,8 @@ import type {
 } from "./protocol/v2/index.js";
 import { CodexClient } from "./rpc.js";
 import { TOOL_SPECS, ToolRunner } from "./tools.js";
+import { memoryInstructions } from "./memory/prompt.js";
+import { MemoryStore } from "./memory/store.js";
 import { config, PERSONA } from "./config.js";
 
 export interface TurnCallbacks {
@@ -76,25 +79,49 @@ export class Session {
    * don't enter the model context, so without this, edits would apply to an older image.
    */
   lastGeneratedImage: string | null = null;
+  /** Memory ids already auto-attached in the current thread (they stay in its context). */
+  recalledIds = new Set<number>();
   interactions: Interactions = declineAll;
   // Approval requests don't carry the diff; remember it from the fileChange item.
   private fileChanges = new Map<string, FileUpdateChange[]>();
-  private tools = new ToolRunner(config.workspace);
+  readonly memory = new MemoryStore();
+  private tools = new ToolRunner(config.workspace, this.memory);
 
   constructor() {
     const codexHome = ensureCodexHome();
     this.client = new CodexClient(config.codexBin, [], { ...process.env, CODEX_HOME: codexHome });
     this.client.onServerRequest((req) => this.handleServerRequest(req));
+    this.client.on("serverRequestCancelled", () => this.interactions.cancelPending?.());
     this.client.on("notification", (n) => {
       if (n.method === "account/rateLimits/updated") this.mergeRateLimits(n.params.rateLimits);
       if (n.method === "item/started" && n.params.item.type === "fileChange") {
         this.fileChanges.set(n.params.item.id, n.params.item.changes);
       }
       if (n.method === "item/completed") this.fileChanges.delete(n.params.item.id);
+      // The server doesn't always withdraw a request explicitly: a timed-out dynamic tool call just
+      // completes its item, then the turn ends. Either way the open prompt is moot.
+      const moot =
+        (n.method === "item/completed" && this.openRequests.has(n.params.item.id)) ||
+        (n.method === "turn/completed" && [...this.openRequests.values()].includes(n.params.turn.id));
+      if (moot) this.interactions.cancelPending?.();
     });
   }
 
+  /** Server requests awaiting the user, keyed by item/call id → turn id. */
+  private openRequests = new Map<string, string>();
+
   private async handleServerRequest(req: ServerRequest): Promise<unknown> {
+    const p = req.params as { itemId?: string; callId?: string; turnId?: string | null };
+    const key = p.itemId ?? p.callId;
+    if (key && p.turnId) this.openRequests.set(key, p.turnId);
+    try {
+      return await this.dispatchServerRequest(req);
+    } finally {
+      if (key) this.openRequests.delete(key);
+    }
+  }
+
+  private async dispatchServerRequest(req: ServerRequest): Promise<unknown> {
     const ui = this.interactions;
     switch (req.method) {
       case "item/commandExecution/requestApproval":
@@ -172,17 +199,82 @@ export class Session {
       cwd: config.workspace,
       sandbox: MODES[this.mode].sandbox,
       approvalPolicy: MODES[this.mode].approvalPolicy,
-      developerInstructions: PERSONA,
+      // Rebuilt on every start/resume so the thread sees the current long-term core.
+      developerInstructions: PERSONA + memoryInstructions(this.memory),
       config: { model_reasoning_effort: this.effort },
     };
+  }
+
+  /** Called with a thread the user just switched away from (/new, /resume) — memory learning hooks in here. */
+  onLeaveThread?: (threadId: string) => void;
+
+  private switchTo(threadId: string) {
+    const prev = this.threadId;
+    this.threadId = threadId;
+    this.lastGeneratedImage = null;
+    if (prev !== threadId) this.recalledIds = new Set();
+    if (prev && prev !== threadId) this.onLeaveThread?.(prev);
   }
 
   async newThread(): Promise<ThreadStartResponse> {
     // Dynamic tools can only be registered at thread start (thread/resume has no such field).
     const res = await this.client.request<ThreadStartResponse>("thread/start", { ...this.threadSettings(), dynamicTools: TOOL_SPECS });
-    this.threadId = res.thread.id;
-    this.lastGeneratedImage = null;
+    this.switchTo(res.thread.id);
     return res;
+  }
+
+  /**
+   * One-off background turn on a throwaway (ephemeral) thread, e.g. memory extraction.
+   * Returns the final assistant message; with `outputSchema` that's JSON matching it.
+   */
+  async runEphemeral(instructions: string, input: string, outputSchema?: object, timeoutMs = 180_000): Promise<string> {
+    const res = await this.client.request<ThreadStartResponse>("thread/start", {
+      model: this.model,
+      cwd: config.workspace,
+      sandbox: "read-only",
+      approvalPolicy: "never",
+      developerInstructions: instructions,
+      ephemeral: true,
+      config: { model_reasoning_effort: "low", web_search: "disabled" },
+    });
+    const threadId = res.thread.id;
+    return new Promise<string>((resolve, reject) => {
+      const done = (fn: () => void) => {
+        clearTimeout(timer);
+        this.client.off("notification", onNote);
+        fn();
+      };
+      const timer = setTimeout(() => done(() => reject(new Error("background turn timed out"))), timeoutMs);
+      const onNote = (n: ServerNotification) => {
+        if (n.method !== "turn/completed" || n.params.threadId !== threadId) return;
+        const { turn } = n.params;
+        const last = turn.items.findLast((i) => i.type === "agentMessage");
+        if (turn.status !== "completed" || !last || last.type !== "agentMessage") {
+          done(() => reject(new Error(`background turn ${turn.status}: ${turn.error?.message ?? "no answer"}`)));
+        } else {
+          done(() => resolve(last.text));
+        }
+      };
+      this.client.on("notification", onNote);
+      this.client
+        .request("turn/start", {
+          threadId,
+          input: [{ type: "text", text: input, text_elements: [] }],
+          outputSchema: (outputSchema ?? null) as never,
+        })
+        .catch((e) => done(() => reject(e)));
+    });
+  }
+
+  /** Completed turns of a thread with full items, oldest first. */
+  async readTurns(threadId: string, limit = 40): Promise<Turn[]> {
+    const res = await this.client.request<ThreadTurnsListResponse>("thread/turns/list", {
+      threadId,
+      limit,
+      sortDirection: "desc",
+      itemsView: "full",
+    });
+    return res.data.reverse();
   }
 
   async listThreads(limit = 10): Promise<Thread[]> {
@@ -200,8 +292,7 @@ export class Session {
       threadId,
       ...this.threadSettings(),
     });
-    this.threadId = res.thread.id;
-    this.lastGeneratedImage = null;
+    this.switchTo(res.thread.id);
     return res;
   }
 
@@ -322,5 +413,6 @@ export class Session {
 
   close() {
     this.client.close();
+    this.memory.close();
   }
 }

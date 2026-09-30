@@ -1,11 +1,14 @@
-import { existsSync, mkdirSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, extname, resolve } from "node:path";
+import { basename, extname, join, resolve } from "node:path";
 import { styleText } from "node:util";
 import type { RateLimitWindow, Thread, ThreadItem } from "./protocol/v2/index.js";
 import { listImages, stripRequest } from "./images.js";
 import { MODES, type Mode, type Session } from "./session.js";
-import { imagesDir, loadSettings, updateSettings } from "./settings.js";
+import { appDataDir, imagesDir, loadSettings, updateSettings } from "./settings.js";
+import { secretReason } from "./memory/guard.js";
+import { describe as describeMemory } from "./memory/store.js";
+import { MemoryTidier } from "./memory/tidy.js";
 import { preview, renderPreview } from "./sixel.js";
 import { copyImageToClipboard, openWithDefaultApp } from "./system.js";
 import { tildify, truncate } from "./util.js";
@@ -246,6 +249,114 @@ const COMMANDS: Record<string, Command> = {
         }
         default:
           console.log(dim(`[unknown /images option "${sub}"]`));
+      }
+    },
+  },
+
+  "/memory": {
+    usage: "/memory [cmd]",
+    help: "What Jarvis remembers: search <q>, add <text>, edit <id> <text>, forget <id>, undo, review, approve|reject <id|all>, tidy, profile, export, pause|resume",
+    run: async (args, session) => {
+      const mem = session.memory;
+      const [sub = "", ...rest] = args.split(/\s+/).filter(Boolean);
+      const arg = rest.join(" ");
+      const id = (s: string | undefined) => {
+        const n = Number(String(s ?? "").replace(/^#/, ""));
+        if (!Number.isInteger(n) || !mem.get(n)) throw new Error(`no memory #${s ?? "?"}`);
+        return n;
+      };
+      switch (sub) {
+        case "": {
+          const long = mem.list({ tier: "long" });
+          const short = mem.list({ tier: "short" });
+          if (!long.length && !short.length && !mem.list({ status: "pending" }).length) return console.log(dim("[nothing remembered yet — say \"记住…\" or /memory add <text>]"));
+          if (long.length) console.log(bold(`Long-term (${long.length})`));
+          for (const m of long) console.log(`  ${describeMemory(m)}`);
+          if (short.length) console.log(bold(`Short-term (${short.length})`));
+          for (const m of short) console.log(`  ${describeMemory(m)}`);
+          const paused = loadSettings().memoryLearning === false ? " · learning paused" : "";
+          const pending = mem.list({ status: "pending" }).length;
+          const review = pending ? ` · ${pending} awaiting /memory review` : "";
+          return console.log(dim(`  /memory search|edit|forget|export${review}${paused}`));
+        }
+        case "search": {
+          if (!arg) return console.log(dim("[usage: /memory search <keywords>]"));
+          const hits = mem.search(arg, { includeArchived: true, limit: 15 });
+          if (!hits.length) return console.log(dim("[no matches]"));
+          for (const { memory: m } of hits) console.log(`  ${describeMemory(m)}${m.status !== "active" ? dim(` {${m.status}}`) : ""}`);
+          return;
+        }
+        case "add": {
+          if (!arg) return console.log(dim("[usage: /memory add <text>]"));
+          const reason = secretReason(arg);
+          if (reason) return console.log(dim(`[not saved: looks like a ${reason}; secrets are never stored]`));
+          const m = mem.add({ kind: "note", text: arg, source: "manual", threadId: session.threadId });
+          return console.log(dim(`[saved ${describeMemory(m)}]`));
+        }
+        case "edit": {
+          const [idArg, ...textParts] = rest;
+          const text = textParts.join(" ");
+          if (!text) return console.log(dim("[usage: /memory edit <id> <new text>]"));
+          const m = mem.update(id(idArg), { text });
+          return console.log(dim(`[updated ${m ? describeMemory(m) : ""}]`));
+        }
+        case "forget": {
+          const m = mem.remove(id(arg));
+          return console.log(dim(`[forgot ${m ? describeMemory(m) : ""}]`));
+        }
+        case "undo": {
+          const m = mem.undo();
+          return console.log(dim(m ? `[removed ${describeMemory(m)}]` : "[nothing saved this session to undo]"));
+        }
+        case "profile": {
+          const core = mem.core();
+          console.log(bold("Always shared with Jarvis at the start of a conversation:"));
+          if (!core.length) console.log(dim("  (nothing yet)"));
+          for (const m of core) console.log(`  ${describeMemory(m)}`);
+          return;
+        }
+        case "export": {
+          const path = arg
+            ? resolve(process.cwd(), arg.replace(/^(["'])(.*)\1$/, "$2"))
+            : join(appDataDir(), `memory-export-${new Date().toLocaleDateString("sv")}.md`);
+          writeFileSync(path, mem.exportMarkdown());
+          return console.log(dim(`[exported to ${tildify(path)}]`));
+        }
+        case "review": {
+          const pending = mem.list({ status: "pending" });
+          if (!pending.length) return console.log(dim("[nothing awaiting review]"));
+          console.log(bold("Learned automatically, waiting for your OK (sensitive):"));
+          for (const m of pending) {
+            const replaces = m.supersedes ? dim(` (replaces #${m.supersedes})`) : "";
+            console.log(`  ${describeMemory(m)}${replaces}`);
+          }
+          return console.log(dim("  /memory approve <id|all> · /memory reject <id|all>"));
+        }
+        case "approve":
+        case "reject": {
+          const ids = arg === "all" ? mem.list({ status: "pending" }).map((m) => m.id) : [id(arg)];
+          for (const n of ids) {
+            if (mem.get(n)?.status !== "pending") {
+              console.log(dim(`[#${n} isn't awaiting review]`));
+              continue;
+            }
+            const m = sub === "approve" ? mem.approve(n) : mem.remove(n);
+            console.log(dim(`[${sub === "approve" ? "saved" : "discarded"} ${m ? describeMemory(m) : `#${n}`}]`));
+          }
+          return;
+        }
+        case "tidy": {
+          console.log(dim("[tidying memory…]"));
+          const lines = await new MemoryTidier(session).run();
+          for (const l of lines.length ? lines : ["nothing to tidy"]) console.log(dim(`  ${l}`));
+          return;
+        }
+        case "pause":
+        case "resume":
+          updateSettings({ memoryLearning: sub === "resume" });
+          return console.log(dim(sub === "pause" ? "[automatic learning paused; explicit \"remember\" still works]" : "[automatic learning resumed]"));
+        default:
+          console.log(dim(`[unknown /memory option "${sub}"]`));
       }
     },
   },

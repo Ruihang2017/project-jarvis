@@ -11,6 +11,10 @@ import { loadSettings } from "./settings.js";
 import { detectSixel, preview, renderPreview } from "./sixel.js";
 import { openWithDefaultApp } from "./system.js";
 import { describeToolCall } from "./tools.js";
+import { RELATED_CHECK } from "./memory/tools.js";
+import { MemoryLearner } from "./memory/learn.js";
+import { recallFor } from "./memory/recall.js";
+import { MemoryTidier } from "./memory/tidy.js";
 import { displayCommand, tildify, truncate } from "./util.js";
 
 const dim = (s: string) => styleText("dim", s);
@@ -96,6 +100,12 @@ export async function repl(session: Session): Promise<void> {
   session.interactions = terminalInteractions(
     {
       ask: (p) => input.ask(p),
+      cancel: () => {
+        if (!input.asking) return false;
+        process.stdout.write("\n");
+        input.cancelAsk();
+        return true;
+      },
       pauseRender: () => activeRender?.pause(),
       resumeRender: () => activeRender?.resume(),
     },
@@ -135,15 +145,47 @@ export async function repl(session: Session): Promise<void> {
   session.rateLimits().catch(() => {}); // seed the status line; failures just hide limits
   console.log(dim(`Jarvis · ${session.model} · effort ${session.effort} · ${session.mode} mode · /help for commands`));
 
+  // Background notices (memory learning): shown above the prompt when idle, otherwise after the turn.
+  let atPrompt = false;
+  const queued: string[] = [];
+  const printNotices = (lines: string[]) => {
+    for (const l of lines) console.log(dim(`  ${l}`));
+  };
+  const notify = (lines: string[]) => {
+    if (!lines.length || quitting) return;
+    if (!atPrompt || input.asking) return void queued.push(...lines);
+    if (tty) process.stdout.write("\r\x1b[K");
+    else process.stdout.write("\n");
+    printNotices(lines);
+    rl.prompt(true); // redraws the prompt and whatever the user had typed
+  };
+
   // Shows pending /image attachments in the prompt, e.g. "you [🖼 2] › ".
   const showPrompt = () => {
+    printNotices(queued.splice(0));
     const n = session.pendingImages.length;
     rl.setPrompt(n ? styleText("cyan", `you [🖼 ${n}] › `) : USER_PROMPT);
     rl.prompt();
+    atPrompt = true;
   };
+
+  // Memory learning runs in the background: on leaving a conversation, and at startup for any missed.
+  const learner = new MemoryLearner(session);
+  const learnFailed = (e: unknown) => {
+    if (process.env.JARVIS_DEBUG) console.error(dim(`[memory learning failed] ${e instanceof Error ? e.message : String(e)}`));
+  };
+  session.onLeaveThread = (id) => {
+    learner.learnFromThread(id).then((r) => notify(r?.lines ?? []), learnFailed);
+  };
+  // Catch up on unlearned conversations first, then the daily tidy (so it sees what was just learned).
+  void (async () => {
+    notify((await learner.catchUp()).flatMap((r) => r.lines));
+    if (learner.enabled()) notify(await new MemoryTidier(session).runIfDue());
+  })().catch(learnFailed);
 
   showPrompt();
   for (let raw = await input.next(); raw !== null; raw = await input.next()) {
+    atPrompt = false;
     const line = raw.trim();
     if (line.startsWith("/")) {
       if ((await runCommand(line, session)) === "exit") break;
@@ -214,12 +256,24 @@ export async function runTurn(session: Session, text: string, opts: TurnOptions 
     out(dim(`  ${s}`) + "\n");
   };
 
+  // While a prompt is open, hold reply text back so it doesn't land on the prompt line.
+  let paused = false;
+  const held: string[] = [];
+  const writeDelta = (t: string) => {
+    start();
+    out(md.write(t));
+  };
   activeRender = {
     pause: () => {
+      paused = true;
       clearIndicator();
       if (started) endLine();
     },
-    resume: () => showIndicator("working…"),
+    resume: () => {
+      paused = false;
+      for (const t of held.splice(0)) writeDelta(t);
+      showIndicator("working…");
+    },
   };
 
   showIndicator("thinking…");
@@ -233,11 +287,10 @@ export async function runTurn(session: Session, text: string, opts: TurnOptions 
       notes.push("[Jarvis] The attached image is the one you generated in your previous reply. If I ask for changes, edit this image.");
     }
     session.lastGeneratedImage = null;
+    const recalled = recallFor(text, session.memory, session.recalledIds);
+    if (recalled) notes.push(recalled.note);
     const turn = await session.send(text, {
-      onDelta: (t) => {
-        start();
-        out(md.write(t));
-      },
+      onDelta: (t) => (paused ? held.push(t) : writeDelta(t)),
       onItemStarted: (item) => {
         const busy = activityLabel(item);
         if (busy) showIndicator(busy, item.type === "imageGeneration");
@@ -265,6 +318,9 @@ export async function runTurn(session: Session, text: string, opts: TurnOptions 
     result = "error";
     note(`[error] ${e instanceof Error ? e.message : String(e)}`);
   } finally {
+    // Turn ended while a prompt was open (e.g. it expired): flush what was held back.
+    paused = false;
+    for (const t of held.splice(0)) writeDelta(t);
     activeRender = null;
   }
   clearIndicator();
@@ -339,8 +395,11 @@ function activityNotes(item: ThreadItem): string[] {
       // Jarvis's own tools report declines/errors as failed calls; surface the reason.
       const failed = item.success === false || item.status === "failed";
       const reason = item.contentItems?.find((c) => c.type === "inputText");
+      if (failed && reason?.type === "inputText" && reason.text.includes(RELATED_CHECK)) {
+        return ["🧠 checking related memories before saving…"];
+      }
       const suffix = failed ? ` · ${reason && reason.type === "inputText" ? truncate(reason.text, 80) : "failed"}` : "";
-      return [`⚙ ${describeToolCall(item.tool, item.arguments)}${suffix}`];
+      return [`${describeToolCall(item.tool, item.arguments, !failed)}${suffix}`];
     }
     default:
       return [];

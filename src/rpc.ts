@@ -29,10 +29,16 @@ export class RpcError extends Error {
 }
 
 /** JSON-RPC client for `codex app-server` over stdio (one JSON message per line). */
-export class CodexClient extends EventEmitter<{ notification: [ServerNotification]; exit: [number | null] }> {
+export class CodexClient extends EventEmitter<{
+  notification: [ServerNotification];
+  exit: [number | null];
+  serverRequestCancelled: [RequestId];
+}> {
   private proc: ChildProcessWithoutNullStreams;
   private nextId = 1;
   private pending = new Map<RequestId, Pending>();
+  /** Server→client requests we haven't answered yet. */
+  private inflight = new Set<RequestId>();
   private serverRequestHandler: ServerRequestHandler = async () => {
     throw new Error("no handler");
   };
@@ -96,11 +102,20 @@ export class CodexClient extends EventEmitter<{ notification: [ServerNotificatio
       if (msg.error) p.reject(new RpcError(p.method, msg.error.code, msg.error.message, msg.error.data));
       else p.resolve(msg.result);
     } else if (hasId) {
+      this.inflight.add(msg.id);
+      const settle = (reply: object) => {
+        // Skip replies to requests the server already gave up on.
+        if (this.inflight.delete(msg.id)) this.send({ id: msg.id, ...reply });
+      };
       this.serverRequestHandler(msg as ServerRequest).then(
-        (result) => this.send({ id: msg.id, result }),
-        (err: Error) => this.send({ id: msg.id, error: { code: -32603, message: err.message } }),
+        (result) => settle({ result }),
+        (err: Error) => settle({ error: { code: -32603, message: err.message } }),
       );
     } else if (msg.method) {
+      // The server resolves a request itself when it stops waiting (e.g. a cancelled tool call).
+      if (msg.method === "serverRequest/resolved" && this.inflight.delete(msg.params?.requestId)) {
+        this.emit("serverRequestCancelled", msg.params.requestId);
+      }
       this.emit("notification", msg as ServerNotification);
     }
   }

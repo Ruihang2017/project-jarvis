@@ -25,6 +25,8 @@ export interface Settings {
   autoOpenImages?: boolean;
   /** Inline Sixel thumbnails: "auto" asks the terminal at startup (default). */
   inlinePreview?: "auto" | "on" | "off";
+  /** Automatic memory extraction after conversations; default true. Explicit "remember" always works. */
+  memoryLearning?: boolean;
 }
 
 const settingsPath = () => join(appDataDir(), "settings.json");

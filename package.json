@@ -12,7 +12,8 @@
     "dev": "tsx src/index.ts",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "gen:protocol": "codex app-server generate-ts --experimental --out src/protocol"
+    "gen:protocol": "codex app-server generate-ts --experimental --out src/protocol",
+    "test": "tsx test/memory-store.test.ts"
   },
   "engines": {
     "node": ">=24"

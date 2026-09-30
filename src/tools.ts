@@ -11,27 +11,40 @@ import type {
 } from "./protocol/v2/index.js";
 import { openWithDefaultApp, readClipboard, resolveOpenTarget, writeClipboard } from "./system.js";
 import { tildify, truncate } from "./util.js";
+import type { MemoryStore } from "./memory/store.js";
+import { describeMemoryCall, MEMORY_TOOLS } from "./memory/tools.js";
 
 const MAX_CLIPBOARD_CHARS = 50_000;
 
 /** A tool call that has been validated and is ready to confirm/execute. */
-interface PreparedCall {
+export interface PreparedCall {
   /** One line shown in the approval prompt and the activity note. */
   summary: string;
   /** Optional preview shown in the approval prompt (e.g. what would be shared). */
   preview?: string;
+  /** Per-call override of the tool's approval policy (e.g. sensitive memories). */
+  needsApproval?: boolean;
+  /** Offer "always allow this session"; false for sensitive or destructive calls. */
+  allowAlways?: boolean;
   execute(): Promise<string>;
 }
 
-interface Tool {
+export interface ToolContext {
+  workspace: string;
+  memory: MemoryStore;
+  threadId: string;
+}
+
+export interface Tool {
   name: string;
   description: string;
   inputSchema: object;
   approval: "ask" | "auto";
-  prepare(args: Record<string, unknown>, ctx: { workspace: string }): Promise<PreparedCall>;
+  prepare(args: Record<string, unknown>, ctx: ToolContext): Promise<PreparedCall>;
 }
 
 const TOOLS: Tool[] = [
+  ...MEMORY_TOOLS,
   {
     name: "clipboard_read",
     description:
@@ -106,17 +119,17 @@ export const TOOL_SPECS: DynamicToolSpec[] = TOOLS.map((t) => ({
 }));
 
 /** Short description of a finished dynamic tool call, for the activity line. */
-export function describeToolCall(tool: string, args: unknown): string {
+export function describeToolCall(tool: string, args: unknown, ok = true): string {
   const a = (args && typeof args === "object" ? args : {}) as Record<string, unknown>;
   switch (tool) {
     case "clipboard_read":
-      return "read clipboard";
+      return "⚙ read clipboard";
     case "clipboard_write":
-      return `copied ${typeof a.text === "string" ? a.text.length : "?"} chars to clipboard`;
+      return `⚙ copied ${typeof a.text === "string" ? a.text.length : "?"} chars to clipboard`;
     case "open":
-      return `open ${truncate(String(a.target ?? ""), 80)}`;
+      return `⚙ open ${truncate(String(a.target ?? ""), 80)}`;
     default:
-      return tool;
+      return describeMemoryCall(tool, a, ok) ?? `⚙ ${tool}`;
   }
 }
 
@@ -126,7 +139,10 @@ export class ToolRunner {
   // Tools the user chose "always" for, in this Jarvis session.
   private alwaysAllowed = new Set<string>();
 
-  constructor(private readonly workspace: string) {}
+  constructor(
+    private readonly workspace: string,
+    private readonly memory: MemoryStore,
+  ) {}
 
   async call(req: DynamicToolCallParams, ui: Interactions): Promise<DynamicToolCallResponse> {
     const fail = (text: string): DynamicToolCallResponse => ({ success: false, contentItems: [{ type: "inputText", text }] });
@@ -136,13 +152,14 @@ export class ToolRunner {
     const args = req.arguments && typeof req.arguments === "object" && !Array.isArray(req.arguments) ? req.arguments : {};
     let call: PreparedCall;
     try {
-      call = await tool.prepare(args as Record<string, unknown>, { workspace: this.workspace });
+      call = await tool.prepare(args as Record<string, unknown>, { workspace: this.workspace, memory: this.memory, threadId: req.threadId });
     } catch (e) {
       return fail(`Invalid call: ${e instanceof Error ? e.message : String(e)}`);
     }
 
-    if (tool.approval === "ask" && !this.alwaysAllowed.has(tool.name)) {
-      const decision = await ui.approveTool(tool.name, call.summary, call.preview);
+    const ask = call.needsApproval ?? tool.approval === "ask";
+    if (ask && !(call.allowAlways !== false && this.alwaysAllowed.has(tool.name))) {
+      const decision = await ui.approveTool(tool.name, call.summary, call.preview, call.allowAlways !== false);
       if (decision === "decline") return fail("The user declined this action.");
       if (decision === "acceptForSession") this.alwaysAllowed.add(tool.name);
     }

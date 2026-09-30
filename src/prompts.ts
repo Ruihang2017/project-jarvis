@@ -19,6 +19,8 @@ const ANSWER_PROMPT = styleText("yellow", "answer › ");
 export interface Asker {
   /** Resolves with the typed line, or null if cancelled (Ctrl+C) or input closed. */
   ask(prompt: string): Promise<string | null>;
+  /** Abandons the open prompt, if any (its ask() resolves null). Returns whether one was open. */
+  cancel(): boolean;
   pauseRender(): void;
   resumeRender(): void;
 }
@@ -31,11 +33,18 @@ interface Option<T> {
 
 /** Terminal implementation of every mid-turn request. `onCancel` aborts the running turn. */
 export function terminalInteractions(asker: Asker, onCancel: () => void): Interactions {
+  // Set when the server withdraws the request, so a null answer isn't mistaken for Ctrl+C.
+  let expired = false;
+  const cancelTurn = () => {
+    if (!expired) onCancel();
+  };
+
   async function withPrompt<T>(fn: () => Promise<T>): Promise<T> {
     asker.pauseRender();
     try {
       return await fn();
     } finally {
+      expired = false;
       asker.resumeRender();
     }
   }
@@ -52,6 +61,13 @@ export function terminalInteractions(asker: Asker, onCancel: () => void): Intera
   }
 
   return {
+    // Prints synchronously so the note lands before the turn ends and the next prompt appears.
+    cancelPending: () => {
+      expired = true;
+      if (asker.cancel()) console.log(dim("  [prompt expired — the request was withdrawn]"));
+      else expired = false;
+    },
+
     approveCommand: (req) =>
       withPrompt(async () => {
         console.log(warn("⚠ Run command?"));
@@ -76,7 +92,7 @@ export function terminalInteractions(asker: Asker, onCancel: () => void): Intera
         options.push({ key: "n", label: "no", value: "decline" }, { key: "c", label: "cancel turn", value: "cancel" });
         const decision = await choose(options);
         if (decision === null || decision === "cancel") {
-          onCancel();
+          cancelTurn();
           return "cancel";
         }
         return decision;
@@ -102,7 +118,7 @@ export function terminalInteractions(asker: Asker, onCancel: () => void): Intera
             continue;
           }
           if (decision === null || decision === "cancel") {
-            onCancel();
+            cancelTurn();
             return "cancel";
           }
           return decision;
@@ -144,7 +160,7 @@ export function terminalInteractions(asker: Asker, onCancel: () => void): Intera
           for (;;) {
             const ans = await asker.ask(styleText("yellow", `${hint} › `));
             if (ans === null) {
-              onCancel();
+              cancelTurn();
               return { answers };
             }
             const n = Number(ans.trim());
@@ -209,14 +225,14 @@ export function terminalInteractions(asker: Asker, onCancel: () => void): Intera
         return ok ? { action: "accept", content: content as any, _meta: null } : decline;
       }),
 
-    approveTool: (tool, summary, preview) =>
+    approveTool: (tool, summary, preview, allowAlways = true) =>
       withPrompt(async () => {
         console.log(warn(`⚠ Allow ${bold(tool)}?`));
         console.log(`  ${summary}`);
         if (preview !== undefined) console.log(dim(`  ${preview}`));
         const decision = await choose<ToolDecision>([
           { key: "y", label: "yes", value: "accept" },
-          { key: "a", label: `always allow ${tool} (this session)`, value: "acceptForSession" },
+          ...(allowAlways ? [{ key: "a", label: `always allow ${tool} (this session)`, value: "acceptForSession" as const }] : []),
           { key: "n", label: "no", value: "decline" },
         ]);
         return decision ?? "decline";
