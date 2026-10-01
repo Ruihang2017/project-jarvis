@@ -31,6 +31,7 @@ import { memoryInstructions } from "./memory/prompt.js";
 import { MemoryStore } from "./memory/store.js";
 import { REMINDER_INSTRUCTIONS } from "./reminders/prompt.js";
 import { ReminderStore } from "./reminders/store.js";
+import { GoogleAuth } from "./google/auth.js";
 import { config, PERSONA } from "./config.js";
 
 export interface TurnCallbacks {
@@ -88,6 +89,7 @@ export class Session {
   private fileChanges = new Map<string, FileUpdateChange[]>();
   readonly memory = new MemoryStore();
   readonly reminders = new ReminderStore();
+  readonly google = new GoogleAuth();
   private tools = new ToolRunner(config.workspace, this.memory, this.reminders);
 
   constructor() {

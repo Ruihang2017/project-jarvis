@@ -1,6 +1,7 @@
 /**
  * `jarvis tick`: run every minute by the scheduled task. Fires due reminders as notifications and
- * exits. Deliberately light: no Codex, no model calls, no network.
+ * exits. Deliberately light: no Codex, no model calls; the only network call is a Google token
+ * refresh every few hours when Google is connected.
  */
 import { appendFileSync, mkdirSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -12,6 +13,8 @@ import { showToast } from "./notify.js";
 import { heartbeatPath } from "./task.js";
 import { briefDue, composeBrief, markBriefShown } from "./brief.js";
 import { MemoryStore } from "../memory/store.js";
+import { GoogleAuth } from "../google/auth.js";
+import { backgroundCheck } from "../google/health.js";
 
 const logPath = () => join(appDataDir(), "logs", "tick.log");
 
@@ -32,6 +35,11 @@ export async function runTick(now = new Date()): Promise<Fired[]> {
     log(`brief failed: ${e instanceof Error ? e.stack ?? e.message : String(e)}`);
   } finally {
     store.close();
+  }
+  try {
+    await backgroundCheck(new GoogleAuth(), showToast, now);
+  } catch (e) {
+    log(`google check failed: ${e instanceof Error ? e.message : String(e)}`); // message only: never token data
   }
   return fired;
 }

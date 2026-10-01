@@ -15,6 +15,7 @@ import { installTask, removeTask, TASK_NAME, taskStatus } from "./background/tas
 import { briefSchedule, composeBrief, nextBriefAt } from "./background/brief.js";
 import { preview, renderPreview } from "./sixel.js";
 import { copyImageToClipboard, openWithDefaultApp } from "./system.js";
+import { GoogleAuthError, shortScope } from "./google/auth.js";
 import { tildify, truncate } from "./util.js";
 
 const MODE_HELP: Record<Mode, string> = {
@@ -30,7 +31,7 @@ export type CommandResult = "exit" | void;
 interface Command {
   usage: string;
   help: string;
-  run: (args: string, session: Session) => Promise<CommandResult>;
+  run: (args: string, session: Session, signal: AbortSignal) => Promise<CommandResult>;
 }
 
 // Numbering from the last /resume listing, so `/resume 2` refers to what was shown.
@@ -460,12 +461,64 @@ const COMMANDS: Record<string, Command> = {
     },
   },
 
+  "/connect": {
+    usage: "/connect google",
+    help: "Connect your Google account (browser sign-in); run again to reconnect",
+    run: async (args, session, signal) => {
+      if (args !== "google") return console.log(dim("[usage: /connect google]"));
+      console.log(dim("[opening your browser to sign in to Google — waiting up to 5 min, Ctrl+C cancels]"));
+      const s = await session.google.connect(
+        [],
+        (url) => {
+          console.log(dim(`  if it doesn't open, visit:\n  ${url}`));
+          openWithDefaultApp(url);
+        },
+        { signal },
+      );
+      console.log(dim(`[connected to Google as ${s.email ?? "(unknown account)"} · ${s.scopes.map(shortScope).join(", ")}]`));
+    },
+  },
+
+  "/google": {
+    usage: "/google",
+    help: "Google connection status: account, permissions, whether it still works",
+    run: async (_, session) => {
+      const s = session.google.state();
+      if (!s) return console.log(`google: ${bold("not connected")} ${dim("— /connect google")}`);
+      let status: string;
+      try {
+        status = (await session.google.check()) === "ok" ? styleText("green", "working") : styleText("yellow", "expired — /connect google to reconnect");
+      } catch (e) {
+        status = styleText("yellow", `couldn't reach Google (${e instanceof Error ? e.message : String(e)})`);
+      }
+      console.log(`google: ${bold(s.email ?? "(unknown account)")} · ${status}`);
+      console.log(dim(`  permissions: ${s.scopes.map(shortScope).join(", ")}`));
+      console.log(dim(`  connected ${s.connectedAt.slice(0, 10)} · /disconnect google removes access`));
+    },
+  },
+
+  "/disconnect": {
+    usage: "/disconnect google",
+    help: "Revoke Jarvis's Google access and delete the local token",
+    run: async (args, session) => {
+      if (args !== "google") return console.log(dim("[usage: /disconnect google]"));
+      if (!session.google.state()) return console.log(dim("[Google isn't connected]"));
+      const { revoked } = await session.google.disconnect();
+      console.log(
+        dim(revoked ? "[disconnected: access revoked at Google, local token deleted]" : "[local token deleted; couldn't confirm the revocation with Google — check myaccount.google.com/connections]"),
+      );
+    },
+  },
+
   "/exit": {
     usage: "/exit",
     help: "Quit (also /quit)",
     run: async () => "exit",
   },
 };
+
+/** Set while a command runs; Ctrl+C aborts it instead of quitting (/connect google waits on the browser). */
+export let runningCommand: AbortController | undefined;
 
 export async function runCommand(line: string, session: Session): Promise<CommandResult> {
   const [name = "", ...rest] = line.split(/\s+/);
@@ -474,10 +527,14 @@ export async function runCommand(line: string, session: Session): Promise<Comman
     console.log(dim(`[unknown command ${name}; /help lists commands]`));
     return;
   }
+  runningCommand = new AbortController();
   try {
-    return await cmd.run(rest.join(" ").trim(), session);
+    return await cmd.run(rest.join(" ").trim(), session, runningCommand.signal);
   } catch (e) {
+    if (e instanceof GoogleAuthError && e.code === "cancelled") return void console.log(dim(`[${name} cancelled]`));
     console.log(dim(`[${name} failed] ${e instanceof Error ? e.message : String(e)}`));
+  } finally {
+    runningCommand = undefined;
   }
 }
 

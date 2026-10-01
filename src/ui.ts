@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { createInterface, type Interface } from "node:readline/promises";
 import { styleText } from "node:util";
 import type { Session } from "./session.js";
-import { runCommand } from "./commands.js";
+import { runCommand, runningCommand } from "./commands.js";
 import { MarkdownStream } from "./markdown.js";
 import { describeChange, terminalInteractions } from "./prompts.js";
 import type { RateLimitWindow, ThreadItem, ThreadTokenUsage, TurnStatus } from "./protocol/v2/index.js";
@@ -133,6 +133,12 @@ export async function repl(session: Session): Promise<void> {
       input.cancelAsk();
       return;
     }
+    // A long-running command (/connect google): Ctrl+C cancels it.
+    if (runningCommand) {
+      process.stdout.write("\n");
+      runningCommand.abort();
+      return;
+    }
     // During a turn: first Ctrl+C interrupts, a second within 1s force-quits.
     if (session.busy) {
       const now = Date.now();
@@ -221,6 +227,7 @@ export async function repl(session: Session): Promise<void> {
   const reminderTimer = setInterval(checkReminders, REMINDER_POLL_MS);
   reminderTimer.unref();
 
+  if (session.google.state()?.invalidAt) queued.push("Google connection expired — /connect google to reconnect");
   showPrompt();
   checkReminders(); // anything that came due while Jarvis was closed
   for (let raw = await input.next(); raw !== null; raw = await input.next()) {
