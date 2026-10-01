@@ -2,7 +2,8 @@
  * Google Calendar (N3): reads the calendars the user shows in Google Calendar (primary + selected).
  * Nothing is cached locally; every call asks Google. Times are handled in the machine's time zone.
  */
-import { fromLocal, toLocal } from "../reminders/schedule.js";
+import { timeZone } from "../reminders/prompt.js";
+import { fromLocal, isLocal, toLocal } from "../reminders/schedule.js";
 import { truncate } from "../util.js";
 import { GoogleAuthError, type GoogleAuth } from "./auth.js";
 
@@ -18,6 +19,8 @@ export interface CalendarInfo {
   id: string;
   name: string;
   primary: boolean;
+  /** owner or writer: Jarvis may add events here. */
+  writable: boolean;
 }
 
 interface EventTime {
@@ -40,6 +43,8 @@ export interface CalendarEvent {
   busy: boolean;
   declined: boolean;
   recurring: boolean;
+  /** Attendees other than the user. Jarvis doesn't change events with guests (D22). */
+  guests: number;
 }
 
 interface ApiEvent {
@@ -52,7 +57,17 @@ interface ApiEvent {
   description?: string;
   transparency?: string;
   recurringEventId?: string;
-  attendees?: { self?: boolean; responseStatus?: string }[];
+  attendees?: { self?: boolean; responseStatus?: string; resource?: boolean }[];
+}
+
+/** What Jarvis writes: local times, or dates for all-day events (end date inclusive). */
+export interface EventInput {
+  title?: string;
+  /** "YYYY-MM-DDTHH:MM", or "YYYY-MM-DD" for all-day. */
+  start?: string;
+  end?: string;
+  location?: string;
+  notes?: string;
 }
 
 /** Local midnight of a "YYYY-MM-DD" date. */
@@ -100,6 +115,7 @@ export function toEvent(e: ApiEvent, cal: CalendarInfo): CalendarEvent | null {
     busy: e.transparency !== "transparent",
     declined: e.attendees?.some((a) => a.self && a.responseStatus === "declined") ?? false,
     recurring: Boolean(e.recurringEventId),
+    guests: e.attendees?.filter((a) => !a.self && !a.resource).length ?? 0,
   };
 }
 
@@ -116,12 +132,12 @@ export class CalendarClient {
 
   async calendars(): Promise<CalendarInfo[]> {
     this.ensureAccess();
-    const res = await this.auth.api<{ items?: { id: string; summary?: string; summaryOverride?: string; primary?: boolean; selected?: boolean }[] }>(
+    const res = await this.auth.api<{ items?: { id: string; summary?: string; summaryOverride?: string; primary?: boolean; selected?: boolean; accessRole?: string }[] }>(
       `${API}/users/me/calendarList?minAccessRole=reader&maxResults=250`,
     );
     return (res.items ?? [])
       .filter((c) => c.primary || c.selected)
-      .map((c) => ({ id: c.id, name: c.summaryOverride ?? c.summary ?? c.id, primary: Boolean(c.primary) }))
+      .map((c) => ({ id: c.id, name: c.summaryOverride ?? c.summary ?? c.id, primary: Boolean(c.primary), writable: c.accessRole === "owner" || c.accessRole === "writer" }))
       .sort((a, b) => Number(b.primary) - Number(a.primary));
   }
 
@@ -138,6 +154,82 @@ export class CalendarClient {
     );
     return lists.flat().sort((a, b) => a.start.getTime() - b.start.getTime() || Number(b.allDay) - Number(a.allDay));
   }
+
+  private eventUrl(calendarId: string, eventId?: string) {
+    return `${API}/calendars/${encodeURIComponent(calendarId)}/events${eventId ? `/${encodeURIComponent(eventId)}` : ""}?sendUpdates=none`;
+  }
+
+  async getEvent(cal: CalendarInfo, eventId: string): Promise<CalendarEvent | null> {
+    this.ensureAccess();
+    return toEvent(await this.auth.api<ApiEvent>(this.eventUrl(cal.id, eventId)), cal);
+  }
+
+  /** sendUpdates=none everywhere: Jarvis never emails anyone (D21). */
+  async createEvent(cal: CalendarInfo, input: EventInput): Promise<CalendarEvent> {
+    this.ensureAccess();
+    const created = await this.auth.api<ApiEvent>(this.eventUrl(cal.id), { method: "POST", body: JSON.stringify(eventBody(input)) });
+    return toEvent(created, cal)!;
+  }
+
+  async updateEvent(cal: CalendarInfo, eventId: string, input: EventInput): Promise<CalendarEvent> {
+    this.ensureAccess();
+    const updated = await this.auth.api<ApiEvent>(this.eventUrl(cal.id, eventId), { method: "PATCH", body: JSON.stringify(eventBody(input, true)) });
+    return toEvent(updated, cal)!;
+  }
+
+  async deleteEvent(cal: CalendarInfo, eventId: string): Promise<void> {
+    this.ensureAccess();
+    await this.auth.api(this.eventUrl(cal.id, eventId), { method: "DELETE" });
+  }
+}
+
+const isDate = (s: string) => DATE_RE.test(s);
+
+/**
+ * Google's event JSON for the fields given (a PATCH leaves the others alone). On a PATCH the other
+ * kind of time is cleared with null, so an event can switch between timed and all-day.
+ */
+export function eventBody(i: EventInput, patch = false): Record<string, unknown> {
+  const body: Record<string, unknown> = {};
+  if (i.title !== undefined) body.summary = i.title;
+  if (i.location !== undefined) body.location = i.location;
+  if (i.notes !== undefined) body.description = i.notes;
+  const clear = (k: string) => (patch ? { [k]: null } : {});
+  const time = (s: string, end: boolean) =>
+    isDate(s) ? { date: end ? nextDate(s) : s, ...clear("dateTime") } : { dateTime: `${s}:00`, timeZone: timeZone(), ...clear("date") };
+  if (i.start !== undefined) body.start = time(i.start, false);
+  if (i.end !== undefined) body.end = time(i.end, true);
+  return body;
+}
+
+/**
+ * Fills in and checks start/end: a timed event defaults to 1 hour, an all-day one to that day.
+ * `current` (when changing an event) keeps its length when only the start moves.
+ */
+export function resolveTimes(start: string | undefined, end: string | undefined, current?: CalendarEvent): { start?: string; end?: string } {
+  if (start === undefined && end === undefined) return {};
+  const valid = (s: string) => {
+    if (isDate(s) ? localDate(dayStart(s)) !== s : !isLocal(s)) throw new Error(`bad date/time "${s}" (want YYYY-MM-DD or YYYY-MM-DDTHH:MM)`);
+    return s;
+  };
+  if (start !== undefined) valid(start);
+  if (end !== undefined) valid(end);
+  let s = start;
+  let e = end;
+  if (s === undefined) s = current ? (current.allDay ? localDate(current.start) : toLocal(current.start)) : undefined;
+  if (s === undefined) throw new Error("`start` is required");
+  if (e === undefined) {
+    if (isDate(s)) {
+      const days = current?.allDay ? Math.round((current.end.getTime() - current.start.getTime()) / 86_400_000) : 1;
+      e = nextDate(s, Math.max(1, days) - 1);
+    } else {
+      const mins = current && !current.allDay ? (current.end.getTime() - current.start.getTime()) / 60_000 : 60;
+      e = toLocal(new Date(fromLocal(s).getTime() + mins * 60_000));
+    }
+  }
+  if (isDate(s) !== isDate(e)) throw new Error("`start` and `end` must both be dates (all-day) or both be times");
+  if (isDate(s) ? e < s : fromLocal(e) <= fromLocal(s)) throw new Error("`end` must be after `start`");
+  return { start: s, end: e };
 }
 
 /** "09:30–10:00", "all day", "09:30 → Sat 10-03 12:00" (multi-day). */

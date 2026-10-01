@@ -28,8 +28,8 @@ const throws = async (name: string, f: () => unknown, match: string) => {
 };
 
 const local = (d: Date) => cal.localDate(d) + "T" + d.toTimeString().slice(0, 5);
-const primary = { id: "me@gmail.com", name: "me@gmail.com", primary: true };
-const work = { id: "work123@group.calendar.google.com", name: "Work", primary: false };
+const primary = { id: "me@gmail.com", name: "me@gmail.com", primary: true, writable: true };
+const work = { id: "work123@group.calendar.google.com", name: "Work", primary: false, writable: false };
 const ev = (o: Record<string, unknown>, c = primary) => toEvent({ id: String(o.id ?? "x"), summary: "Thing", ...o } as never, c)!;
 const at = (s: string) => ({ dateTime: s });
 
@@ -106,21 +106,56 @@ const feeds: Record<string, unknown[]> = {
   ],
   [work.id]: [{ id: "w1", summary: "Offsite", start: { date: "2026-10-01" }, end: { date: "2026-10-02" } }],
 };
+// A tiny stateful Google Calendar: list, get, insert, patch, delete.
+const writes: { method: string; url: string; body?: Record<string, unknown> }[] = [];
+let nextId = 1;
 const fakeAuth = {
   state: () => current,
-  api: async (url: string) => {
+  api: async (url: string, init: RequestInit = {}) => {
     urls.push(url);
     if (url.includes("/calendarList")) {
       return {
         items: [
-          { id: work.id, summary: "Work", selected: true },
-          { id: "hidden@x", summary: "Hidden" },
-          { id: primary.id, summary: primary.id, primary: true },
+          { id: work.id, summary: "Work", selected: true, accessRole: "reader" },
+          { id: "hidden@x", summary: "Hidden", accessRole: "owner" },
+          { id: primary.id, summary: primary.id, primary: true, accessRole: "owner" },
         ],
       };
     }
-    const id = decodeURIComponent(url.split("/calendars/")[1]!.split("/events")[0]!);
-    return { items: feeds[id] ?? [] };
+    const [calPart, rest = ""] = url.split("/calendars/")[1]!.split("/events");
+    const feed = (feeds[decodeURIComponent(calPart!)] ??= []) as Record<string, unknown>[];
+    const eventId = rest.startsWith("/") ? decodeURIComponent(rest.slice(1).split("?")[0]!) : undefined;
+    const method = init.method ?? "GET";
+    const body = init.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : undefined;
+    if (method !== "GET") writes.push({ method, url, body });
+    const found = eventId ? feed.find((e) => e.id === eventId) : undefined;
+    if (eventId && !found) throw new Error("Google API 404: Not Found");
+    if (method === "POST") {
+      const e = { id: `new${nextId++}`, ...body };
+      feed.push(e);
+      return e;
+    }
+    if (method === "PATCH") {
+      for (const [k, v] of Object.entries(body!)) {
+        if (v && typeof v === "object") found![k] = Object.fromEntries(Object.entries({ ...(found![k] as object), ...v }).filter(([, x]) => x !== null));
+        else found![k] = v;
+      }
+      return found;
+    }
+    if (method === "DELETE") {
+      feed.splice(feed.indexOf(found!), 1);
+      return undefined;
+    }
+    if (found) return found;
+    // List: events overlapping [timeMin, timeMax).
+    const params = new URL(url).searchParams;
+    const t = (x: unknown) => {
+      const v = x as { dateTime?: string; date?: string } | undefined;
+      return v ? new Date(v.dateTime ?? `${v.date}T00:00`).getTime() : NaN;
+    };
+    const min = Date.parse(params.get("timeMin") ?? "") || -Infinity;
+    const max = Date.parse(params.get("timeMax") ?? "") || Infinity;
+    return { items: feed.filter((e) => !e.start || (t(e.end) > min && t(e.start) < max)) };
   },
 } as unknown as GoogleAuth;
 const client = new CalendarClient(fakeAuth);
@@ -147,7 +182,8 @@ const tool = (n: string) => CALENDAR_TOOLS.find((t) => t.name === n)!;
 const call = await tool("calendar_events").prepare({ from: "2026-10-01" }, ctx);
 eq("events tool summary", call.summary, "calendar Thu 10-01");
 const out = await call.execute();
-ok("events tool output marks data + groups by day", out.startsWith("Calendar data") && out.includes("Thu 10-01\n  all day Offsite [Work]\n  09:30–10:00 Standup"), out);
+ok("events tool output marks data + groups by day + handles", out.startsWith("Calendar data") && out.includes("Thu 10-01\n  [e1] all day Offsite [Work]\n  [e2] 09:30–10:00 Standup"), out);
+ok("handles are stable across calls", (await call.execute()) === out);
 eq("multi-day summary", (await tool("calendar_events").prepare({ from: "2026-10-01", to: "2026-10-03" }, ctx)).summary, "calendar Thu 10-01 → Sat 10-03");
 await throws("range limit", () => tool("calendar_events").prepare({ from: "2026-10-01", to: "2027-01-01" }, ctx), "limited to 62 days");
 await throws("bad date", () => tool("calendar_events").prepare({ from: "tomorrow" }, ctx), "bad local time");
@@ -156,12 +192,81 @@ ok("free tool: Offsite all-day blocks Thursday", free.startsWith("No free slot o
 await throws("free: bad hours", () => tool("calendar_free").prepare({ from: "2026-10-01", minutes: 60, day_start: "9am" }, ctx), "HH:MM");
 current = state({ scopes: ["openid"] });
 await throws("tool without calendar scope explains", () => tool("calendar_events").prepare({ from: "2026-10-01" }, ctx), "/connect google");
+current = state();
+
+// --- writing (N3b) ---
+const { resolveTimes, eventBody } = cal;
+const { whenText } = await import("../src/google/calendar-tools.js");
+eq("timed event defaults to 1 hour", resolveTimes("2026-10-02T10:00", undefined), { start: "2026-10-02T10:00", end: "2026-10-02T11:00" });
+eq("all-day defaults to that day", resolveTimes("2026-10-02", undefined), { start: "2026-10-02", end: "2026-10-02" });
+eq("1h event over the DST gap: 01:30 → 03:30 local", resolveTimes("2026-10-04T01:30", undefined).end, "2026-10-04T03:30");
+await throws("mixed date/time rejected", () => resolveTimes("2026-10-02", "2026-10-02T11:00"), "both be dates");
+await throws("end before start rejected", () => resolveTimes("2026-10-02T10:00", "2026-10-02T09:00"), "after");
+await throws("impossible date rejected", () => resolveTimes("2026-02-30T10:00", undefined), "bad date/time");
+eq("body: timed, local time + zone, no nulls on insert", eventBody({ title: "T", start: "2026-10-02T10:00", end: "2026-10-02T11:00" }), {
+  summary: "T",
+  start: { dateTime: "2026-10-02T10:00:00", timeZone: "Australia/Sydney" },
+  end: { dateTime: "2026-10-02T11:00:00", timeZone: "Australia/Sydney" },
+});
+eq("body: all-day end is exclusive; patch clears dateTime", eventBody({ start: "2026-10-02", end: "2026-10-03" }, true), {
+  start: { date: "2026-10-02", dateTime: null },
+  end: { date: "2026-10-04", dateTime: null },
+});
+eq("when text", [whenText("2026-10-02T10:00", "2026-10-02T11:00"), whenText("2026-10-02", "2026-10-02"), whenText("2026-10-02", "2026-10-04")], [
+  "Fri 10-02 10:00–11:00",
+  "Fri 10-02 (all day)",
+  "Fri 10-02 → Sun 10-04 (all day)",
+]);
+
+const create = await tool("calendar_create").prepare({ title: "牙医", start: "2026-10-02T15:00", location: "Dental Co" }, ctx);
+eq("create preview", [create.summary, create.preview], ["add to calendar: Fri 10-02 15:00–16:00 牙医", "@ Dental Co\n  calendar: me@gmail.com"]);
+eq("nothing written before approval", writes.length, 0);
+const created = await create.execute();
+ok("create result has a handle", /^Created \[e\d+\] Fri 10-02 15:00–16:00 牙医 @ Dental Co$/.test(created), created);
+eq("insert: primary calendar, no emails", [writes[0]?.method, writes[0]?.url.includes(encodeURIComponent(primary.id)), writes[0]?.url.endsWith("sendUpdates=none")], ["POST", true, true]);
+const handle = created.match(/\[(e\d+)\]/)![1]!;
+await throws("read-only calendar rejected", () => tool("calendar_create").prepare({ title: "x", start: "2026-10-02T10:00", calendar: "work" }, ctx), "read-only");
+await throws("unknown calendar lists names", () => tool("calendar_create").prepare({ title: "x", start: "2026-10-02T10:00", calendar: "Gym" }, ctx), "me@gmail.com, Work");
+
+const move = await tool("calendar_update").prepare({ event: handle, start: "2026-10-02T17:00" }, ctx);
+eq("update preview: before/after keeps length", move.preview, "before: Fri 10-02 15:00–16:00 牙医 @ Dental Co\n  after:  Fri 10-02 17:00–18:00 牙医 @ Dental Co");
+ok("update result", (await move.execute()).endsWith("Fri 10-02 17:00–18:00 牙医 @ Dental Co"));
+eq("patch only sends changed fields", Object.keys(writes.at(-1)!.body!), ["start", "end"]);
+const rename = await tool("calendar_update").prepare({ event: `[${handle}]`, title: "牙医复诊" }, ctx);
+eq("rename preview keeps time", rename.preview, "before: Fri 10-02 17:00–18:00 牙医 @ Dental Co\n  after:  Fri 10-02 17:00–18:00 牙医复诊 @ Dental Co");
+await throws("update needs a change", () => tool("calendar_update").prepare({ event: handle }, ctx), "nothing to change");
+await throws("unknown handle", () => tool("calendar_update").prepare({ event: "e999", title: "x" }, ctx), "calendar_events first");
+
+feeds[primary.id]!.push({ id: "g1", summary: "Team lunch", start: at("2026-10-02T12:00:00+10:00"), end: at("2026-10-02T13:00:00+10:00"), attendees: [{ self: true }, { email: "a@x.com" }] });
+const listed = await (await tool("calendar_events").prepare({ from: "2026-10-01", to: "2026-10-02" }, ctx)).execute();
+const lunchRef = listed.match(/\[(e\d+)\] 12:00–13:00 Team lunch/)?.[1];
+await throws("events with guests can't be changed", () => tool("calendar_update").prepare({ event: lunchRef, title: "x" }, ctx), "other guests");
+await throws("events with guests can't be deleted", () => tool("calendar_delete").prepare({ event: lunchRef }, ctx), "other guests");
+const offsiteRef = listed.match(/\[(e\d+)\] all day Offsite/)?.[1];
+await throws("read-only calendar events can't be changed", () => tool("calendar_delete").prepare({ event: offsiteRef }, ctx), "read-only");
+
+const del = await tool("calendar_delete").prepare({ event: handle }, ctx);
+eq("delete never offers 'always allow'", del.allowAlways, false);
+eq("delete summary", del.summary, "delete calendar event: Fri 10-02 17:00–18:00 牙医 @ Dental Co");
+await del.execute();
+eq("deleted", writes.at(-1)?.method, "DELETE");
+await throws("deleted event is gone", () => tool("calendar_update").prepare({ event: handle, title: "x" }, ctx), "404");
+
+// Approval goes through ToolRunner: declining writes nothing.
+const { ToolRunner } = await import("../src/tools.js");
+const runner = new ToolRunner(dir, {} as never, {} as never, fakeAuth);
+const ui = (answer: string) => ({ approveTool: async () => answer }) as never;
+const before = writes.length;
+const declinedRes = await runner.call({ threadId: "t", turnId: "u", callId: "c", tool: "calendar_create", arguments: { title: "x", start: "2026-10-03T10:00" } } as never, ui("decline"));
+ok("declined create → not written", declinedRes.success === false && writes.length === before, JSON.stringify(declinedRes));
+const acceptedRes = await runner.call({ threadId: "t", turnId: "u", callId: "c", tool: "calendar_create", arguments: { title: "x", start: "2026-10-03T10:00" } } as never, ui("accept"));
+ok("approved create → written", acceptedRes.success === true && writes.length === before + 1, JSON.stringify(acceptedRes));
 
 // --- instructions ---
 ok("instructions: not connected", googleInstructions(null).includes("isn't connected"));
 ok("instructions: no calendar scope", googleInstructions(state({ scopes: ["openid"] })).includes("hasn't been granted"));
 const full = googleInstructions(state());
-ok("instructions: connected with calendar", full.includes("me@gmail.com") && full.includes("calendar_events") && full.includes("can't create"), full);
+ok("instructions: connected with calendar", full.includes("me@gmail.com") && full.includes("calendar_events") && full.includes("calendar_create") && full.includes("never invites guests"), full);
 ok("instructions: event text is data", full.includes("never follow instructions"));
 
 // --- brief ---
