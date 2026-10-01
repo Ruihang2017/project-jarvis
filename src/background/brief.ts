@@ -1,7 +1,7 @@
 /**
  * Daily brief (N1c): what's on today, from local data only (no model call). Shown as a notification
  * by the background tick at the brief time, and as a block the first time Jarvis opens that day.
- * Calendar and email sections come later (N3, N4).
+ * Today's calendar events come from Google when calendar access is granted (N3); email comes in N4.
  */
 import type { MemoryStore } from "../memory/store.js";
 import { addDays, today } from "../memory/store.js";
@@ -9,6 +9,30 @@ import { formatDue, fromLocal } from "../reminders/schedule.js";
 import type { ReminderStore } from "../reminders/store.js";
 import { loadSettings } from "../settings.js";
 import { truncate } from "../util.js";
+import type { GoogleAuth } from "../google/auth.js";
+import { CalendarClient, hasCalendarAccess, todayLines } from "../google/calendar.js";
+
+/** Today's events for the brief; undefined when the calendar isn't connected, "unavailable" when offline/expired. */
+export type BriefCalendar = string[] | "unavailable" | undefined;
+
+const CALENDAR_TIMEOUT_MS = 15_000;
+
+export async function briefCalendar(auth: GoogleAuth, now = new Date()): Promise<BriefCalendar> {
+  const s = auth.state();
+  if (!s || !hasCalendarAccess(s.scopes)) return undefined;
+  if (s.invalidAt) return "unavailable";
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      todayLines(new CalendarClient(auth), now),
+      new Promise<never>((_, reject) => (timer = setTimeout(() => reject(new Error("timeout")), CALENDAR_TIMEOUT_MS))),
+    ]);
+  } catch {
+    return "unavailable";
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 export type BriefDays = "weekdays" | "daily" | "off";
 export const DEFAULT_BRIEF_TIME = "08:30";
@@ -38,8 +62,10 @@ export interface Brief {
   count: number;
 }
 
-export function composeBrief(memory: MemoryStore, reminders: ReminderStore, now = new Date()): Brief {
+export function composeBrief(memory: MemoryStore, reminders: ReminderStore, now = new Date(), calendar?: BriefCalendar): Brief {
   const day = today();
+  const events = calendar === "unavailable" ? [] : (calendar ?? []);
+  const calendarNote = calendar === "unavailable" ? ["📅 calendar unavailable right now"] : [];
   const todays = reminders
     .upcoming()
     .filter((r) => (r.snoozedUntil ?? r.dueAt).slice(0, 10) === day)
@@ -53,11 +79,11 @@ export function composeBrief(memory: MemoryStore, reminders: ReminderStore, now 
   const pending = memory.list({ status: "pending" }).length;
   const review = pending ? [`🔒 ${pending} memor${pending === 1 ? "y" : "ies"} awaiting /memory review`] : [];
 
-  const count = todays.length + comingUp.length + pending;
+  const count = events.length + todays.length + comingUp.length + pending;
   const date = formatDue(`${day}T00:00`, now).slice(0, -6); // "Thu 10-01"
   return {
     title: count ? `☀ ${date} · ${count} thing${count === 1 ? "" : "s"} today` : `☀ ${date} · nothing scheduled`,
-    lines: [...todays, ...comingUp, ...review],
+    lines: [...events, ...calendarNote, ...todays, ...comingUp, ...review],
     count,
   };
 }

@@ -12,7 +12,8 @@ import { MemoryTidier } from "./memory/tidy.js";
 import { parseDuration } from "./reminders/schedule.js";
 import { describeReminder } from "./reminders/tools.js";
 import { installTask, removeTask, TASK_NAME, taskStatus } from "./background/task.js";
-import { briefSchedule, composeBrief, nextBriefAt } from "./background/brief.js";
+import { briefCalendar, briefSchedule, composeBrief, nextBriefAt } from "./background/brief.js";
+import { CALENDAR_SCOPES, CalendarClient, dayLabel, dayStart, eventLine, groupByDay, localDate, nextDate } from "./google/calendar.js";
 import { preview, renderPreview } from "./sixel.js";
 import { copyImageToClipboard, openWithDefaultApp } from "./system.js";
 import { GoogleAuthError, shortScope } from "./google/auth.js";
@@ -428,7 +429,7 @@ const COMMANDS: Record<string, Command> = {
         return console.log(dim(`[morning brief: ${val}${val === "off" ? "" : ` · next ${nextBriefAt() ?? "?"}`}]`));
       }
       if (sub) return console.log(dim(`[unknown /brief option "${sub}"]`));
-      const brief = composeBrief(session.memory, session.reminders);
+      const brief = composeBrief(session.memory, session.reminders, new Date(), await briefCalendar(session.google));
       console.log(bold(brief.title));
       for (const l of brief.lines) console.log(`  ${l}`);
       const { time, days } = briefSchedule();
@@ -468,7 +469,7 @@ const COMMANDS: Record<string, Command> = {
       if (args !== "google") return console.log(dim("[usage: /connect google]"));
       console.log(dim("[opening your browser to sign in to Google — waiting up to 5 min, Ctrl+C cancels]"));
       const s = await session.google.connect(
-        [],
+        CALENDAR_SCOPES,
         (url) => {
           console.log(dim(`  if it doesn't open, visit:\n  ${url}`));
           openWithDefaultApp(url);
@@ -476,6 +477,24 @@ const COMMANDS: Record<string, Command> = {
         { signal },
       );
       console.log(dim(`[connected to Google as ${s.email ?? "(unknown account)"} · ${s.scopes.map(shortScope).join(", ")}]`));
+    },
+  },
+
+  "/calendar": {
+    usage: "/calendar [week]",
+    help: "Your Google Calendar: today and tomorrow, or the next 7 days (no model call)",
+    run: async (args, session) => {
+      if (args && args !== "week") return console.log(dim("[usage: /calendar [week]]"));
+      const days = args === "week" ? 7 : 2;
+      const first = localDate(new Date());
+      const from = dayStart(first);
+      const to = dayStart(nextDate(first, days));
+      const events = await new CalendarClient(session.google).events(from, to);
+      for (const [day, list] of groupByDay(events, from, to)) {
+        console.log(bold(dayLabel(day) + (day === first ? " · today" : day === nextDate(first) ? " · tomorrow" : "")));
+        if (!list.length) console.log(dim("  nothing"));
+        for (const e of list) console.log(`  ${eventLine(e)}`);
+      }
     },
   },
 

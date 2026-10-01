@@ -32,6 +32,7 @@ import { MemoryStore } from "./memory/store.js";
 import { REMINDER_INSTRUCTIONS } from "./reminders/prompt.js";
 import { ReminderStore } from "./reminders/store.js";
 import { GoogleAuth } from "./google/auth.js";
+import { googleInstructions } from "./google/calendar-tools.js";
 import { config, PERSONA } from "./config.js";
 
 export interface TurnCallbacks {
@@ -90,7 +91,7 @@ export class Session {
   readonly memory = new MemoryStore();
   readonly reminders = new ReminderStore();
   readonly google = new GoogleAuth();
-  private tools = new ToolRunner(config.workspace, this.memory, this.reminders);
+  private tools = new ToolRunner(config.workspace, this.memory, this.reminders, this.google);
 
   constructor() {
     const codexHome = ensureCodexHome();
@@ -205,7 +206,7 @@ export class Session {
       sandbox: MODES[this.mode].sandbox,
       approvalPolicy: MODES[this.mode].approvalPolicy,
       // Rebuilt on every start/resume so the thread sees the current long-term core.
-      developerInstructions: PERSONA + memoryInstructions(this.memory) + REMINDER_INSTRUCTIONS,
+      developerInstructions: PERSONA + memoryInstructions(this.memory) + REMINDER_INSTRUCTIONS + googleInstructions(this.google.state()),
       config: { model_reasoning_effort: this.effort },
     };
   }

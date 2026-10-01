@@ -10,7 +10,8 @@ import { saveGeneratedImage } from "./images.js";
 import { loadSettings, updateSettings } from "./settings.js";
 import { showToast } from "./background/notify.js";
 import { reminderToast } from "./background/tick.js";
-import { briefDue, composeBrief, markBriefShown } from "./background/brief.js";
+import { briefCalendar, briefDue, composeBrief, markBriefShown } from "./background/brief.js";
+import { hasCalendarAccess } from "./google/calendar.js";
 import { detectSixel, preview, renderPreview } from "./sixel.js";
 import { openWithDefaultApp } from "./system.js";
 import { describeToolCall } from "./tools.js";
@@ -217,8 +218,10 @@ export async function repl(session: Session): Promise<void> {
       // Daily brief: first time Jarvis is open after the brief time on a brief day.
       if (briefDue(session.memory, "repl")) {
         markBriefShown(session.memory, "repl");
-        const brief = composeBrief(session.memory, session.reminders);
-        notify([brief.title, ...brief.lines.map((l) => `  ${l}`)]);
+        void briefCalendar(session.google).then((calendar) => {
+          const brief = composeBrief(session.memory, session.reminders, new Date(), calendar);
+          notify([brief.title, ...brief.lines.map((l) => `  ${l}`)]);
+        });
       }
     } catch (e) {
       if (process.env.JARVIS_DEBUG) console.error(dim(`[reminder check failed] ${e instanceof Error ? e.message : String(e)}`));
@@ -227,7 +230,9 @@ export async function repl(session: Session): Promise<void> {
   const reminderTimer = setInterval(checkReminders, REMINDER_POLL_MS);
   reminderTimer.unref();
 
-  if (session.google.state()?.invalidAt) queued.push("Google connection expired — /connect google to reconnect");
+  const google = session.google.state();
+  if (google?.invalidAt) queued.push("Google connection expired — /connect google to reconnect");
+  else if (google && !hasCalendarAccess(google.scopes)) queued.push("Calendar needs one more Google permission — /connect google to add it");
   showPrompt();
   checkReminders(); // anything that came due while Jarvis was closed
   for (let raw = await input.next(); raw !== null; raw = await input.next()) {

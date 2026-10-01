@@ -11,7 +11,7 @@ import { describeRepeat, formatDue } from "../reminders/schedule.js";
 import { appDataDir } from "../settings.js";
 import { showToast } from "./notify.js";
 import { heartbeatPath } from "./task.js";
-import { briefDue, composeBrief, markBriefShown } from "./brief.js";
+import { briefCalendar, briefDue, composeBrief, markBriefShown } from "./brief.js";
 import { MemoryStore } from "../memory/store.js";
 import { GoogleAuth } from "../google/auth.js";
 import { backgroundCheck } from "../google/health.js";
@@ -50,7 +50,7 @@ async function maybeBrief(reminders: ReminderStore, now: Date) {
   try {
     if (!briefDue(memory, "toast", now)) return;
     markBriefShown(memory, "toast"); // mark first: a slow toast must not repeat next minute
-    const brief = composeBrief(memory, reminders, now);
+    const brief = composeBrief(memory, reminders, now, await briefCalendar(new GoogleAuth(), now));
     if (brief.count) await showToast({ title: brief.title, body: brief.lines.join("\n"), tag: "brief", kind: "info" });
   } finally {
     memory.close();
