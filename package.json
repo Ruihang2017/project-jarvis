@@ -13,7 +13,7 @@
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "gen:protocol": "codex app-server generate-ts --experimental --out src/protocol",
-    "test": "tsx test/memory-store.test.ts && tsx test/reminders.test.ts"
+    "test": "tsx test/memory-store.test.ts && tsx test/reminders.test.ts && tsx test/background.test.ts"
   },
   "engines": {
     "node": ">=24"

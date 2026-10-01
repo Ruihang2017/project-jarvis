@@ -12,6 +12,7 @@ import { MemoryTidier } from "./memory/tidy.js";
 import { parseDuration } from "./reminders/schedule.js";
 import { describeReminder } from "./reminders/tools.js";
 import { installTask, removeTask, TASK_NAME, taskStatus } from "./background/task.js";
+import { briefSchedule, composeBrief, nextBriefAt } from "./background/brief.js";
 import { preview, renderPreview } from "./sixel.js";
 import { copyImageToClipboard, openWithDefaultApp } from "./system.js";
 import { tildify, truncate } from "./util.js";
@@ -407,6 +408,30 @@ const COMMANDS: Record<string, Command> = {
         default:
           console.log(dim(`[unknown /remind option "${sub}"]`));
       }
+    },
+  },
+
+  "/brief": {
+    usage: "/brief [time HH:MM | days weekdays|daily|off]",
+    help: "Today's brief now; or change when the morning brief appears",
+    run: async (args, session) => {
+      const [sub, val] = args.split(/\s+/).filter(Boolean);
+      if (sub === "time") {
+        if (!val || !/^([01]\d|2[0-3]):[0-5]\d$/.test(val)) return console.log(dim("[usage: /brief time 08:30]"));
+        updateSettings({ briefTime: val });
+        return console.log(dim(`[morning brief at ${val} · next ${nextBriefAt() ?? "off"}]`));
+      }
+      if (sub === "days") {
+        if (val !== "weekdays" && val !== "daily" && val !== "off") return console.log(dim("[usage: /brief days weekdays|daily|off]"));
+        updateSettings({ briefDays: val });
+        return console.log(dim(`[morning brief: ${val}${val === "off" ? "" : ` · next ${nextBriefAt() ?? "?"}`}]`));
+      }
+      if (sub) return console.log(dim(`[unknown /brief option "${sub}"]`));
+      const brief = composeBrief(session.memory, session.reminders);
+      console.log(bold(brief.title));
+      for (const l of brief.lines) console.log(`  ${l}`);
+      const { time, days } = briefSchedule();
+      console.log(dim(`  morning brief: ${days === "off" ? "off" : `${days} at ${time} · next ${nextBriefAt() ?? "?"}`} · /brief time|days`));
     },
   },
 

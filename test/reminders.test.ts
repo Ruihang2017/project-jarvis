@@ -80,7 +80,7 @@ const dailyNow = a.get(daily.id)!;
 eq(
   "toast for repeating shows next",
   reminderToast({ reminder: dailyNow, occurrence: "2026-10-01T09:00" }, new Date(2026, 9, 1, 9, 0)),
-  { title: "⏰ 看周报", body: `09:00 · next ${formatDue(dailyNow.dueAt, new Date(2026, 9, 1))} (every day)`, tag: `reminder-${daily.id}` },
+  { title: "⏰ 看周报", body: `09:00 · next ${formatDue(dailyNow.dueAt, new Date(2026, 9, 1))} (every day)`, tag: `reminder-${daily.id}`, kind: "reminder" },
 );
 eq(
   "toast for missed one-off shows lateness",

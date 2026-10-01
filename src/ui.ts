@@ -10,6 +10,7 @@ import { saveGeneratedImage } from "./images.js";
 import { loadSettings, updateSettings } from "./settings.js";
 import { showToast } from "./background/notify.js";
 import { reminderToast } from "./background/tick.js";
+import { briefDue, composeBrief, markBriefShown } from "./background/brief.js";
 import { detectSixel, preview, renderPreview } from "./sixel.js";
 import { openWithDefaultApp } from "./system.js";
 import { describeToolCall } from "./tools.js";
@@ -206,6 +207,12 @@ export async function repl(session: Session): Promise<void> {
         notify(fired.map(reminderNotice));
         // Also a desktop notification, in case the terminal isn't the window in front.
         for (const f of fired) void showToast(reminderToast(f));
+      }
+      // Daily brief: first time Jarvis is open after the brief time on a brief day.
+      if (briefDue(session.memory, "repl")) {
+        markBriefShown(session.memory, "repl");
+        const brief = composeBrief(session.memory, session.reminders);
+        notify([brief.title, ...brief.lines.map((l) => `  ${l}`)]);
       }
     } catch (e) {
       if (process.env.JARVIS_DEBUG) console.error(dim(`[reminder check failed] ${e instanceof Error ? e.message : String(e)}`));

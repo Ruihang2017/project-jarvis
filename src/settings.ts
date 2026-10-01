@@ -29,6 +29,9 @@ export interface Settings {
   memoryLearning?: boolean;
   /** Whether Jarvis already suggested /background on after the first reminder. */
   backgroundSuggested?: boolean;
+  /** Daily brief time "HH:MM" (default 08:30) and days (default weekdays). */
+  briefTime?: string;
+  briefDays?: "weekdays" | "daily" | "off";
 }
 
 const settingsPath = () => join(appDataDir(), "settings.json");

@@ -80,6 +80,7 @@ export class MemoryStore {
     this.db = new DatabaseSync(path);
     this.db.exec(`
       PRAGMA journal_mode = WAL;
+      PRAGMA busy_timeout = 5000;
       CREATE TABLE IF NOT EXISTS memories (
         id INTEGER PRIMARY KEY,
         kind TEXT NOT NULL,
