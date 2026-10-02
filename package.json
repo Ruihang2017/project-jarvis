@@ -1,19 +1,31 @@
 {
-  "name": "jarvis",
+  "name": "jarvis-assistant",
   "version": "0.1.0",
-  "description": "Personal CLI chatbot on codex app-server",
+  "description": "A personal terminal assistant on the Codex CLI: calendar, Gmail, bills and reminders, with a privacy guard that removes account numbers and passwords before anything reaches the model",
   "type": "module",
   "private": true,
+  "license": "MIT",
+  "author": "Ruihang Hou",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Ruihang2017/project-jarvis.git"
+  },
+  "homepage": "https://ruihang2017.github.io/project-jarvis/",
+  "bugs": "https://github.com/Ruihang2017/project-jarvis/issues",
+  "keywords": ["assistant", "cli", "codex", "gmail", "google-calendar", "privacy", "reminders", "windows"],
   "bin": {
     "jarvis": "dist/index.js"
   },
+  "files": ["dist", "assets", "README.md", "LICENSE", "SECURITY.md", "CHANGELOG.md", "docs/google-cloud-setup.md"],
+  "os": ["win32"],
   "scripts": {
     "prepare": "tsc",
     "dev": "tsx src/index.ts",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "gen:protocol": "codex app-server generate-ts --experimental --out src/protocol",
-    "test": "tsx test/memory-store.test.ts && tsx test/reminders.test.ts && tsx test/background.test.ts && tsx test/google.test.ts && tsx test/calendar.test.ts && tsx test/gmail.test.ts && tsx test/guard.test.ts && tsx test/privacy.test.ts && tsx test/bills.test.ts && tsx test/data.test.ts && tsx test/setup.test.ts && tsx test/security.test.ts"
+    "test": "tsx test/memory-store.test.ts && tsx test/reminders.test.ts && tsx test/background.test.ts && tsx test/google.test.ts && tsx test/calendar.test.ts && tsx test/gmail.test.ts && tsx test/guard.test.ts && tsx test/privacy.test.ts && tsx test/bills.test.ts && tsx test/data.test.ts && tsx test/setup.test.ts && tsx test/security.test.ts",
+    "prepublishOnly": "npm run typecheck && npm test"
   },
   "engines": {
     "node": ">=24"

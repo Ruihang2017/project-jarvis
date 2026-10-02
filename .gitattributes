@@ -1,0 +1,5 @@
+# Text is stored with LF in the repository on every platform.
+* text=auto eol=lf
+*.png binary
+*.ico binary
+*.bin binary

@@ -182,5 +182,5 @@ export async function uninstallCli(): Promise<void> {
     for (const p of report.problems) console.log(styleText("yellow", `  problem — ${p}`));
     console.log(dim(report.problems.length ? "  data not fully removed" : "  data deleted"));
   } else console.log(dim("  data kept"));
-  console.log("Last step, to remove the program itself:  npm uninstall -g jarvis");
+  console.log("Last step, to remove the program itself:  npm uninstall -g jarvis-assistant");
 }
