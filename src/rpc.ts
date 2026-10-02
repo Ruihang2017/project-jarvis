@@ -7,6 +7,14 @@ type Method = ClientRequest["method"];
 type ParamsOf<M extends Method> = Extract<ClientRequest, { method: M }>["params"];
 
 export type NotificationHandler = (n: ServerNotification) => void;
+
+/** Rewrites what Jarvis sends to Codex (the privacy guard, S1). */
+export interface OutgoingFilter {
+  request(method: string, params: unknown): unknown;
+  /** Result of a server→client request (tool call, question, approval) before it is sent back. */
+  reply(requestMethod: string, result: unknown): unknown;
+  error(requestMethod: string, message: string): string;
+}
 export type ServerRequestHandler = (r: ServerRequest) => Promise<unknown>;
 
 interface Pending {
@@ -43,7 +51,12 @@ export class CodexClient extends EventEmitter<{
     throw new Error("no handler");
   };
 
-  constructor(bin: string, args: string[] = [], env: NodeJS.ProcessEnv = process.env) {
+  constructor(
+    bin: string,
+    args: string[] = [],
+    env: NodeJS.ProcessEnv = process.env,
+    private readonly filter?: OutgoingFilter,
+  ) {
     super();
     this.proc = spawn(bin, ["app-server", ...args], { stdio: ["pipe", "pipe", "pipe"], env });
     createInterface({ input: this.proc.stdout }).on("line", (line) => this.onLine(line));
@@ -66,7 +79,7 @@ export class CodexClient extends EventEmitter<{
     const id = this.nextId++;
     return new Promise<R>((resolve, reject) => {
       this.pending.set(id, { method, resolve: resolve as (v: unknown) => void, reject });
-      this.send({ id, method, params });
+      this.send({ id, method, params: this.filter ? this.filter.request(method, params) : params });
     });
   }
 
@@ -107,9 +120,10 @@ export class CodexClient extends EventEmitter<{
         // Skip replies to requests the server already gave up on.
         if (this.inflight.delete(msg.id)) this.send({ id: msg.id, ...reply });
       };
+      const method = String(msg.method);
       this.serverRequestHandler(msg as ServerRequest).then(
-        (result) => settle({ result }),
-        (err: Error) => settle({ error: { code: -32603, message: err.message } }),
+        (result) => settle({ result: this.filter ? this.filter.reply(method, result) : result }),
+        (err: Error) => settle({ error: { code: -32603, message: this.filter ? this.filter.error(method, err.message) : err.message } }),
       );
     } else if (msg.method) {
       // The server resolves a request itself when it stops waiting (e.g. a cancelled tool call).

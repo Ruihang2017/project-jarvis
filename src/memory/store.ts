@@ -1,3 +1,4 @@
+import { redact, refuseSensitive } from "../privacy/guard.js";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -118,6 +119,7 @@ export class MemoryStore {
   }
 
   add(m: NewMemory): Memory {
+    refuseSensitive(m.text);
     const now = new Date().toISOString();
     const tier: Tier = m.tier ?? (m.kind === "event" || m.validUntil ? "short" : "long");
     const validUntil = tier === "short" ? (m.validUntil ?? addDays(SHORT_TERM_DAYS)) : null;
@@ -168,6 +170,7 @@ export class MemoryStore {
   }
 
   update(id: number, patch: Partial<Pick<Memory, "text" | "kind" | "tier" | "importance" | "validUntil" | "keywords">>): Memory | undefined {
+    if (patch.text !== undefined) refuseSensitive(patch.text);
     const cols: Record<string, string> = { text: "text", kind: "kind", tier: "tier", importance: "importance", validUntil: "valid_until", keywords: "keywords" };
     const sets: string[] = [];
     const params: (string | number | null)[] = [];
@@ -222,11 +225,12 @@ export class MemoryStore {
   }
 
   /** Replaces the session-level summary for a thread. */
+  /** Summaries are stored with guarded data removed (S1) rather than refused: losing a whole summary is worse. */
   saveSessionSummary(threadId: string, title: string, summary: string, periodStart: string, periodEnd: string) {
     this.db.prepare("DELETE FROM summaries WHERE level = 'session' AND thread_id = ?").run(threadId);
     this.db
       .prepare("INSERT INTO summaries (level, thread_id, title, summary, period_start, period_end, created_at) VALUES ('session', ?, ?, ?, ?, ?, ?)")
-      .run(threadId, title, summary, periodStart, periodEnd, new Date().toISOString());
+      .run(threadId, redact(title).text, redact(summary).text, periodStart, periodEnd, new Date().toISOString());
   }
 
   /** Most recent summaries at a level, newest first; `excludeThread` skips the current conversation. */
@@ -254,7 +258,7 @@ export class MemoryStore {
   insertSummary(level: Summary["level"], title: string, summary: string, periodStart: string, periodEnd: string): number {
     const res = this.db
       .prepare("INSERT INTO summaries (level, thread_id, title, summary, period_start, period_end, created_at) VALUES (?, NULL, ?, ?, ?, ?, ?)")
-      .run(level, title, summary, periodStart, periodEnd, new Date().toISOString());
+      .run(level, redact(title).text, redact(summary).text, periodStart, periodEnd, new Date().toISOString());
     return Number(res.lastInsertRowid);
   }
 

@@ -34,6 +34,15 @@ import { ReminderStore } from "./reminders/store.js";
 import { GoogleAuth } from "./google/auth.js";
 import { googleInstructions } from "./google/instructions.js";
 import { config, PERSONA } from "./config.js";
+import { guardOutgoing, type Source } from "./privacy/outgoing.js";
+import type { Category } from "./privacy/guard.js";
+import { relative, isAbsolute, resolve } from "node:path";
+
+/** Whether a path (absolute or workspace-relative) lies inside the Jarvis workspace. */
+function insideWorkspace(p: string): boolean {
+  const rel = relative(config.workspace, resolve(config.workspace, p));
+  return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
+}
 
 export interface TurnCallbacks {
   onDelta?: (text: string) => void;
@@ -44,24 +53,54 @@ export interface TurnCallbacks {
   onError?: (err: TurnError, willRetry: boolean) => void;
 }
 
-export type Mode = "chat" | "assist";
+/**
+ * Permission modes (S1, like Claude Code's). Only chat is "guarded": Codex's own channels (shell,
+ * file reading, local image viewing, browser) are switched off, so everything the model sees came
+ * through Jarvis and its privacy guard. The others let Codex run commands, whose output goes
+ * straight to the model.
+ */
+export type Mode = "chat" | "manual" | "semi-auto" | "auto";
 
-/** chat: answers only. assist: may run commands / edit files inside the workspace, asking first when escalating. */
-export const MODES: Record<Mode, { sandbox: SandboxMode; approvalPolicy: AskForApproval; sandboxPolicy: SandboxPolicy }> = {
-  chat: {
-    sandbox: "read-only",
-    approvalPolicy: "never",
-    sandboxPolicy: { type: "readOnly", networkAccess: false },
-  },
-  // Approval is the safeguard: "untrusted" asks before every command and patch. Not workspace-write
-  // because on Windows (codex 0.156.1) it doesn't confine approved commands anyway, and approved
-  // apply_patch calls hang inside its sandbox helper.
-  assist: {
-    sandbox: "danger-full-access",
-    approvalPolicy: "untrusted",
-    sandboxPolicy: { type: "dangerFullAccess" },
-  },
+/** Shift+Tab cycles these; auto is only reachable with /mode auto (and a confirmation). */
+export const MODE_CYCLE: Mode[] = ["chat", "manual", "semi-auto"];
+
+interface ModeSpec {
+  sandbox: SandboxMode;
+  approvalPolicy: AskForApproval;
+  sandboxPolicy: SandboxPolicy;
+  guarded: boolean;
+  /** Accept file edits inside the Jarvis workspace without asking. */
+  autoApproveEdits: boolean;
+}
+
+// Approval is the safeguard in manual/semi-auto: "untrusted" asks before every command and patch.
+// Not workspace-write: on Windows (codex 0.156.1) it doesn't confine approved commands anyway, and
+// approved apply_patch calls hang inside its sandbox helper.
+export const MODES: Record<Mode, ModeSpec> = {
+  chat: { sandbox: "read-only", approvalPolicy: "never", sandboxPolicy: { type: "readOnly", networkAccess: false }, guarded: true, autoApproveEdits: false },
+  manual: { sandbox: "danger-full-access", approvalPolicy: "untrusted", sandboxPolicy: { type: "dangerFullAccess" }, guarded: false, autoApproveEdits: false },
+  "semi-auto": { sandbox: "danger-full-access", approvalPolicy: "untrusted", sandboxPolicy: { type: "dangerFullAccess" }, guarded: false, autoApproveEdits: true },
+  auto: { sandbox: "danger-full-access", approvalPolicy: "never", sandboxPolicy: { type: "dangerFullAccess" }, guarded: false, autoApproveEdits: true },
 };
+
+/**
+ * Codex features that read data without going through Jarvis. Off in guarded threads; per-thread
+ * `config` works (verified 2026-10-02, codex 0.156.1; the nested form — dotted keys did not).
+ * Browser and computer use stay off everywhere: Jarvis has no UI for them.
+ */
+export function codexChannels(guarded: boolean) {
+  return {
+    features: {
+      shell_tool: !guarded,
+      unified_exec: !guarded,
+      view_image: !guarded,
+      browser_use: false,
+      computer_use: false,
+      in_app_browser: false,
+      multi_agent: false,
+    },
+  };
+}
 
 interface ActiveTurn {
   threadId: string;
@@ -92,10 +131,18 @@ export class Session {
   readonly reminders = new ReminderStore();
   readonly google = new GoogleAuth();
   private tools = new ToolRunner(config.workspace, this.memory, this.reminders, this.google);
+  /** Told whenever the privacy guard removed something on its way to Codex. */
+  onRedacted?: (source: Source, removed: Category[]) => void;
+  /** Throwaway threads (runEphemeral): their redactions are reported as "background", not "your message". */
+  private ephemeralThreads = new Set<string>();
 
   constructor() {
     const codexHome = ensureCodexHome();
-    this.client = new CodexClient(config.codexBin, [], { ...process.env, CODEX_HOME: codexHome });
+    // Every message to Codex passes the privacy guard (S1), whichever code path produced it.
+    const filter = guardOutgoing((source, removed, threadId) =>
+      this.onRedacted?.(threadId && this.ephemeralThreads.has(threadId) ? "background" : source, removed),
+    );
+    this.client = new CodexClient(config.codexBin, [], { ...process.env, CODEX_HOME: codexHome }, filter);
     this.client.onServerRequest((req) => this.handleServerRequest(req));
     this.client.on("serverRequestCancelled", () => this.interactions.cancelPending?.());
     this.client.on("notification", (n) => {
@@ -132,8 +179,11 @@ export class Session {
     switch (req.method) {
       case "item/commandExecution/requestApproval":
         return { decision: await ui.approveCommand(req.params) };
-      case "item/fileChange/requestApproval":
-        return { decision: await ui.approveFileChange(req.params, this.fileChanges.get(req.params.itemId) ?? []) };
+      case "item/fileChange/requestApproval": {
+        const changes = this.fileChanges.get(req.params.itemId) ?? [];
+        if (MODES[this.mode].autoApproveEdits && changes.length && changes.every((c) => insideWorkspace(c.path))) return { decision: "accept" };
+        return { decision: await ui.approveFileChange(req.params, changes) };
+      }
       case "item/permissions/requestApproval":
         return ui.approvePermissions(req.params);
       case "item/tool/requestUserInput":
@@ -207,8 +257,30 @@ export class Session {
       approvalPolicy: MODES[this.mode].approvalPolicy,
       // Rebuilt on every start/resume so the thread sees the current long-term core.
       developerInstructions: PERSONA + memoryInstructions(this.memory) + REMINDER_INSTRUCTIONS + googleInstructions(this.google.state()),
-      config: { model_reasoning_effort: this.effort },
+      config: { model_reasoning_effort: this.effort, ...codexChannels(MODES[this.mode].guarded) },
     };
+  }
+
+  /**
+   * Switches permission mode. Codex fixes a thread's features when it is loaded (a resume of a
+   * loaded thread ignores new config), so crossing the guarded boundary unloads the thread and
+   * resumes it with the new channel switches: same thread id, history and Jarvis tools (verified
+   * 2026-10-02). A chat turn therefore never runs with the shell still on.
+   */
+  async setMode(next: Mode): Promise<void> {
+    if (this.busy) throw new Error("can't switch modes during a reply");
+    const crossing = MODES[this.mode].guarded !== MODES[next].guarded;
+    const prev = this.mode;
+    this.mode = next;
+    if (!crossing || !this.threadId) return;
+    try {
+      await this.client.request("thread/unsubscribe", { threadId: this.threadId });
+      await this.client.request<ThreadResumeResponse>("thread/resume", { threadId: this.threadId, ...this.threadSettings() });
+    } catch (e) {
+      // Couldn't reload with the new switches: don't claim a mode the thread doesn't have.
+      this.mode = prev;
+      throw e;
+    }
   }
 
   /** Called with a thread the user just switched away from (/new, /resume) — memory learning hooks in here. */
@@ -241,9 +313,10 @@ export class Session {
       approvalPolicy: "never",
       developerInstructions: instructions,
       ephemeral: true,
-      config: { model_reasoning_effort: "low", web_search: "disabled" },
+      config: { model_reasoning_effort: "low", web_search: "disabled", ...codexChannels(true) },
     });
     const threadId = res.thread.id;
+    this.ephemeralThreads.add(threadId);
     return new Promise<string>((resolve, reject) => {
       const done = (fn: () => void) => {
         clearTimeout(timer);
@@ -294,6 +367,9 @@ export class Session {
   }
 
   async resumeThread(threadId: string): Promise<ThreadResumeResponse> {
+    // A thread already loaded in this app-server keeps the features it was loaded with; unload it
+    // first so it picks up the current mode's channel switches. Not loaded is fine.
+    await this.client.request("thread/unsubscribe", { threadId }).catch(() => {});
     const res = await this.client.request<ThreadResumeResponse>("thread/resume", {
       threadId,
       ...this.threadSettings(),

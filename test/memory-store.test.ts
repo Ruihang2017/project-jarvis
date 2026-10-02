@@ -47,8 +47,8 @@ check("describe", describe(ev).includes("[event]") && describe(ev).includes("unt
 check("export has sections", /## Long-term[\s\S]*## Archived/.test(s.exportMarkdown()));
 
 for (const [t, want] of [
-  ["我的密码是 hunter2!", "password"],
-  ["my api key sk-proj-abcdefghijklmnopqrstuvwxyz123456", "API key"],
+  ["我的密码是 hunter2!", "password/PIN/code"],
+  ["my api key sk-proj-abcdefghijklmnopqrstuvwxyz123456", "password/PIN/code"],
   ["card 4111 1111 1111 1111 exp 12/30", "card number"],
   ["电话 0412 345 678", null],
   ["Order number 1234567890123", null],

@@ -1,8 +1,10 @@
 import { existsSync } from "node:fs";
 import { createInterface, type Interface } from "node:readline/promises";
 import { styleText } from "node:util";
-import type { Session } from "./session.js";
-import { runCommand, runningCommand } from "./commands.js";
+import { MODE_CYCLE, MODES, type Mode, type Session } from "./session.js";
+import { runCommand, runningCommand, UNGUARDED_WARNING } from "./commands.js";
+import { describeRemoved, type Category } from "./privacy/guard.js";
+import type { Source } from "./privacy/outgoing.js";
 import { MarkdownStream } from "./markdown.js";
 import { describeChange, terminalInteractions } from "./prompts.js";
 import type { RateLimitWindow, ThreadItem, ThreadTokenUsage, TurnStatus } from "./protocol/v2/index.js";
@@ -26,6 +28,51 @@ import { displayCommand, tildify, truncate } from "./util.js";
 
 const dim = (s: string) => styleText("dim", s);
 const USER_PROMPT = styleText("cyan", "you › ");
+
+/**
+ * The input prompt always shows the permission mode when it isn't chat, so a riskier mode can't go
+ * unnoticed: "you [manual] › " (yellow), "you [auto] › " (red). No ⚠ here: Windows Terminal draws it two
+ * columns wide but readline counts one, so the text after it overlapped and the cursor drifted.
+ */
+export function modePrompt(mode: Mode, images = 0): string {
+  const tags = [mode === "chat" ? "" : mode, images ? `🖼 ${images}` : ""].filter(Boolean);
+  const text = tags.length ? `you [${tags.join(" · ")}] › ` : "you › ";
+  return styleText(mode === "chat" ? "cyan" : mode === "auto" ? "red" : "yellow", text);
+}
+
+type KeyHandler = (s: string | undefined, key: { name?: string; shift?: boolean } | undefined) => void;
+
+/**
+ * Calls `handler` on Shift+Tab instead of letting readline insert the escape sequence. Readline has
+ * no public key hook: keypresses go to an internal method keyed by a Symbol("_ttyWrite") (Node 24;
+ * the string `_ttyWrite` is only a deprecated alias that keypresses don't use), so wrap that.
+ * Returns false if it isn't there (then /mode still works).
+ */
+export function onShiftTab(rl: object, handler: () => void): boolean {
+  for (let p = Object.getPrototypeOf(rl); p; p = Object.getPrototypeOf(p)) {
+    const sym = Object.getOwnPropertySymbols(p).find((s) => s.description === "_ttyWrite");
+    if (!sym) continue;
+    const target = rl as Record<symbol, KeyHandler>;
+    const original = target[sym]!;
+    target[sym] = function (this: unknown, s, key) {
+      if (key?.name === "tab" && key.shift) return handler();
+      return original.call(this, s, key);
+    };
+    return true;
+  }
+  return false;
+}
+
+const REDACTION_SOURCE: Record<Source, string> = {
+  message: "from your message",
+  tool: "from a tool result",
+  instructions: "from Jarvis's notes",
+  answer: "from your answer",
+  background: "from a background task (memory learning)",
+};
+
+export const redactionNotice = (source: Source, removed: Category[]) =>
+  `⛔ removed ${describeRemoved(removed)} ${REDACTION_SOURCE[source]} before sending — the model didn't see it`;
 const BOT_PREFIX = styleText("magenta", "jarvis › ");
 const tty = Boolean(process.stdout.isTTY);
 const color = tty && !process.env.NO_COLOR;
@@ -47,6 +94,8 @@ class LineInput {
   private waiter: ((line: string | null) => void) | null = null;
   private asker: ((line: string | null) => void) | null = null;
   closed = false;
+  /** Restored after a question prompt; follows the current mode. */
+  defaultPrompt = USER_PROMPT;
 
   constructor(private readonly rl: Interface) {
     rl.on("line", (line) => {
@@ -80,7 +129,7 @@ class LineInput {
     try {
       return await new Promise<string | null>((resolve) => (this.asker = resolve));
     } finally {
-      this.rl.setPrompt(USER_PROMPT);
+      this.rl.setPrompt(this.defaultPrompt);
     }
   }
 
@@ -164,7 +213,39 @@ export async function repl(session: Session): Promise<void> {
   });
 
   session.rateLimits().catch(() => {}); // seed the status line; failures just hide limits
-  console.log(dim(`Jarvis · ${session.model} · effort ${session.effort} · ${session.mode} mode · /help for commands`));
+  console.log(dim(`Jarvis · ${session.model} · effort ${session.effort} · ${session.mode} mode (Shift+Tab to switch) · /help for commands`));
+
+  // Privacy guard notices: printed above whatever is on screen (reply in progress or prompt).
+  session.onRedacted = (source, removed) => printAbove(styleText("yellow", `  ${redactionNotice(source, removed)}`));
+  // While the prompt waits for input, clear it, print, and redraw it with whatever was typed.
+  const printAbove = (line: string) => {
+    if (activeRender) {
+      activeRender.pause();
+      console.log(line);
+      activeRender.resume();
+    } else if (atPrompt && !input.asking && tty) {
+      process.stdout.write("\r\x1b[K");
+      console.log(line);
+      rl.prompt(true);
+    } else console.log(line);
+  };
+
+  // Shift+Tab cycles chat → manual → semi-auto (auto only via /mode auto). Without a TTY, /mode works.
+  if (tty) onShiftTab(rl, () => cycleMode());
+  const cycleMode = () => {
+    if (session.busy || input.asking) return;
+    const next = MODE_CYCLE[(MODE_CYCLE.indexOf(session.mode) + 1) % MODE_CYCLE.length]!;
+    void session.setMode(next).then(
+      () => {
+        input.defaultPrompt = modePrompt(next, session.pendingImages.length);
+        rl.setPrompt(input.defaultPrompt);
+        process.stdout.write("\r\x1b[K");
+        console.log(MODES[next].guarded ? dim(`  [mode: ${next}]`) : styleText("yellow", `  [mode: ${next}] ⚠ ${UNGUARDED_WARNING}`));
+        rl.prompt(true);
+      },
+      (e: Error) => console.log(dim(`  [couldn't switch mode: ${e.message}]`)),
+    );
+  };
 
   // Background notices (memory learning): shown above the prompt when idle, otherwise after the turn.
   let atPrompt = false;
@@ -185,7 +266,8 @@ export async function repl(session: Session): Promise<void> {
   const showPrompt = () => {
     printNotices(queued.splice(0));
     const n = session.pendingImages.length;
-    rl.setPrompt(n ? styleText("cyan", `you [🖼 ${n}] › `) : USER_PROMPT);
+    input.defaultPrompt = modePrompt(session.mode, n);
+    rl.setPrompt(input.defaultPrompt);
     rl.prompt();
     atPrompt = true;
   };

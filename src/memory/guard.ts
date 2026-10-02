@@ -1,8 +1,13 @@
+import { sensitiveReason } from "../privacy/guard.js";
+
 /**
  * Last line of defence against storing secrets, independent of what the model decides.
- * Returns a reason when text looks like it contains a credential or card number.
+ * Returns a reason when text looks like it contains a credential, account/card/ID number (S1 guard)
+ * or another secret shape.
  */
 export function secretReason(text: string): string | null {
+  const sensitive = sensitiveReason(text);
+  if (sensitive) return sensitive;
   const patterns: [RegExp, string][] = [
     [/\b(sk|pk|rk)-[A-Za-z0-9_-]{16,}/, "API key"],
     [/\b(ghp|gho|ghu|ghs|github_pat)_[A-Za-z0-9_]{20,}/, "GitHub token"],

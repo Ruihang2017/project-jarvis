@@ -22,9 +22,14 @@ import { GoogleAuthError, shortScope } from "./google/auth.js";
 import { tildify, truncate } from "./util.js";
 
 const MODE_HELP: Record<Mode, string> = {
-  chat: "answers only; no commands or file changes (clipboard/open tools still work)",
-  assist: "may run commands and edit files (starts in the Jarvis workspace); asks before every action",
+  chat: "Codex can't run commands or read files; everything it sees passes the privacy guard",
+  manual: "Codex may run commands and edit files, asking before every action",
+  "semi-auto": "like manual, but edits inside the Jarvis workspace go ahead without asking",
+  auto: "Codex runs commands and edits files without asking (no sandbox on Windows)",
 };
+
+/** Shown when leaving chat: Codex's own reads bypass the guard (D24). */
+export const UNGUARDED_WARNING = "Commands Codex runs and files it reads go to the model directly — the privacy guard can't check them.";
 
 const dim = (s: string) => styleText("dim", s);
 const bold = (s: string) => styleText("bold", s);
@@ -138,23 +143,29 @@ const COMMANDS: Record<string, Command> = {
   },
 
   "/mode": {
-    usage: "/mode [chat|assist]",
-    help: "Show or switch mode (assist can run commands and edit files, with your approval)",
+    usage: "/mode [chat|manual|semi-auto|auto]",
+    help: "Show or switch permission mode (Shift+Tab cycles chat → manual → semi-auto)",
     run: async (args, session) => {
       if (!args) {
         for (const m of Object.keys(MODES) as Mode[]) {
-          console.log(`${m === session.mode ? "*" : " "} ${m.padEnd(7)} ${dim(MODE_HELP[m])}`);
+          console.log(`${m === session.mode ? "*" : " "} ${m.padEnd(9)} ${dim(MODE_HELP[m])}`);
         }
-        return;
+        return console.log(dim("  Shift+Tab cycles chat → manual → semi-auto; auto only via /mode auto"));
       }
-      if (!(args in MODES)) return console.log(dim(`[unknown mode "${args}"; chat or assist]`));
-      session.mode = args as Mode;
-      console.log(dim(`[mode: ${args}]`));
-      if (args === "assist" && process.platform === "win32") {
-        console.log(
-          styleText("yellow", "  No sandbox on Windows: every command asks first, and approved commands run with your full user permissions."),
+      const next = (args === "assist" ? "manual" : args) as Mode; // "assist" was manual's old name
+      if (!(next in MODES)) return console.log(dim(`[unknown mode "${args}"; chat, manual, semi-auto or auto]`));
+      if (next === "auto" && session.mode !== "auto") {
+        const ok = await session.interactions.approveTool(
+          "auto mode",
+          "Codex will run commands and change files without asking, with your full Windows permissions.",
+          UNGUARDED_WARNING,
+          false,
         );
+        if (ok === "decline") return console.log(dim("[stayed in " + session.mode + " mode]"));
       }
+      await session.setMode(next);
+      console.log(dim(`[mode: ${next}]`));
+      if (!MODES[next].guarded) console.log(styleText("yellow", `  ⚠ ${UNGUARDED_WARNING}`));
     },
   },
 
