@@ -20,6 +20,8 @@ import { preview, renderPreview } from "./sixel.js";
 import { copyImageToClipboard, openWithDefaultApp } from "./system.js";
 import { GoogleAuthError, shortScope } from "./google/auth.js";
 import { tildify, truncate } from "./util.js";
+import { formatAmount, type Bill } from "./bills/store.js";
+import { billLine, billLines, billSettings, runScan, scanSummary } from "./bills/view.js";
 
 const MODE_HELP: Record<Mode, string> = {
   chat: "Codex can't run commands or read files; everything it sees passes the privacy guard",
@@ -447,6 +449,121 @@ const COMMANDS: Record<string, Command> = {
       for (const l of brief.lines) console.log(`  ${l}`);
       const { time, days } = briefSchedule();
       console.log(dim(`  morning brief: ${days === "off" ? "off" : `${days} at ${time} · next ${nextBriefAt() ?? "?"}`} · /brief time|days`));
+    },
+  },
+
+  "/bills": {
+    usage: "/bills [cmd]",
+    help: "Bills found in Gmail: review, ok|ignore <id|all>, edit <id> amount|due|payee <value>, paid <id>, scan, settings, set scan|confirm|remind <value>, forget all",
+    run: async (args, session) => {
+      const bills = session.bills;
+      const [sub = "", a1, a2, ...rest] = args.split(/\s+/).filter(Boolean);
+      const pick = (s: string | undefined) => {
+        const b = bills.get(Number(String(s ?? "").replace(/^#/, "")));
+        if (!b) throw new Error(`no bill #${s ?? "?"}`);
+        return b;
+      };
+      const show = (list: Bill[]) => {
+        for (const b of list) for (const [i, l] of billLines(b).entries()) console.log(i ? styleText("yellow", `  ${l}`) : `  ${l}`);
+      };
+      switch (sub) {
+        case "": {
+          const pending = bills.list("pending");
+          const tracked = bills.list("tracked");
+          const autopay = bills.list("autopay").filter((b) => !b.dueDate || b.dueDate >= localDate(new Date()));
+          if (!pending.length && !tracked.length && !autopay.length) return console.log(dim("[no bills yet — /bills scan looks through recent Gmail]"));
+          if (tracked.length) console.log(bold(`To pay (${tracked.length})`));
+          show(tracked);
+          if (autopay.length) console.log(bold(`Automatic payments (${autopay.length})`));
+          show(autopay);
+          if (pending.length) console.log(dim(`  ${pending.length} new bill${pending.length === 1 ? "" : "s"} waiting for your OK — /bills review`));
+          return console.log(dim("  /bills paid <id> · Jarvis only reminds: pay in your bank or the payee's own site or app"));
+        }
+        case "review": {
+          const pending = bills.list("pending");
+          if (!pending.length) return console.log(dim("[nothing to review]"));
+          console.log(bold("Found in your email — check each one against the email before accepting:"));
+          show(pending);
+          return console.log(dim("  /bills ok <id|all> · /bills ignore <id|all> · /bills edit <id> amount 245.30 | due 2026-10-18 | payee Name"));
+        }
+        case "ok":
+        case "ignore": {
+          const all = a1 === "all";
+          const targets = all ? bills.list("pending") : [pick(a1)];
+          for (const b of targets) {
+            if (b.status !== "pending") {
+              console.log(dim(`[#${b.id} isn't waiting for review]`));
+              continue;
+            }
+            if (sub === "ignore") {
+              bills.update(b.id, { status: "dismissed" });
+              console.log(dim(`[ignored ${billLine(b)}]`));
+              continue;
+            }
+            // Bills with warnings are never accepted in bulk: each needs its own /bills ok <id>.
+            if (all && (b.flags.length || b.needsCheck)) {
+              console.log(styleText("yellow", `  #${b.id} has warnings — check it, then /bills ok ${b.id}`));
+              continue;
+            }
+            const done = bills.update(b.id, { status: b.kind === "autopay" ? "autopay" : "tracked", needsCheck: false })!;
+            bills.confirmPayee(b.payee, b.senderDomain);
+            console.log(dim(`[tracking ${billLine(done)}]`));
+          }
+          return;
+        }
+        case "edit": {
+          const b = pick(a1);
+          const value = rest.join(" ");
+          const dropFlag = (word: string) => b.flags.filter((f) => !f.includes(word));
+          if (a2 === "amount") {
+            const n = Number(value.replace(/[$,]/g, ""));
+            if (!value || !Number.isFinite(n) || n <= 0) return console.log(dim("[usage: /bills edit <id> amount 245.30]"));
+            bills.update(b.id, { amountCents: Math.round(n * 100), flags: dropFlag("the amount"), needsCheck: b.flags.some((f) => f.includes("the due date")) });
+          } else if (a2 === "due") {
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(dayStart(value).getTime())) return console.log(dim("[usage: /bills edit <id> due 2026-10-18]"));
+            bills.update(b.id, { dueDate: value, flags: dropFlag("the due date"), needsCheck: b.flags.some((f) => f.includes("the amount")) });
+          } else if (a2 === "payee") {
+            if (!value) return console.log(dim("[usage: /bills edit <id> payee Name]"));
+            bills.update(b.id, { payee: value });
+          } else return console.log(dim("[usage: /bills edit <id> amount|due|payee <value>]"));
+          return console.log(dim(`[updated ${billLine(bills.get(b.id)!)}]`));
+        }
+        case "paid": {
+          const b = pick(a1);
+          bills.update(b.id, { status: "paid" });
+          return console.log(dim(`[paid ${b.payee} ${formatAmount(b)}]`));
+        }
+        case "scan": {
+          console.log(dim("[looking through recent Gmail for bills…]"));
+          const r = await runScan(session);
+          const lines = scanSummary(r);
+          for (const l of lines.length ? lines : [`no new bills (${r.scanned} email${r.scanned === 1 ? "" : "s"} checked)`]) console.log(dim(`  ${l}`));
+          return;
+        }
+        case "settings": {
+          const s = billSettings();
+          console.log(`scan:    ${bold(s.scan)} ${dim(s.scan === "daily" ? "— first time Jarvis opens each day" : "— only when you run /bills scan")}`);
+          console.log(`confirm: ${bold(s.confirm)} ${dim(s.confirm === "always" ? "— every new bill needs your OK" : "— bills from payees you've confirmed are tracked automatically")}`);
+          console.log(`remind:  ${bold(s.remind === "off" ? "off" : s.remind.join(","))} ${dim(s.remind === "off" ? "— no notifications" : "— days before the due date (0 = on the day)")}`);
+          return console.log(dim("  /bills set scan daily|manual · /bills set confirm always|known · /bills set remind 3,0|off"));
+        }
+        case "set": {
+          if (a1 === "scan" && (a2 === "daily" || a2 === "manual")) updateSettings({ billsScan: a2 });
+          else if (a1 === "confirm" && (a2 === "always" || a2 === "known")) updateSettings({ billsConfirm: a2 });
+          else if (a1 === "remind" && a2 === "off") updateSettings({ billsRemindDays: "off" });
+          else if (a1 === "remind" && a2 && /^\d{1,2}(,\d{1,2})*$/.test(a2)) updateSettings({ billsRemindDays: [...new Set(a2.split(",").map(Number))].sort((x, y) => y - x) });
+          else return console.log(dim("[usage: /bills set scan daily|manual · confirm always|known · remind 3,0|off]"));
+          return console.log(dim(`[bills ${a1}: ${a2}]`));
+        }
+        case "forget": {
+          if (a1 !== "all") return console.log(dim("[usage: /bills forget all]"));
+          const ok = await session.interactions.approveTool("forget all bills", "Delete every bill, confirmed payee and scan record Jarvis has stored.", "Your emails are not touched.", false);
+          if (ok === "decline") return console.log(dim("[kept]"));
+          return console.log(dim(`[deleted ${bills.forgetAll()} bills and all payee and scan records]`));
+        }
+        default:
+          console.log(dim(`[unknown /bills option "${sub}"]`));
+      }
     },
   },
 

@@ -32,6 +32,7 @@ import { MemoryStore } from "./memory/store.js";
 import { REMINDER_INSTRUCTIONS } from "./reminders/prompt.js";
 import { ReminderStore } from "./reminders/store.js";
 import { GoogleAuth } from "./google/auth.js";
+import { BillStore } from "./bills/store.js";
 import { googleInstructions } from "./google/instructions.js";
 import { config, PERSONA } from "./config.js";
 import { guardOutgoing, type Source } from "./privacy/outgoing.js";
@@ -130,6 +131,7 @@ export class Session {
   readonly memory = new MemoryStore();
   readonly reminders = new ReminderStore();
   readonly google = new GoogleAuth();
+  readonly bills = new BillStore();
   private tools = new ToolRunner(config.workspace, this.memory, this.reminders, this.google);
   /** Told whenever the privacy guard removed something on its way to Codex. */
   onRedacted?: (source: Source, removed: Category[]) => void;
@@ -497,5 +499,6 @@ export class Session {
     this.client.close();
     this.memory.close();
     this.reminders.close();
+    this.bills.close();
   }
 }

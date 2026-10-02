@@ -32,6 +32,12 @@ export interface Settings {
   /** Daily brief time "HH:MM" (default 08:30) and days (default weekdays). */
   briefTime?: string;
   briefDays?: "weekdays" | "daily" | "off";
+  /** Bills (N5, D25): scan Gmail on the first start each day (default) or only when asked. */
+  billsScan?: "daily" | "manual";
+  /** Every new bill needs the user's OK (default), or bills from payees confirmed before are tracked automatically. */
+  billsConfirm?: "always" | "known";
+  /** Days before the due date to remind (default [3, 0]); "off" shows bills only in /bills and the brief. */
+  billsRemindDays?: number[] | "off";
 }
 
 const settingsPath = () => join(appDataDir(), "settings.json");

@@ -14,6 +14,9 @@ import { showToast } from "./background/notify.js";
 import { reminderToast } from "./background/tick.js";
 import { briefDue, briefGoogle, composeBrief, markBriefShown } from "./background/brief.js";
 import { missingFeatures } from "./google/instructions.js";
+import { hasGmailAccess } from "./google/gmail.js";
+import { scanDue } from "./bills/scan.js";
+import { runScan, scanSummary } from "./bills/view.js";
 import { detectSixel, preview, renderPreview } from "./sixel.js";
 import { openWithDefaultApp } from "./system.js";
 import { describeToolCall } from "./tools.js";
@@ -284,6 +287,9 @@ export async function repl(session: Session): Promise<void> {
   void (async () => {
     notify((await learner.catchUp()).flatMap((r) => r.lines));
     if (learner.enabled()) notify(await new MemoryTidier(session).runIfDue());
+    // Bills (N5): look through recent Gmail once a day, while the user is here (billsScan = "daily").
+    const g = session.google.state();
+    if (g && !g.invalidAt && hasGmailAccess(g.scopes) && scanDue(session.bills)) notify(scanSummary(await runScan(session)));
   })().catch(learnFailed);
 
   // Reminders due while Jarvis is open (the background task handles the rest). Claiming is

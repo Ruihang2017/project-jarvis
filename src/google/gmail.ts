@@ -220,6 +220,14 @@ export class GmailClient {
     return msgs.map(toSummary).sort((a, b) => b.date.getTime() - a.date.getTime());
   }
 
+  /** Ids of messages matching a query, newest first (one page, up to 100). */
+  async listIds(query: string, max = 50): Promise<string[]> {
+    this.ensureAccess();
+    const q = new URLSearchParams({ q: query, maxResults: String(Math.min(Math.max(1, max), 100)) });
+    const list = await this.auth.api<{ messages?: { id: string }[] }>(`${API}/messages?${q}`);
+    return (list.messages ?? []).map((m) => m.id);
+  }
+
   async message(id: string): Promise<Message> {
     this.ensureAccess();
     return toMessage(await this.auth.api<ApiMessage>(`${API}/messages/${encodeURIComponent(id)}?format=full`));
