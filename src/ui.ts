@@ -19,6 +19,7 @@ import { scanDue } from "./bills/scan.js";
 import { runScan, scanSummary } from "./bills/view.js";
 import { claimDueNotices, noticeLine, noticeToast } from "./bills/remind.js";
 import { codexVersion, compareCodex } from "./doctor.js";
+import { GETTING_STARTED } from "./setup.js";
 import { detectSixel, preview, renderPreview } from "./sixel.js";
 import { openWithDefaultApp } from "./system.js";
 import { describeToolCall } from "./tools.js";
@@ -329,6 +330,12 @@ export async function repl(session: Session): Promise<void> {
   const reminderTimer = setInterval(checkReminders, REMINDER_POLL_MS);
   reminderTimer.unref();
 
+  // First run: a few lines on how to start (again with /start).
+  if (!loadSettings().onboarded) {
+    updateSettings({ onboarded: true });
+    console.log(styleText("bold", GETTING_STARTED[0]!));
+    for (const l of GETTING_STARTED.slice(1)) console.log(dim(l));
+  }
   const google = session.google.state();
   if (google?.invalidAt) queued.push("Google connection expired — /connect google to reconnect");
   else if (missingFeatures(google).length) queued.push(`${missingFeatures(google).join(" and ")} need${missingFeatures(google).length === 1 ? "s" : ""} one more Google permission — /connect google to add it`);

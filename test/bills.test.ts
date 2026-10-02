@@ -13,6 +13,9 @@ const { billLine, billLines, dueIn, scanSummary, billSettings } = await import("
 const { updateSettings } = await import("../src/settings.js");
 type Message = import("../src/google/gmail.js").Message;
 
+// Pin the region so the tests read the same on any machine (CI runs with a US locale).
+updateSettings({ dateOrder: "dmy", currency: "AUD" });
+
 const results: [string, boolean, string?][] = [];
 const ok = (name: string, cond: boolean, info = "") => results.push([name, cond, info]);
 const eq = (name: string, got: unknown, want: unknown) => ok(name, JSON.stringify(got) === JSON.stringify(want), `got ${JSON.stringify(got)}, want ${JSON.stringify(want)}`);

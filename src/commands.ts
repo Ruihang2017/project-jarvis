@@ -28,6 +28,8 @@ import { exportAll, sizeOf } from "./data/export.js";
 import { DATA_VERSION, readDataVersion } from "./data/version.js";
 import { formatChecks, runDoctor } from "./doctor.js";
 import { config } from "./config.js";
+import { region } from "./region.js";
+import { GETTING_STARTED } from "./setup.js";
 
 const MODE_HELP: Record<Mode, string> = {
   chat: "Codex can't run commands or read files; everything it sees passes the privacy guard",
@@ -44,6 +46,49 @@ const bold = (s: string) => styleText("bold", s);
 
 export type CommandResult = "exit" | void;
 
+/** /help layout: every command belongs to one group, with a one-line description. */
+export const HELP_GROUPS: [string, [string, string][]][] = [
+  [
+    "Conversation",
+    [
+      ["/new", "start a new conversation"],
+      ["/resume", "list recent conversations, or continue one"],
+      ["/image", "attach an image to your next message"],
+      ["/model", "list or switch the model"],
+      ["/effort", "how hard the model thinks"],
+      ["/usage", "your ChatGPT plan limits"],
+      ["/mode", "what Codex may do on this computer (chat, manual, semi-auto, auto)"],
+    ],
+  ],
+  [
+    "What Jarvis looks after",
+    [
+      ["/brief", "today at a glance: events, reminders, bills, mail"],
+      ["/calendar", "your Google Calendar, today and tomorrow or the week"],
+      ["/mail", "unread mail from the last day"],
+      ["/bills", "bills found in your email: review, pay status, monthly summary"],
+      ["/remind", "reminders: list, done, snooze, cancel"],
+      ["/memory", "what Jarvis remembers about you"],
+      ["/images", "pictures Jarvis generated"],
+    ],
+  ],
+  [
+    "Setup and care",
+    [
+      ["/start", "getting-started tips"],
+      ["/connect", "connect your Google account"],
+      ["/google", "Google connection status"],
+      ["/disconnect", "revoke Jarvis's Google access"],
+      ["/background", "reminders even when Jarvis is closed"],
+      ["/region", "date order and currency"],
+      ["/data", "where your data is; back up; export everything"],
+      ["/doctor", "check that everything works"],
+      ["/help", "this list"],
+      ["/exit", "quit"],
+    ],
+  ],
+];
+
 interface Command {
   usage: string;
   help: string;
@@ -55,12 +100,46 @@ let lastListing: Thread[] = [];
 
 const COMMANDS: Record<string, Command> = {
   "/help": {
-    usage: "/help",
-    help: "Show commands",
+    usage: "/help [command]",
+    help: "List commands by group, or show one command's full usage",
+    run: async (args) => {
+      if (args) {
+        const name = args.startsWith("/") ? args : `/${args}`;
+        const c = COMMANDS[name];
+        if (!c) return console.log(dim(`[unknown command ${name}]`));
+        console.log(`  ${c.usage}`);
+        return console.log(dim(`  ${c.help}`));
+      }
+      for (const [title, entries] of HELP_GROUPS) {
+        console.log(bold(title));
+        for (const [name, short] of entries) console.log(`  ${name.padEnd(12)} ${dim(short)}`);
+      }
+      console.log(dim("  /help <command> shows its options · Shift+Tab switches mode · Ctrl+C interrupts a reply; on an empty line it quits"));
+    },
+  },
+
+  "/start": {
+    usage: "/start",
+    help: "Show the getting-started tips again",
     run: async () => {
-      const width = Math.max(...Object.values(COMMANDS).map((c) => c.usage.length));
-      for (const c of Object.values(COMMANDS)) console.log(`  ${c.usage.padEnd(width)}  ${dim(c.help)}`);
-      console.log(dim("  Ctrl+C interrupts a reply; Ctrl+C on an empty line or Ctrl+D quits."));
+      console.log(bold(GETTING_STARTED[0]!));
+      for (const l of GETTING_STARTED.slice(1)) console.log(dim(l));
+    },
+  },
+
+  "/region": {
+    usage: "/region [date dmy|mdy | currency CODE]",
+    help: "How Jarvis reads numeric dates (10/12 = 10 December or October 12) and which currency bare amounts are in",
+    run: async (args) => {
+      const [sub, value] = args.split(/\s+/).filter(Boolean);
+      if (sub === "date" && (value === "dmy" || value === "mdy")) updateSettings({ dateOrder: value });
+      else if (sub === "currency" && value && /^[A-Za-z]{3}$/.test(value)) updateSettings({ currency: value.toUpperCase() });
+      else if (sub) return console.log(dim("[usage: /region date dmy|mdy · /region currency USD]"));
+      const r = region();
+      const s = loadSettings();
+      console.log(`dates:    ${bold(r.dateOrder === "dmy" ? "day/month/year" : "month/day/year")} ${dim(s.dateOrder ? "" : "(detected from your system)")}`);
+      console.log(`currency: ${bold(r.currency)} ${dim(s.currency ? "" : "(detected from your system)")}`);
+      console.log(dim("  /region date dmy|mdy · /region currency USD"));
     },
   },
 
@@ -838,3 +917,6 @@ function duration(secs: number): string {
 
 const ago = (unixSecs: number) => `${duration(Date.now() / 1000 - unixSecs)} ago`;
 const until = (unixSecs: number) => duration(unixSecs - Date.now() / 1000);
+
+/** Every command name, for checks that /help covers them all. */
+export const commandNames = () => Object.keys(COMMANDS);

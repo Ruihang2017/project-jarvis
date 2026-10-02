@@ -38,6 +38,11 @@ export interface Settings {
   billsConfirm?: "always" | "known";
   /** Days before the due date to remind (default [3, 0]); "off" shows bills only in /bills and the brief. */
   billsRemindDays?: number[] | "off";
+  /** Region (P2): numeric date order and home currency; detected from the system locale when unset. */
+  dateOrder?: "dmy" | "mdy";
+  currency?: string;
+  /** Whether the getting-started tips were shown (first run). */
+  onboarded?: boolean;
 }
 
 const settingsPath = () => join(appDataDir(), "settings.json");

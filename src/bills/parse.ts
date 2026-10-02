@@ -4,6 +4,7 @@
  * the payment details differ from the payee's previous bill (D25, O5-A).
  */
 import { addressOf } from "../google/gmail.js";
+import { region, type DateOrder } from "../region.js";
 
 /** Every money-like number in the text, in cents: "1,234.56", "245.30", "89". */
 export function amountsIn(text: string): Set<number> {
@@ -42,10 +43,11 @@ function nearestYear(m: number, d: number, ref: Date): number {
 }
 
 /**
- * Every date written in the text, as YYYY-MM-DD. Day-first for numeric dates (Australian usage).
+ * Every date written in the text, as YYYY-MM-DD. Numeric dates follow the region's order:
+ * "10/12/2026" is 10 December day-first and October 12 month-first.
  * `ref` (the email's date) supplies the year when none is written.
  */
-export function datesIn(text: string, ref: Date): Set<string> {
+export function datesIn(text: string, ref: Date, order: DateOrder = region().dateOrder): Set<string> {
   const out = new Set<string>();
   const add = (y: number | undefined, m: number, d: number) => {
     const year = y === undefined ? nearestYear(m, d, ref) : y < 100 ? 2000 + y : y;
@@ -54,7 +56,7 @@ export function datesIn(text: string, ref: Date): Set<string> {
   };
   for (const m of text.matchAll(/(?<!\d)(\d{4})-(\d{1,2})-(\d{1,2})(?!\d)/g)) add(Number(m[1]), Number(m[2]), Number(m[3]));
   // Sentence punctuation right after the date is fine ("on 12/10/2026."); another numeric part is not.
-  for (const m of text.matchAll(/(?<!\d|\d[/.-])(\d{1,2})[/.-](\d{1,2})[/.-](\d{4}|\d{2})(?!\d|[/.-]\d)/g)) add(Number(m[3]), Number(m[2]), Number(m[1]));
+  for (const m of text.matchAll(/(?<!\d|\d[/.-])(\d{1,2})[/.-](\d{1,2})[/.-](\d{4}|\d{2})(?!\d|[/.-]\d)/g)) add(Number(m[3]), Number(order === "dmy" ? m[2] : m[1]), Number(order === "dmy" ? m[1] : m[2]));
   for (const m of text.matchAll(new RegExp(String.raw`(?<!\d)(\d{1,2})(?:st|nd|rd|th)?\s+(?:of\s+)?(${MONTH_RE})\b\.?,?(?:\s+(\d{4}))?`, "gi"))) {
     add(m[3] ? Number(m[3]) : undefined, MONTHS[m[2]!.toLowerCase()]!, Number(m[1]));
   }

@@ -54,6 +54,14 @@ if ($t.tag) { $toast.Tag = [string]$t.tag }
 [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('${AUMID}').Show($toast)
 `;
 
+/** Removes the per-user registration that names Jarvis's notifications (uninstall). Resolves false if it wasn't there. */
+export function unregisterNotifications(): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (process.platform !== "win32") return resolve(false);
+    execFile("reg", ["delete", `HKCU\\Software\\Classes\\AppUserModelId\\${AUMID}`, "/f"], { windowsHide: true, timeout: 15_000 }, (err) => resolve(!err));
+  });
+}
+
 /** Shows a desktop notification. Resolves false (never throws) if it couldn't be shown. */
 export function showToast(t: Toast): Promise<boolean> {
   return new Promise((resolve) => {

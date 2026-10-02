@@ -7,6 +7,12 @@ try {
   } else if (args[0] === "doctor" && args.length === 1) {
     const { doctorCli } = await import("./cli.js");
     await doctorCli();
+  } else if (args[0] === "setup" && args.length === 1) {
+    const { setupCli } = await import("./cli.js");
+    await setupCli();
+  } else if (args[0] === "uninstall" && args.length === 1) {
+    const { uninstallCli } = await import("./cli.js");
+    await uninstallCli();
   } else if (args[0] === "delete-data") {
     const { deleteDataCli } = await import("./cli.js");
     await deleteDataCli(args.slice(1));

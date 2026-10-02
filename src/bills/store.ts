@@ -8,6 +8,7 @@ import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { memoryDbPath } from "../memory/store.js";
 import { redact, refuseSensitive } from "../privacy/guard.js";
+import { money } from "../region.js";
 
 export type BillKind = "bill" | "autopay" | "statement" | "receipt";
 /** pending: waiting for the user's OK. tracked: reminders on. autopay: recorded, no reminders. */
@@ -260,9 +261,7 @@ export class BillStore {
   }
 }
 
-/** "$245.30", "A$2.49", "€12.00", or "amount in the attachment". */
+/** "$245.30" in the home currency, "US$2.49" for another one, or a note when the email had no amount. */
 export function formatAmount(b: Pick<Bill, "amountCents" | "currency">): string {
-  if (b.amountCents === null) return "amount not in the email";
-  const sign = b.currency === "AUD" ? "$" : b.currency === "USD" ? "US$" : b.currency === "EUR" ? "€" : b.currency === "GBP" ? "£" : `${b.currency} `;
-  return `${sign}${(b.amountCents / 100).toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return b.amountCents === null ? "amount not in the email" : money(b.amountCents, b.currency);
 }

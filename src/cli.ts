@@ -1,7 +1,16 @@
 /** Command-line entry points that aren't the REPL: `jarvis doctor`, `jarvis delete-data`. */
 import { createInterface } from "node:readline/promises";
 import { styleText } from "node:util";
-import { removeTask, taskStatus } from "./background/task.js";
+import { existsSync } from "node:fs";
+import { unregisterNotifications } from "./background/notify.js";
+import { installTask, removeTask, taskStatus } from "./background/task.js";
+import { codexVersion, compareCodex } from "./doctor.js";
+import { CALENDAR_SCOPES, GMAIL_SCOPES, missingFeatures } from "./google/instructions.js";
+import { clientPath } from "./google/oauth.js";
+import { region } from "./region.js";
+import { updateSettings } from "./settings.js";
+import { runSetup, type SetupEnv, type SetupIO } from "./setup.js";
+import { openBrowser } from "./util.js";
 import { dirname, resolve } from "node:path";
 import { wipeData } from "./data/wipe.js";
 import { formatChecks, runDoctor } from "./doctor.js";
@@ -73,4 +82,105 @@ export async function deleteDataCli(args: string[]): Promise<void> {
   for (const p of report.problems) console.log(styleText("yellow", `  problem — ${p}`));
   console.log(report.problems.length ? "Finished with problems (see above)." : "Done.");
   if (report.problems.length) process.exitCode = 1;
+}
+
+/** `jarvis setup`: the first-run wizard (src/setup.ts) wired to the real Codex, scheduler and Google. */
+export async function setupCli(): Promise<void> {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  let closed = false;
+  rl.once("close", () => (closed = true));
+  const io: SetupIO = {
+    say: (line) => console.log(line),
+    ask: async (q) => (closed ? null : rl.question(q).catch(() => null)),
+  };
+  let session: Session | undefined;
+  let started = false;
+  const codex = async () => {
+    session ??= new Session();
+    if (!started) {
+      await session.init();
+      started = true;
+    }
+    return session;
+  };
+  const google = new GoogleAuth();
+  const env: SetupEnv = {
+    node: process.versions.node,
+    codex: async () => compareCodex(await codexVersion()),
+    account: async () => {
+      const s = await codex();
+      const { account } = await s.client.request<{ account: { type: string; email?: string } | null }>("account/read", { refreshToken: false });
+      return account?.type === "chatgpt" ? (account.email ?? "") : null;
+    },
+    signIn: async () => {
+      const s = await codex();
+      await s.login((url) => {
+        console.log(`  If your browser doesn't open, visit:\n  ${url}`);
+        openBrowser(url);
+      });
+    },
+    background: {
+      supported: process.platform === "win32",
+      installed: async () => (await taskStatus()).installed,
+      install: installTask,
+    },
+    google: {
+      clientPath: clientPath(),
+      hasClient: () => existsSync(clientPath()),
+      connected: () => {
+        const s = google.state();
+        return s ? (s.email ?? "") : null;
+      },
+      missing: () => missingFeatures(google.state()),
+      connect: async () => {
+        const s = await google.connect([...CALENDAR_SCOPES, ...GMAIL_SCOPES], (url) => {
+          console.log(`  If your browser doesn't open, visit:\n  ${url}`);
+          openBrowser(url);
+        });
+        return s.email ?? "your Google account";
+      },
+    },
+    region: { current: region, set: (r) => void updateSettings(r) },
+    doctor: async () => formatChecks(await runDoctor(started ? session : undefined)),
+  };
+  try {
+    if (!(await runSetup(io, env))) process.exitCode = 1;
+  } finally {
+    rl.close();
+    session?.close();
+  }
+}
+
+/**
+ * `jarvis uninstall`: undoes what Jarvis set up on this computer, then offers to delete the data.
+ * Machine-wide pieces (scheduled task, notification registration) are only removed when they
+ * belong to this data folder — never from a copy pointed somewhere else by JARVIS_DATA_DIR.
+ */
+export async function uninstallCli(): Promise<void> {
+  const dir = appDataDir();
+  const own = !process.env.JARVIS_DATA_DIR;
+  console.log("Uninstalling Jarvis from this computer:");
+  const google = new GoogleAuth();
+  if (google.state()) {
+    const { revoked } = await google.disconnect().catch(() => ({ revoked: false }));
+    console.log(dim(revoked ? "  revoked Jarvis's Google access" : "  removed the local Google token (check myaccount.google.com/connections to confirm access is gone)"));
+  }
+  if (process.platform === "win32") {
+    const task = await taskStatus();
+    if (task.installed && task.launcher && resolve(dirname(task.launcher)).toLowerCase() === resolve(dir).toLowerCase()) {
+      const r = await removeTask();
+      console.log(dim(r.ok ? "  removed the background task" : `  couldn't remove the background task: ${r.message}`));
+    }
+    if (own && (await unregisterNotifications())) console.log(dim("  removed the notification registration"));
+  }
+  console.log(`Your data is in ${tildify(dir)} (memories, reminders, bills, conversations, your ChatGPT sign-in).`);
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  const answer = await rl.question("Type DELETE to remove it too, or press Enter to keep it: ").catch(() => "");
+  rl.close();
+  if (answer.trim() === "DELETE") {
+    const report = await wipeData({ all: true });
+    for (const p of report.problems) console.log(styleText("yellow", `  problem — ${p}`));
+    console.log(dim(report.problems.length ? "  data not fully removed" : "  data deleted"));
+  } else console.log(dim("  data kept"));
+  console.log("Last step, to remove the program itself:  npm uninstall -g jarvis");
 }
