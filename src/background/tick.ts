@@ -17,12 +17,19 @@ import { GoogleAuth } from "../google/auth.js";
 import { backgroundCheck } from "../google/health.js";
 import { BillStore } from "../bills/store.js";
 import { claimDueNotices, noticeToast } from "../bills/remind.js";
+import { readDataVersion, DATA_VERSION } from "../data/version.js";
 
 const logPath = () => join(appDataDir(), "logs", "tick.log");
 
 export async function runTick(now = new Date()): Promise<Fired[]> {
   mkdirSync(appDataDir(), { recursive: true });
   writeFileSync(heartbeatPath(), now.toISOString());
+  // Data written by a newer Jarvis, or not yet upgraded by this one: leave it alone until the REPL has dealt with it.
+  const version = readDataVersion();
+  if (version !== null && version !== DATA_VERSION) {
+    log(`skipped: data is v${version}, this build expects v${DATA_VERSION}`);
+    return [];
+  }
   const store = new ReminderStore();
   let fired: Fired[] = [];
   try {

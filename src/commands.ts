@@ -23,6 +23,11 @@ import { tildify, truncate } from "./util.js";
 import { formatAmount, type Bill } from "./bills/store.js";
 import { billLine, billLines, billSettings, runScan, scanSummary } from "./bills/view.js";
 import { monthCsv, monthSummary } from "./bills/summary.js";
+import { backupData, listBackups } from "./data/backup.js";
+import { exportAll, sizeOf } from "./data/export.js";
+import { DATA_VERSION, readDataVersion } from "./data/version.js";
+import { formatChecks, runDoctor } from "./doctor.js";
+import { config } from "./config.js";
 
 const MODE_HELP: Record<Mode, string> = {
   chat: "Codex can't run commands or read files; everything it sees passes the privacy guard",
@@ -690,6 +695,47 @@ const COMMANDS: Record<string, Command> = {
       console.log(
         dim(revoked ? "[disconnected: access revoked at Google, local token deleted]" : "[local token deleted; couldn't confirm the revocation with Google — check myaccount.google.com/connections]"),
       );
+    },
+  },
+
+  "/doctor": {
+    usage: "/doctor",
+    help: "Check that everything Jarvis needs is working (also: jarvis doctor)",
+    run: async (_, session) => {
+      for (const l of formatChecks(await runDoctor(session))) console.log(l);
+    },
+  },
+
+  "/data": {
+    usage: "/data [backup | export [path]]",
+    help: "Where your data is and how big; back it up; export everything as readable files",
+    run: async (args, session) => {
+      const [sub = "", ...rest] = args.split(/\s+/).filter(Boolean);
+      const dir = appDataDir();
+      if (sub === "backup") return console.log(dim(`[backed up to ${tildify(backupData("manual"))} — database, settings and Google connection state]`));
+      if (sub === "export") {
+        const arg = rest.join(" ");
+        const target = arg ? resolve(process.cwd(), arg.replace(/^(["'])(.*)\1$/, "$2").replace(/^~(?=$|[\\/])/, homedir())) : join(dir, "exports", `jarvis-export-${new Date().toLocaleDateString("sv")}`);
+        // OneDrive folders sync to the cloud — on a work computer that is the employer's account.
+        if (/onedrive/i.test(target)) {
+          const ok = await session.interactions.approveTool("export to OneDrive", `Export everything to ${tildify(target)}?`, "OneDrive syncs these files to the cloud; on a work computer that is your employer's account.", false);
+          if (ok === "decline") return console.log(dim("[not exported]"));
+        }
+        const r = exportAll(target);
+        return console.log(dim(`[exported ${r.files.join(", ")} to ${tildify(r.dir)}]`));
+      }
+      if (sub) return console.log(dim("[usage: /data · /data backup · /data export [path]]"));
+      const mb = (n: number) => (n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`);
+      const row = (label: string, path: string) => console.log(`  ${label.padEnd(26)} ${mb(sizeOf(path)).padStart(9)}  ${dim(tildify(path))}`);
+      console.log(bold(`Jarvis data · v${readDataVersion() ?? DATA_VERSION}`));
+      row("memories, reminders, bills", join(dir, "memory.db"));
+      row("conversations", config.codexHome);
+      row("generated images", imagesDir());
+      row("backups", join(dir, "backups"));
+      row("exports", join(dir, "exports"));
+      const last = listBackups()[0];
+      console.log(dim(`  last backup: ${last ? last.name : "none"} · /data backup · /data export`));
+      console.log(dim("  to delete everything: exit Jarvis and run  jarvis delete-data"));
     },
   },
 

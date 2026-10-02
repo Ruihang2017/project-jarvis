@@ -9,6 +9,8 @@ export const config = {
   // Separate CODEX_HOME: own login, config and thread history; nothing inherited from ~/.codex.
   codexHome: process.env.JARVIS_CODEX_HOME ?? join(appDataDir(), "codex-home"),
   codexBin: process.env.JARVIS_CODEX_BIN ?? "codex",
+  // The Codex release Jarvis was last verified against (0.156 through 0.159 all worked).
+  testedCodex: "0.159.3",
 };
 
 export const PERSONA = `You are Jarvis, a personal assistant used from a terminal.

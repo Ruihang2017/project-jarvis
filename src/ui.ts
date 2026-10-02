@@ -18,6 +18,7 @@ import { hasGmailAccess } from "./google/gmail.js";
 import { scanDue } from "./bills/scan.js";
 import { runScan, scanSummary } from "./bills/view.js";
 import { claimDueNotices, noticeLine, noticeToast } from "./bills/remind.js";
+import { codexVersion, compareCodex } from "./doctor.js";
 import { detectSixel, preview, renderPreview } from "./sixel.js";
 import { openWithDefaultApp } from "./system.js";
 import { describeToolCall } from "./tools.js";
@@ -287,6 +288,9 @@ export async function repl(session: Session): Promise<void> {
   // Catch up on unlearned conversations first, then the daily tidy (so it sees what was just learned).
   void (async () => {
     notify((await learner.catchUp()).flatMap((r) => r.lines));
+    // Codex moved to a release Jarvis hasn't been verified with: say so once, don't block.
+    const codex = compareCodex(await codexVersion());
+    if (codex.status !== "ok") notify([`Codex ${codex.detail} · /doctor checks everything`]);
     if (learner.enabled()) notify(await new MemoryTidier(session).runIfDue());
     // Bills (N5): look through recent Gmail once a day, while the user is here (billsScan = "daily").
     const g = session.google.state();

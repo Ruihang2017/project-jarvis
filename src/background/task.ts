@@ -93,6 +93,8 @@ export interface TaskStatus {
   nextRun?: string;
   /** Last time a tick actually ran (from its heartbeat file). */
   heartbeat?: Date;
+  /** The launcher script the installed task runs; it lives in the data folder of the Jarvis that installed it. */
+  launcher?: string;
   /** Problems that would stop ticks from working (moved Node, missing build). */
   problems: string[];
 }
@@ -121,6 +123,7 @@ export async function taskStatus(): Promise<TaskStatus> {
     lastResult: field("Last Result"),
     nextRun: field("Next Run Time"),
     heartbeat,
+    launcher: launcherFile,
     problems,
   };
 }
