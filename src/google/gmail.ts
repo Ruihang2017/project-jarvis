@@ -234,3 +234,145 @@ export class GmailClient {
 
 /** Unread mail in Primary from the last day, for /mail and the brief. */
 export const UNREAD_QUERY = "is:unread category:primary newer_than:1d";
+
+// --- composing (N4b) ---
+
+const EMAIL_RE = /^[^\s@<>",;]+@[^\s@<>",;]+\.[^\s@<>",;]+$/;
+
+/** Bare address from "Name <a@b.c>" or "a@b.c" (lower-cased); null if it isn't one. */
+export function addressOf(s: string): string | null {
+  const m = /<([^>]+)>/.exec(s);
+  const a = (m ? m[1]! : s).trim().toLowerCase();
+  return EMAIL_RE.test(a) ? a : null;
+}
+
+/** Splits a header like 'A <a@x.com>, "B, C" <b@x.com>' into entries (commas inside quotes kept). */
+export function splitAddresses(list: string): string[] {
+  const out: string[] = [];
+  let cur = "";
+  let quoted = false;
+  let angle = false;
+  for (const ch of list) {
+    if (ch === '"') quoted = !quoted;
+    else if (ch === "<") angle = true;
+    else if (ch === ">") angle = false;
+    if ((ch === "," || ch === ";") && !quoted && !angle) {
+      if (cur.trim()) out.push(cur.trim());
+      cur = "";
+    } else cur += ch;
+  }
+  if (cur.trim()) out.push(cur.trim());
+  return out;
+}
+
+const nonAscii = (s: string) => /[^\x20-\x7e]/.test(s);
+
+/** RFC 2047 B-encoding in ≤75-char words, never splitting a character across words. */
+export function encodeWord(s: string): string {
+  if (!nonAscii(s)) return s;
+  const words: string[] = [];
+  let chunk = "";
+  for (const ch of s) {
+    if (Buffer.byteLength(chunk + ch) > 45) {
+      words.push(chunk);
+      chunk = "";
+    }
+    chunk += ch;
+  }
+  if (chunk) words.push(chunk);
+  return words.map((w) => `=?UTF-8?B?${Buffer.from(w).toString("base64")}?=`).join(" ");
+}
+
+/** An address header entry with a non-ASCII display name encoded. */
+function encodeAddress(entry: string): string {
+  const m = /^\s*"?([^"<]*?)"?\s*<([^>]+)>\s*$/.exec(entry);
+  if (!m || !m[1]) return entry.trim();
+  const name = nonAscii(m[1]) ? encodeWord(m[1]) : /[(),.:;<>@[\]\\"]/.test(m[1]) ? `"${m[1].replace(/"/g, "")}"` : m[1];
+  return `${name} <${m[2]}>`;
+}
+
+export interface Outgoing {
+  to: string[];
+  cc: string[];
+  subject: string;
+  body: string;
+  inReplyTo?: string;
+  references?: string;
+}
+
+/** Plain-text UTF-8 RFC 2822 message, base64url as Gmail's `raw` wants. From is filled in by Gmail. */
+export function buildRaw(m: Outgoing): string {
+  const lines = [
+    `To: ${m.to.map(encodeAddress).join(", ")}`,
+    ...(m.cc.length ? [`Cc: ${m.cc.map(encodeAddress).join(", ")}`] : []),
+    `Subject: ${encodeWord(m.subject)}`,
+    ...(m.inReplyTo ? [`In-Reply-To: ${m.inReplyTo}`] : []),
+    ...(m.references ? [`References: ${m.references}`] : []),
+    "MIME-Version: 1.0",
+    'Content-Type: text/plain; charset="UTF-8"',
+    "Content-Transfer-Encoding: base64",
+    "",
+    (Buffer.from(m.body.replace(/\r?\n/g, "\r\n")).toString("base64").match(/.{1,76}/g) ?? [""]).join("\r\n"),
+  ];
+  return Buffer.from(lines.join("\r\n")).toString("base64url");
+}
+
+/** "Re: subject" without stacking prefixes. */
+export const replySubject = (s: string) => (/^(re|回复|答复)\s*[:：]/i.test(s.trim()) ? s.trim() : `Re: ${s.trim()}`);
+
+/**
+ * Recipients for a reply: Reply-To or From; with `all`, plus the original To and Cc. The user's own
+ * address and duplicates are dropped.
+ */
+export function replyRecipients(orig: Message, self: string | undefined, all: boolean): { to: string[]; cc: string[] } {
+  const me = self?.toLowerCase();
+  const seen = new Set<string>();
+  const keep = (list: string[]) =>
+    list.filter((e) => {
+      const a = addressOf(e);
+      if (!a || a === me || seen.has(a)) return false;
+      seen.add(a);
+      return true;
+    });
+  let to = keep(splitAddresses(orig.replyTo || orig.from));
+  if (!to.length) to = keep(splitAddresses(orig.to)); // replying to a message the user sent
+  const cc = all ? keep([...splitAddresses(orig.to), ...splitAddresses(orig.cc)]) : [];
+  return { to, cc };
+}
+
+export class GmailWriter {
+  constructor(private readonly auth: GoogleAuth) {}
+
+  async createDraft(raw: string, threadId?: string): Promise<{ id: string }> {
+    return this.auth.api<{ id: string }>(`${API}/drafts`, { method: "POST", body: JSON.stringify({ message: { raw, ...(threadId ? { threadId } : {}) } }) });
+  }
+
+  async updateDraft(id: string, raw: string, threadId?: string): Promise<{ id: string }> {
+    return this.auth.api<{ id: string }>(`${API}/drafts/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      body: JSON.stringify({ id, message: { raw, ...(threadId ? { threadId } : {}) } }),
+    });
+  }
+
+  /** The draft as it is now in Gmail (the user may have edited it there). null if it's gone. */
+  async getDraft(id: string): Promise<Message | null> {
+    try {
+      const d = await this.auth.api<{ id: string; message: ApiMessage }>(`${API}/drafts/${encodeURIComponent(id)}?format=full`);
+      return toMessage(d.message);
+    } catch (e) {
+      if (e instanceof GoogleAuthError && e.code === "http_404") return null;
+      throw e;
+    }
+  }
+
+  async sendDraft(id: string): Promise<{ id: string; threadId: string }> {
+    return this.auth.api<{ id: string; threadId: string }>(`${API}/drafts/send`, { method: "POST", body: JSON.stringify({ id }) });
+  }
+
+  /** Whether the user has emailed this address before (for the first-time warning). */
+  async emailedBefore(address: string): Promise<boolean> {
+    const q = new URLSearchParams({ q: `in:sent to:${address}`, maxResults: "1" });
+    const res = await this.auth.api<{ messages?: unknown[] }>(`${API}/messages?${q}`);
+    return Boolean(res.messages?.length);
+  }
+}

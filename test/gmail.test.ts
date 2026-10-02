@@ -10,6 +10,7 @@ const g = await import("../src/google/gmail.js");
 const { GMAIL_TOOLS, clip, formatThread } = await import("../src/google/gmail-tools.js");
 const { googleInstructions, missingFeatures, CALENDAR_SCOPES, GMAIL_SCOPES } = await import("../src/google/instructions.js");
 const { briefGoogle, composeBrief } = await import("../src/background/brief.js");
+const { GoogleAuthError } = await import("../src/google/auth.js");
 const { MemoryStore } = await import("../src/memory/store.js");
 const { ReminderStore } = await import("../src/reminders/store.js");
 type GoogleAuth = import("../src/google/auth.js").GoogleAuth;
@@ -90,9 +91,13 @@ let current: GoogleState | null;
 const urls: string[] = [];
 const fakeAuth = {
   state: () => current,
-  api: async (url: string) => {
+  api: async (url: string, init: RequestInit = {}) => {
     urls.push(url);
     const u = new URL(url);
+    if (u.pathname.includes("/drafts")) return draftsApi(u, init);
+    if (u.pathname.endsWith("/messages") && (u.searchParams.get("q") ?? "").startsWith("in:sent to:")) {
+      return { messages: sentTo.has(u.searchParams.get("q")!.slice("in:sent to:".length)) ? [{ id: "s" }] : [] };
+    }
     if (u.pathname.endsWith("/messages")) {
       const q = u.searchParams.get("q") ?? "";
       const hits = Object.values(store).filter((m) => (q.includes("is:unread") ? m.labelIds.includes("UNREAD") : true));
@@ -105,6 +110,43 @@ const fakeAuth = {
   },
 } as unknown as GoogleAuth;
 const state = (scopes: string[], o: Partial<GoogleState> = {}): GoogleState => ({ email: "me@gmail.com", scopes: ["openid", ...scopes], connectedAt: "x", ...o });
+
+// Fake drafts: raw RFC 2822 in, parsed back out the way Gmail's format=full would.
+const sentTo = new Set(["alice@x.com"]);
+const gDrafts = new Map<string, { raw: string; threadId?: string }>();
+const sent: { raw: string; threadId?: string }[] = [];
+function parseRaw(raw: string) {
+  const text = Buffer.from(raw, "base64url").toString("utf8");
+  const [head, ...rest] = text.split("\r\n\r\n");
+  const headers = head!.split("\r\n").map((l) => ({ name: l.slice(0, l.indexOf(":")), value: l.slice(l.indexOf(":") + 1).trim() }));
+  const body = Buffer.from(rest.join("\r\n\r\n").replace(/\r\n/g, ""), "base64").toString("utf8");
+  return { headers, body };
+}
+function draftsApi(u: URL, init: RequestInit) {
+  const method = init.method ?? "GET";
+  const body = init.body ? JSON.parse(String(init.body)) : {};
+  if (u.pathname.endsWith("/drafts/send")) {
+    const d = gDrafts.get(body.id);
+    if (!d) throw new Error("Google API 404: Not Found");
+    gDrafts.delete(body.id);
+    sent.push(d);
+    return { id: `sent-${sent.length}`, threadId: d.threadId ?? "new" };
+  }
+  if (u.pathname.endsWith("/drafts") && method === "POST") {
+    const id = `D${gDrafts.size + sent.length + 1}`;
+    gDrafts.set(id, { raw: body.message.raw, threadId: body.message.threadId });
+    return { id };
+  }
+  const id = decodeURIComponent(u.pathname.split("/").pop()!);
+  const d = gDrafts.get(id);
+  if (!d) throw new GoogleAuthError("http_404", "Google API 404: Not Found");
+  if (method === "PUT") {
+    gDrafts.set(id, { raw: body.message.raw, threadId: body.message.threadId });
+    return { id };
+  }
+  const { headers, body: text } = parseRaw(d.raw);
+  return { id, message: { id: `msg-${id}`, threadId: d.threadId ?? "new", payload: { mimeType: "text/plain", headers, body: { data: b64(text) } } } };
+}
 
 const gmail = new g.GmailClient(fakeAuth);
 current = null;
@@ -143,9 +185,77 @@ const long = (id: string, n: number, d: number) => g.toMessage(msg(id, { from: "
 const formatted = formatThread([long("old", 9000, 8), long("new", 2000, 9)], now);
 ok("thread budget favours the newest", formatted.includes("new".repeat(2000)) && formatted.includes("\n[… 25000 more characters not shown]"), String(formatted.length));
 
+// --- composing (N4b) ---
+const longSubject = "关于下周五在 Springfield 的施工进度与防水检查安排的确认";
+const encoded = g.encodeWord(longSubject);
+ok("encoded subject round-trips in ≤75-char words", g.decodeWords(encoded) === longSubject && encoded.split(" ").every((w) => w.length <= 75), encoded);
+eq("ASCII subject unchanged", g.encodeWord("Re: Contract"), "Re: Contract");
+eq("split addresses (quoted comma kept)", g.splitAddresses('"Smith, Alice" <alice@x.com>, bob@x.com; Carol <c@x.com>'), ['"Smith, Alice" <alice@x.com>', "bob@x.com", "Carol <c@x.com>"]);
+eq("address of", [g.addressOf("Alice <Alice@X.com>"), g.addressOf("bob@x.com"), g.addressOf("not an email")], ["alice@x.com", "bob@x.com", null]);
+eq("reply subject", [g.replySubject("Contract"), g.replySubject("Re: Contract"), g.replySubject("回复：合同")], ["Re: Contract", "Re: Contract", "回复：合同"]);
+const raw = parseRaw(g.buildRaw({ to: ["张三 <zhang@x.com>", "bob@x.com"], cc: [], subject: "会议", body: "你好\n明天见", inReplyTo: "<a1@mail>", references: "<a0@mail> <a1@mail>" }));
+const hv = (n: string) => raw.headers.find((h) => h.name === n)?.value;
+eq("raw: encoded name + subject decode back", [g.decodeWords(hv("To")!), g.decodeWords(hv("Subject")!)], ["张三 <zhang@x.com>, bob@x.com", "会议"]);
+eq("raw: threading headers + UTF-8 plain text", [hv("In-Reply-To"), hv("References"), hv("Content-Type")], ["<a1@mail>", "<a0@mail> <a1@mail>", 'text/plain; charset="UTF-8"']);
+eq("raw: body with CRLF", raw.body, "你好\r\n明天见");
+ok("raw: no From (Gmail fills it)", !hv("From"));
+
+const orig = g.toMessage(msg("r1", { from: "Alice <alice@x.com>", to: "me@gmail.com, Bob <bob@x.com>", cc: "Carol <c@x.com>, ME@gmail.com", subject: "Plan", date: now }) as never);
+eq("reply: sender only", g.replyRecipients(orig, "me@gmail.com", false), { to: ["Alice <alice@x.com>"], cc: [] });
+eq("reply all: others, never me", g.replyRecipients(orig, "me@gmail.com", true), { to: ["Alice <alice@x.com>"], cc: ["Bob <bob@x.com>", "Carol <c@x.com>"] });
+eq("reply uses Reply-To", g.replyRecipients({ ...orig, replyTo: "noreply-handler <h@x.com>" }, "me@gmail.com", false).to, ["noreply-handler <h@x.com>"]);
+eq("reply to my own message goes to its recipients", g.replyRecipients({ ...orig, from: "Me <me@gmail.com>", to: "Dan <d@x.com>", cc: "" }, "me@gmail.com", false).to, ["Dan <d@x.com>"]);
+
+current = state([...CALENDAR_SCOPES, ...GMAIL_SCOPES]);
+const draftReply = await tool("gmail_draft").prepare({ reply_to: "m2", body: "Friday works for me." }, ctx);
+eq("draft reply summary", draftReply.summary, "draft reply to Alice: Re: Contract");
+const d1 = await draftReply.execute();
+ok("draft result says NOT sent + handle", d1.startsWith("Draft [d1] saved in the user's Gmail drafts — NOT sent.") && d1.includes("To: Alice <alice@x.com>") && d1.includes("gmail_send with draft d1"), d1);
+const stored = [...gDrafts.values()][0]!;
+const storedRaw = parseRaw(stored.raw);
+eq("reply draft is threaded", [stored.threadId, storedRaw.headers.find((h) => h.name === "In-Reply-To")?.value], ["T1", "<a1@mail>"]);
+await throws("draft: no recipient", () => tool("gmail_draft").prepare({ subject: "x", body: "y" }, ctx), "no recipient");
+await throws("draft: bad address", () => tool("gmail_draft").prepare({ to: "Alice", subject: "x", body: "y" }, ctx), "not an email address: Alice");
+await throws("draft: new email needs a subject", () => tool("gmail_draft").prepare({ to: "a@x.com", body: "y" }, ctx), "subject");
+const revise = await tool("gmail_draft").prepare({ draft: "d1", body: "Friday 3pm works for me." }, ctx);
+eq("revise summary", revise.summary, "revise draft d1: Re: Contract");
+await revise.execute();
+eq("revise updates the same Gmail draft", [gDrafts.size, parseRaw([...gDrafts.values()][0]!.raw).body], [1, "Friday 3pm works for me."]);
+
+await throws("send: only Jarvis drafts", () => tool("gmail_send").prepare({ draft: "d9" }, ctx), "only drafts Jarvis wrote");
+const send1 = await tool("gmail_send").prepare({ draft: "d1" }, ctx);
+eq("send preview", [send1.summary, send1.preview, send1.allowAlways], [
+  "send email to Alice: Re: Contract",
+  "To: Alice <alice@x.com>\n  Subject: Re: Contract\n  \n  Friday 3pm works for me.",
+  false,
+]);
+
+const newMail = await (await tool("gmail_draft").prepare({ to: "New Person <new@x.com>", subject: "Hello", body: "Hi there" }, ctx)).execute();
+const newRef = newMail.match(/\[(d\d+)\]/)![1]!;
+// The user edits the draft in Gmail before sending.
+const [newId, newDraft] = [...gDrafts.entries()].find(([, d]) => parseRaw(d.raw).body === "Hi there")!;
+gDrafts.set(newId, { ...newDraft, raw: g.buildRaw({ to: ["New Person <new@x.com>"], cc: [], subject: "Hello", body: "Hi there — edited by me" }) });
+const send2 = await tool("gmail_send").prepare({ draft: newRef }, ctx);
+ok("send preview shows the Gmail version + edit note + first-time warning", send2.preview!.includes("(edited in Gmail since Jarvis drafted it)") && send2.preview!.includes("Hi there — edited by me") && send2.preview!.includes("⚠ first email to new@x.com"), send2.preview);
+
+const { ToolRunner } = await import("../src/tools.js");
+const runner = new ToolRunner(dir, {} as never, {} as never, fakeAuth);
+const answer = (a: string) => ({ approveTool: async () => a }) as never;
+const req = (draft: string) => ({ threadId: "t", turnId: "u", callId: "c", tool: "gmail_send", arguments: { draft } }) as never;
+const declinedSend = await runner.call(req("d1"), answer("decline"));
+ok("declined send → nothing sent", declinedSend.success === false && sent.length === 0, JSON.stringify(declinedSend));
+const okSend = await runner.call(req("d1"), answer("accept"));
+ok("approved send → sent, threaded", okSend.success === true && sent.length === 1 && sent[0]!.threadId === "T1", JSON.stringify(okSend));
+const again = await runner.call(req("d1"), answer("accept"));
+ok("a sent draft can't be sent again", again.success === false && sent.length === 1, JSON.stringify(again));
+const after = await (await tool("gmail_draft").prepare({ to: "a@x.com", subject: "s", body: "b" }, ctx)).execute();
+ok("draft handles are never reused after sending", after.startsWith("Draft [d3]"), after);
+gDrafts.delete(newId); // deleted in Gmail
+await throws("draft deleted in Gmail", () => tool("gmail_send").prepare({ draft: newRef }, ctx), "no longer exists");
+
 // --- instructions & notices ---
 ok("instructions: Gmail granted", googleInstructions(state([...CALENDAR_SCOPES, ...GMAIL_SCOPES])).includes("gmail_search"));
-ok("instructions: can't send yet, can't delete", /can't write, reply to or send email yet[\s\S]*can't archive, label, mark read or delete/.test(googleInstructions(state(GMAIL_SCOPES))));
+ok("instructions: draft then send, can't delete", /gmail_draft[\s\S]*gmail_send[\s\S]*can't archive, label, mark read or delete/.test(googleInstructions(state(GMAIL_SCOPES))));
 ok("instructions: Gmail not granted", googleInstructions(state(CALENDAR_SCOPES)).includes("Gmail access hasn't been granted"));
 eq("missing features", [missingFeatures(null), missingFeatures(state([])), missingFeatures(state(CALENDAR_SCOPES)), missingFeatures(state([...CALENDAR_SCOPES, ...GMAIL_SCOPES]))], [[], ["calendar", "Gmail"], ["Gmail"], []]);
 

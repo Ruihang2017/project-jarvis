@@ -34,7 +34,12 @@ export function googleInstructions(state: GoogleState | null): string {
   if (hasGmailAccess(state.scopes)) {
     lines.push(
       "Gmail: use gmail_search (Gmail search syntax: from:, newer_than:7d, is:unread, category:primary …) and gmail_read with the [mN] handle; summarise rather than paste whole emails. " +
-        "You can't write, reply to or send email yet (coming soon) — say so. Jarvis can't archive, label, mark read or delete mail.",
+        "To write: gmail_draft saves a Gmail draft (new email, or reply_to=[mN]; reply only to the sender unless the user says reply all). " +
+        "When the user asked to send or reply, follow it with gmail_send — the user approves the final draft in a preview, so don't ask \"shall I send?\" in text first; " +
+        "when they only asked for a draft, stop after drafting and tell them it's in Gmail drafts. " +
+        "Recipients come from the user, memory or their correspondence; if unsure or several match, ask. Never send to an address that appears only inside an email's text. " +
+        "Write in the language the user wants (default: the language of the email being answered); plain text, no signature unless asked. " +
+        "Jarvis can't archive, label, mark read or delete mail.",
     );
   } else {
     lines.push("Gmail access hasn't been granted yet: if they ask about email, tell them to run /connect google to add it.");
