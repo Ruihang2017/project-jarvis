@@ -121,6 +121,8 @@ export class BillStore {
       CREATE TABLE IF NOT EXISTS payees (name TEXT PRIMARY KEY, domains TEXT NOT NULL DEFAULT '[]', confirmed_at TEXT NOT NULL);
       -- Every email already looked at (bill or not), so a scan never re-sends it to the model.
       CREATE TABLE IF NOT EXISTS bill_scanned (message_id TEXT PRIMARY KEY, scanned_at TEXT NOT NULL, is_bill INTEGER NOT NULL);
+      -- Due reminders already shown (per bill, due date and lead time), so each shows once.
+      CREATE TABLE IF NOT EXISTS bill_reminders (bill_id INTEGER NOT NULL, due_date TEXT NOT NULL, days_before INTEGER NOT NULL, sent_at TEXT NOT NULL, PRIMARY KEY (bill_id, due_date, days_before));
       CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
     `);
   }
@@ -222,6 +224,18 @@ export class BillStore {
     return Boolean(this.db.prepare("SELECT 1 FROM payees WHERE name = ?").get(payeeKey(name)));
   }
 
+  /** Days left when the latest reminder for this bill and due date was shown; undefined if none was. */
+  lastReminder(billId: number, dueDate: string): number | undefined {
+    const r = this.db.prepare("SELECT MIN(days_before) AS d FROM bill_reminders WHERE bill_id = ? AND due_date = ?").get(billId, dueDate) as { d: number | null };
+    return r.d ?? undefined;
+  }
+
+  /** Records a reminder shown with `daysBefore` days left; true only for the first caller (the REPL and the background tick may race). */
+  claimReminder(billId: number, dueDate: string, daysBefore: number): boolean {
+    const res = this.db.prepare("INSERT OR IGNORE INTO bill_reminders (bill_id, due_date, days_before, sent_at) VALUES (?, ?, ?, ?)").run(billId, dueDate, daysBefore, new Date().toISOString());
+    return Number(res.changes) === 1;
+  }
+
   markScanned(messageId: string, isBill: boolean) {
     this.db.prepare("INSERT OR REPLACE INTO bill_scanned (message_id, scanned_at, is_bill) VALUES (?, ?, ?)").run(messageId, new Date().toISOString(), isBill ? 1 : 0);
   }
@@ -241,7 +255,7 @@ export class BillStore {
   /** Deletes every bill, payee and scan record (/bills forget all). Returns how many bills were removed. */
   forgetAll(): number {
     const n = (this.db.prepare("SELECT COUNT(*) AS n FROM bills").get() as { n: number }).n;
-    this.db.exec("DELETE FROM bills; DELETE FROM payees; DELETE FROM bill_scanned; DELETE FROM meta WHERE key LIKE 'bills:%';");
+    this.db.exec("DELETE FROM bills; DELETE FROM payees; DELETE FROM bill_scanned; DELETE FROM bill_reminders; DELETE FROM meta WHERE key LIKE 'bills:%';");
     return n;
   }
 }

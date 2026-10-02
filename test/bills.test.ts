@@ -138,6 +138,90 @@ put(msg("e-12", "AWS <aws-billing@amazon.com>", "Billing statement available", "
 const r6 = await scanBills(deps);
 eq("the same bill under two names is recorded once; an empty automatic payment isn't recorded", r6.pending.map((b) => payeeKey(b.payee)), ["harbour builders"]);
 
+// --- N5b: due reminders ---
+const { claimDueNotices, noticeLine, noticeToast, briefBills } = await import("../src/bills/remind.js");
+const { BILL_TOOLS, describeBillCall, BILL_INSTRUCTIONS } = await import("../src/bills/tools.js");
+const { monthSummary, monthCsv } = await import("../src/bills/summary.js");
+const { composeBrief } = await import("../src/background/brief.js");
+const { MemoryStore } = await import("../src/memory/store.js");
+const { ReminderStore } = await import("../src/reminders/store.js");
+const rs = new BillStore(join(dir, "n5b.db"));
+const tracked = (payee: string, cents: number | null, due: string | null, extra: object = {}) =>
+  rs.add({ ...base, payee, amountCents: cents, dueDate: due, status: "tracked", messageId: `r-${payee}-${due}`, title: payee, ...extra });
+const at = (d: number, h = 9, min = 30) => new Date(2026, 9, d, h, min);
+updateSettings({ billsRemindDays: [3, 0] });
+const power = tracked("Origin Energy", 24530, "2026-10-18");
+eq("no reminder before the lead time", claimDueNotices(rs, at(14)).length, 0);
+eq("no reminder before 09:00", claimDueNotices(rs, at(15, 8, 59)).length, 0);
+const n3 = claimDueNotices(rs, at(15));
+eq("3 days before: one reminder", n3.map((n) => [n.bill.payee, n.daysLeft]), [["Origin Energy", 3]]);
+eq("reminder text", noticeLine(n3[0]!), `💳 Origin Energy $245.30 — due in 3 days (Sun 10-18) · /bills paid ${power.id}`);
+const toast = noticeToast(n3[0]!);
+ok("toast: sticky reminder, says where to pay, no payment details", toast.kind === "reminder" && toast.title === "💳 Origin Energy $245.30 — due in 3 days" && toast.body.includes("pay in your bank or Origin Energy's own site or app"), JSON.stringify(toast));
+eq("shown once (REPL and background tick can't both show it)", claimDueNotices(rs, at(15, 10)).length, 0);
+eq("nothing on the days in between", claimDueNotices(rs, at(16)).length, 0);
+eq("on the day: second reminder", claimDueNotices(rs, at(18)).map((n) => n.daysLeft), [0]);
+eq("no third reminder", claimDueNotices(rs, at(19)).length, 0);
+
+const water = tracked("Sydney Water", 18000, "2026-10-20");
+eq("computer off on the reminder day → one late notice, not none", claimDueNotices(rs, at(19)).map((n) => [n.bill.payee, n.daysLeft]), [["Sydney Water", 1]]);
+eq("…and still the notice on the day", claimDueNotices(rs, at(20)).map((n) => n.daysLeft), [0]);
+const late = tracked("Council", 40000, "2026-10-05");
+eq("already overdue when first seen → one overdue notice", claimDueNotices(rs, at(7)).filter((n) => n.bill.id === late.id).map((n) => noticeLine(n).includes("2 days overdue")), [true]);
+rs.update(late.id, { status: "paid" });
+const unchecked = tracked("Unverified Co", 5000, "2026-10-22", { needsCheck: true });
+const paidOne = tracked("Paid Co", 5000, "2026-10-22");
+rs.update(paidOne.id, { status: "paid" });
+eq("paid and unverified bills never remind", claimDueNotices(rs, at(22)).map((n) => n.bill.payee), []);
+rs.update(water.id, { dueDate: "2026-10-28" });
+eq("a changed due date re-arms the reminders", claimDueNotices(rs, at(25)).map((n) => [n.bill.payee, n.daysLeft]), [["Sydney Water", 3]]);
+updateSettings({ billsRemindDays: [7] });
+const tele = tracked("Telco", 8900, "2026-11-10");
+eq("the lead time follows the setting", [claimDueNotices(rs, at(31)).length, claimDueNotices(rs, new Date(2026, 10, 3, 9, 30)).map((n) => n.daysLeft)], [0, [7]]);
+updateSettings({ billsRemindDays: "off" });
+tracked("Gas Co", 7000, "2026-10-30");
+eq("remind off → no notifications", claimDueNotices(rs, at(30)).length, 0);
+updateSettings({ billsRemindDays: [3, 0] });
+
+// --- N5b: brief, tools, summary ---
+rs.add({ ...base, payee: "New Co", amountCents: 100, dueDate: null, status: "pending", messageId: "r-new", title: "x" });
+const bb = briefBills(rs, at(27));
+eq("brief: bills due within a week, plus new ones to review", bb.lines, ["💳 Origin Energy $245.30 — 9 days overdue", "💳 Unverified Co $50.00 — 5 days overdue", "💳 Sydney Water $180.00 — due tomorrow", "💳 Gas Co $70.00 — due in 3 days", "💳 1 new bill to review — /bills review"]);
+const bm = new MemoryStore(join(dir, "brief.db"));
+const br = new ReminderStore(join(dir, "brief.db"));
+eq("brief counts bills", composeBrief(bm, br, at(27), {}, rs).count, bb.count);
+bm.close();
+br.close();
+
+const billCtx = { bills: rs } as never;
+const billTool = (n: string) => BILL_TOOLS.find((t) => t.name === n)!;
+const listed = await (await billTool("bills_list").prepare({}, billCtx)).execute();
+ok("bills_list: to pay, review count, no payment details", listed.includes("To pay:") && listed.includes("Sydney Water") && listed.includes("1 new bill found in email") && !/BSB|account|biller/i.test(listed), listed);
+const mark = await billTool("bill_mark_paid").prepare({ bill: tele.id }, billCtx);
+eq("mark paid asks first, with the bill in the summary", [billTool("bill_mark_paid").approval, mark.summary.startsWith(`mark paid: #${tele.id} Telco`)], ["ask", true]);
+eq("not paid until approved", rs.get(tele.id)!.status, "tracked");
+await mark.execute();
+eq("paid after approval", [rs.get(tele.id)!.status, Boolean(rs.get(tele.id)!.paidAt)], ["paid", true]);
+try {
+  await billTool("bill_mark_paid").prepare({ bill: tele.id }, billCtx);
+  ok("already paid is refused", false);
+} catch (e) {
+  ok("already paid is refused", String(e).includes("already marked paid"));
+}
+eq("activity lines", [describeBillCall("bills_list", {}, true), describeBillCall("bill_mark_paid", { bill: 3 }, false), describeBillCall("other", {}, true)], ["💳 checked bills", "💳 not marked paid #3", undefined]);
+ok("instructions: scan via /bills scan, never pays", BILL_INSTRUCTIONS.includes("/bills scan") && BILL_INSTRUCTIONS.includes("never pays"));
+
+tracked('=HYPERLINK("http://x","Evil, Co")', 1000, "2026-10-09");
+tracked("AWS", 249, "2026-10-03", { currency: "USD", kind: "autopay", status: "autopay" });
+const sum = monthSummary(rs, "2026-10");
+ok("month summary header: totals per currency and counts", /^2026-10 · \$[\d,.]+ \+ US\$2\.49 across \d+ bills \(\d+ paid, \d+ to pay, 1 automatic\)$/.test(sum[0]!), sum[0]);
+ok("month summary lists each bill with its status", sum.some((l) => /electricity\s+\$245\.30\s+Origin Energy \(to pay\)/.test(l)) && sum.some((l) => l.includes("Council (paid)")), sum.join("\n"));
+eq("empty month", monthSummary(rs, "2025-01"), ["2025-01: no bills"]);
+const csv = monthCsv(rs, "2026-10");
+ok("CSV: header, CRLF, quoted commas, formulas defused", csv.startsWith("payee,category,kind,amount,currency,due_date,status,paid_on\r\n") && csv.includes(`"'=HYPERLINK(""http://x"",""Evil, Co"")"`) && csv.includes("Origin Energy,electricity,bill,245.30,AUD,2026-10-18,to pay,"), csv);
+ok("pending and dismissed bills stay out of the summary", !csv.includes("New Co"));
+rs.close();
+
 // --- nothing account-like on disk ---
 store.close();
 const disk = readFileSync(join(dir, "memory.db")).toString("latin1") + (() => { try { return readFileSync(join(dir, "memory.db-wal")).toString("latin1"); } catch { return ""; } })();

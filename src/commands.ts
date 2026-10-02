@@ -22,6 +22,7 @@ import { GoogleAuthError, shortScope } from "./google/auth.js";
 import { tildify, truncate } from "./util.js";
 import { formatAmount, type Bill } from "./bills/store.js";
 import { billLine, billLines, billSettings, runScan, scanSummary } from "./bills/view.js";
+import { monthCsv, monthSummary } from "./bills/summary.js";
 
 const MODE_HELP: Record<Mode, string> = {
   chat: "Codex can't run commands or read files; everything it sees passes the privacy guard",
@@ -444,7 +445,7 @@ const COMMANDS: Record<string, Command> = {
         return console.log(dim(`[morning brief: ${val}${val === "off" ? "" : ` · next ${nextBriefAt() ?? "?"}`}]`));
       }
       if (sub) return console.log(dim(`[unknown /brief option "${sub}"]`));
-      const brief = composeBrief(session.memory, session.reminders, new Date(), await briefGoogle(session.google));
+      const brief = composeBrief(session.memory, session.reminders, new Date(), await briefGoogle(session.google), session.bills);
       console.log(bold(brief.title));
       for (const l of brief.lines) console.log(`  ${l}`);
       const { time, days } = briefSchedule();
@@ -454,7 +455,7 @@ const COMMANDS: Record<string, Command> = {
 
   "/bills": {
     usage: "/bills [cmd]",
-    help: "Bills found in Gmail: review, ok|ignore <id|all>, edit <id> amount|due|payee <value>, paid <id>, scan, settings, set scan|confirm|remind <value>, forget all",
+    help: "Bills found in Gmail: review, ok|ignore <id|all>, edit <id> amount|due|payee <value>, paid <id>, month|export [YYYY-MM], scan, settings, set scan|confirm|remind <value>, forget all",
     run: async (args, session) => {
       const bills = session.bills;
       const [sub = "", a1, a2, ...rest] = args.split(/\s+/).filter(Boolean);
@@ -539,6 +540,27 @@ const COMMANDS: Record<string, Command> = {
           const lines = scanSummary(r);
           for (const l of lines.length ? lines : [`no new bills (${r.scanned} email${r.scanned === 1 ? "" : "s"} checked)`]) console.log(dim(`  ${l}`));
           return;
+        }
+        case "month":
+        case "export": {
+          const month = a1 && /^\d{4}-(0[1-9]|1[0-2])$/.test(a1) ? a1 : localDate(new Date()).slice(0, 7);
+          const pathArg = (a1 === month ? [a2, ...rest] : [a1, a2, ...rest]).filter(Boolean).join(" ");
+          if (sub === "month") {
+            const [head, ...lines] = monthSummary(bills, month);
+            console.log(bold(head!));
+            for (const l of lines) console.log(l);
+            return lines.length ? console.log(dim(`  /bills export ${month} saves this as a CSV file`)) : undefined;
+          }
+          const dir = join(appDataDir(), "exports");
+          const path = pathArg ? resolve(process.cwd(), pathArg.replace(/^(["'])(.*)\1$/, "$2").replace(/^~(?=$|[\\/])/, homedir())) : join(dir, `bills-${month}.csv`);
+          // OneDrive folders sync to the cloud — on a work computer that is the employer's account.
+          if (/onedrive/i.test(path)) {
+            const ok = await session.interactions.approveTool("export to OneDrive", `Save your bills to ${tildify(path)}?`, "OneDrive syncs this file to the cloud; on a work computer that is your employer's account.", false);
+            if (ok === "decline") return console.log(dim("[not exported]"));
+          }
+          if (!pathArg) mkdirSync(dir, { recursive: true });
+          writeFileSync(path, monthCsv(bills, month));
+          return console.log(dim(`[exported ${month} to ${tildify(path)}]`));
         }
         case "settings": {
           const s = billSettings();

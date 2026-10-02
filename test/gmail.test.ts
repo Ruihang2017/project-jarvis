@@ -239,7 +239,7 @@ const send2 = await tool("gmail_send").prepare({ draft: newRef }, ctx);
 ok("send preview shows the Gmail version + edit note + first-time warning", send2.preview!.includes("(edited in Gmail since Jarvis drafted it)") && send2.preview!.includes("Hi there — edited by me") && send2.preview!.includes("⚠ first email to new@x.com"), send2.preview);
 
 const { ToolRunner } = await import("../src/tools.js");
-const runner = new ToolRunner(dir, {} as never, {} as never, fakeAuth);
+const runner = new ToolRunner(dir, {} as never, {} as never, fakeAuth, {} as never);
 const answer = (a: string) => ({ approveTool: async () => a }) as never;
 const req = (draft: string) => ({ threadId: "t", turnId: "u", callId: "c", tool: "gmail_send", arguments: { draft } }) as never;
 const declinedSend = await runner.call(req("d1"), answer("decline"));

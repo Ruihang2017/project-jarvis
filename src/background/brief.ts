@@ -10,6 +10,8 @@ import type { ReminderStore } from "../reminders/store.js";
 import { loadSettings } from "../settings.js";
 import { truncate } from "../util.js";
 import type { GoogleAuth } from "../google/auth.js";
+import type { BillStore } from "../bills/store.js";
+import { briefBills } from "../bills/remind.js";
 import { CalendarClient, hasCalendarAccess, todayLines } from "../google/calendar.js";
 import { displayName, GmailClient, hasGmailAccess, UNREAD_QUERY } from "../google/gmail.js";
 
@@ -86,7 +88,8 @@ export interface Brief {
   count: number;
 }
 
-export function composeBrief(memory: MemoryStore, reminders: ReminderStore, now = new Date(), google: BriefGoogle = {}): Brief {
+export function composeBrief(memory: MemoryStore, reminders: ReminderStore, now = new Date(), google: BriefGoogle = {}, bills?: BillStore): Brief {
+  const billing = bills ? briefBills(bills, now) : { lines: [], count: 0 };
   const day = today();
   const lines = (s: BriefSection, what: string) => (s === "unavailable" ? [`${what} unavailable right now`] : (s?.lines ?? []));
   const count = (s: BriefSection) => (s === "unavailable" || !s ? 0 : s.count);
@@ -105,11 +108,11 @@ export function composeBrief(memory: MemoryStore, reminders: ReminderStore, now 
   const pending = memory.list({ status: "pending" }).length;
   const review = pending ? [`🔒 ${pending} memor${pending === 1 ? "y" : "ies"} awaiting /memory review`] : [];
 
-  const total = count(google.calendar) + todays.length + comingUp.length + count(google.mail) + pending;
+  const total = count(google.calendar) + todays.length + billing.count + comingUp.length + count(google.mail) + pending;
   const date = formatDue(`${day}T00:00`, now).slice(0, -6); // "Thu 10-01"
   return {
     title: total ? `☀ ${date} · ${total} thing${total === 1 ? "" : "s"} today` : `☀ ${date} · nothing scheduled`,
-    lines: [...events, ...todays, ...comingUp, ...mail, ...review],
+    lines: [...events, ...todays, ...billing.lines, ...comingUp, ...mail, ...review],
     count: total,
   };
 }

@@ -15,6 +15,8 @@ import { briefDue, briefGoogle, composeBrief, markBriefShown } from "./brief.js"
 import { MemoryStore } from "../memory/store.js";
 import { GoogleAuth } from "../google/auth.js";
 import { backgroundCheck } from "../google/health.js";
+import { BillStore } from "../bills/store.js";
+import { claimDueNotices, noticeToast } from "../bills/remind.js";
 
 const logPath = () => join(appDataDir(), "logs", "tick.log");
 
@@ -29,12 +31,19 @@ export async function runTick(now = new Date()): Promise<Fired[]> {
   } catch (e) {
     log(`reminders failed: ${e instanceof Error ? e.stack ?? e.message : String(e)}`);
   }
+  const bills = new BillStore();
   try {
-    await maybeBrief(store, now);
+    for (const n of claimDueNotices(bills, now)) await showToast(noticeToast(n));
+  } catch (e) {
+    log(`bills failed: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  try {
+    await maybeBrief(store, bills, now);
   } catch (e) {
     log(`brief failed: ${e instanceof Error ? e.stack ?? e.message : String(e)}`);
   } finally {
     store.close();
+    bills.close();
   }
   try {
     await backgroundCheck(new GoogleAuth(), showToast, now);
@@ -45,12 +54,12 @@ export async function runTick(now = new Date()): Promise<Fired[]> {
 }
 
 /** Morning brief as a notification, once per brief day; skipped when there's nothing to say. */
-async function maybeBrief(reminders: ReminderStore, now: Date) {
+async function maybeBrief(reminders: ReminderStore, bills: BillStore, now: Date) {
   const memory = new MemoryStore();
   try {
     if (!briefDue(memory, "toast", now)) return;
     markBriefShown(memory, "toast"); // mark first: a slow toast must not repeat next minute
-    const brief = composeBrief(memory, reminders, now, await briefGoogle(new GoogleAuth(), now));
+    const brief = composeBrief(memory, reminders, now, await briefGoogle(new GoogleAuth(), now), bills);
     if (brief.count) await showToast({ title: brief.title, body: brief.lines.join("\n"), tag: "brief", kind: "info" });
   } finally {
     memory.close();

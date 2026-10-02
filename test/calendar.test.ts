@@ -255,7 +255,7 @@ await throws("deleted event is gone", () => tool("calendar_update").prepare({ ev
 
 // Approval goes through ToolRunner: declining writes nothing.
 const { ToolRunner } = await import("../src/tools.js");
-const runner = new ToolRunner(dir, {} as never, {} as never, fakeAuth);
+const runner = new ToolRunner(dir, {} as never, {} as never, fakeAuth, {} as never);
 const ui = (answer: string) => ({ approveTool: async () => answer }) as never;
 const before = writes.length;
 const declinedRes = await runner.call({ threadId: "t", turnId: "u", callId: "c", tool: "calendar_create", arguments: { title: "x", start: "2026-10-03T10:00" } } as never, ui("decline"));

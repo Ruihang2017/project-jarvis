@@ -18,6 +18,8 @@ import { describeReminderCall, REMINDER_TOOLS } from "./reminders/tools.js";
 import type { GoogleAuth } from "./google/auth.js";
 import { CALENDAR_TOOLS, describeCalendarCall } from "./google/calendar-tools.js";
 import { describeGmailCall, GMAIL_TOOLS } from "./google/gmail-tools.js";
+import type { BillStore } from "./bills/store.js";
+import { BILL_TOOLS, describeBillCall } from "./bills/tools.js";
 
 const MAX_CLIPBOARD_CHARS = 50_000;
 
@@ -39,6 +41,7 @@ export interface ToolContext {
   memory: MemoryStore;
   reminders: ReminderStore;
   google: GoogleAuth;
+  bills: BillStore;
   threadId: string;
 }
 
@@ -55,6 +58,7 @@ const TOOLS: Tool[] = [
   ...REMINDER_TOOLS,
   ...CALENDAR_TOOLS,
   ...GMAIL_TOOLS,
+  ...BILL_TOOLS,
   {
     name: "clipboard_read",
     description:
@@ -139,7 +143,7 @@ export function describeToolCall(tool: string, args: unknown, ok = true): string
     case "open":
       return `⚙ open ${truncate(String(a.target ?? ""), 80)}`;
     default:
-      return describeMemoryCall(tool, a, ok) ?? describeReminderCall(tool, a, ok) ?? describeCalendarCall(tool, a, ok) ?? describeGmailCall(tool, a, ok) ?? `⚙ ${tool}`;
+      return describeMemoryCall(tool, a, ok) ?? describeReminderCall(tool, a, ok) ?? describeCalendarCall(tool, a, ok) ?? describeGmailCall(tool, a, ok) ?? describeBillCall(tool, a, ok) ?? `⚙ ${tool}`;
   }
 }
 
@@ -154,6 +158,7 @@ export class ToolRunner {
     private readonly memory: MemoryStore,
     private readonly reminders: ReminderStore,
     private readonly google: GoogleAuth,
+    private readonly bills: BillStore,
   ) {}
 
   async call(req: DynamicToolCallParams, ui: Interactions): Promise<DynamicToolCallResponse> {
@@ -164,7 +169,7 @@ export class ToolRunner {
     const args = req.arguments && typeof req.arguments === "object" && !Array.isArray(req.arguments) ? req.arguments : {};
     let call: PreparedCall;
     try {
-      call = await tool.prepare(args as Record<string, unknown>, { workspace: this.workspace, memory: this.memory, reminders: this.reminders, google: this.google, threadId: req.threadId });
+      call = await tool.prepare(args as Record<string, unknown>, { workspace: this.workspace, memory: this.memory, reminders: this.reminders, google: this.google, bills: this.bills, threadId: req.threadId });
     } catch (e) {
       return fail(`Invalid call: ${e instanceof Error ? e.message : String(e)}`);
     }

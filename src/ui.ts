@@ -17,6 +17,7 @@ import { missingFeatures } from "./google/instructions.js";
 import { hasGmailAccess } from "./google/gmail.js";
 import { scanDue } from "./bills/scan.js";
 import { runScan, scanSummary } from "./bills/view.js";
+import { claimDueNotices, noticeLine, noticeToast } from "./bills/remind.js";
 import { detectSixel, preview, renderPreview } from "./sixel.js";
 import { openWithDefaultApp } from "./system.js";
 import { describeToolCall } from "./tools.js";
@@ -303,11 +304,17 @@ export async function repl(session: Session): Promise<void> {
         // Also a desktop notification, in case the terminal isn't the window in front.
         for (const f of fired) void showToast(reminderToast(f));
       }
+      // Bills coming due (N5b); claimed like reminders, so the background tick doesn't repeat them.
+      const dueBills = claimDueNotices(session.bills);
+      if (dueBills.length) {
+        notify(dueBills.map(noticeLine));
+        for (const n of dueBills) void showToast(noticeToast(n));
+      }
       // Daily brief: first time Jarvis is open after the brief time on a brief day.
       if (briefDue(session.memory, "repl")) {
         markBriefShown(session.memory, "repl");
         void briefGoogle(session.google).then((google) => {
-          const brief = composeBrief(session.memory, session.reminders, new Date(), google);
+          const brief = composeBrief(session.memory, session.reminders, new Date(), google, session.bills);
           notify([brief.title, ...brief.lines.map((l) => `  ${l}`)]);
         });
       }
