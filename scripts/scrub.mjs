@@ -12,6 +12,7 @@
  *   node scripts/scrub.mjs --check     list files that still contain something to replace; exit 1 if any
  *   node scripts/scrub.mjs --stdin     filter standard input (commit messages)
  *   node scripts/scrub.mjs --patterns  print the strings being looked for, one per line
+ *   node scripts/scrub.mjs --scan      read standard input; print lines containing any of them (any case); exit 1 if found
  */
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
@@ -29,6 +30,15 @@ const scrub = (text) => REPLACEMENTS.reduce((out, [from, to]) => out.split(from)
 const args = process.argv.slice(2);
 if (args.includes("--patterns")) {
   for (const [from] of REPLACEMENTS) console.log(from);
+} else if (args.includes("--scan")) {
+  // Done here rather than with grep: Git for Windows' grep crashes on -i -F with non-ASCII input.
+  let s = "";
+  process.stdin.setEncoding("utf8");
+  for await (const chunk of process.stdin) s += chunk;
+  const needles = REPLACEMENTS.map(([from]) => from.toLowerCase());
+  const hits = s.split("\n").filter((line) => needles.some((n) => line.toLowerCase().includes(n)));
+  for (const h of hits.slice(0, 20)) console.log(h);
+  if (hits.length) process.exitCode = 1;
 } else if (args.includes("--stdin")) {
   let s = "";
   process.stdin.setEncoding("utf8");

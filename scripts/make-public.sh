@@ -73,25 +73,33 @@ echo "== identities in the public history"
 git log --all --format='%an <%ae> | %cn <%ce>' | sort -u
 
 fail=0
-if git log --all --format='%ae%n%ce' | sort -u | grep -v -x -F "$EMAIL" | grep -q .; then
+others="$(git log --all --format='%ae%n%ce' | sort -u | awk -v keep="$EMAIL" '$0 != keep')"
+if [ -n "$others" ]; then
+  printf '%s\n' "$others"
   echo "error: an identity other than $EMAIL remains" >&2
   fail=1
 fi
 patterns="$(mktemp)"
 node "$SCRUB" --patterns > "$patterns"
 if [ -s "$patterns" ]; then
-  # File contents in every commit, then commit messages.
-  if git grep -I -n -i -F -f "$patterns" $(git rev-list --all) -- . | head -20 | grep .; then
+  # File contents in every commit: git's own grep (reads the object store, any encoding).
+  found="$(git grep -I -n -i -F -f "$patterns" $(git rev-list --all) -- . || true)"
+  if [ -n "$found" ]; then
+    printf '%s\n' "$found" | head -20
     echo "error: text from the private list remains in file contents (above)" >&2
     fail=1
   fi
-  if git log --all --format='%h %B' | grep -n -i -F -f "$patterns" | head -20 | grep .; then
+  # Commit messages: scanned by Node. (Git for Windows' grep crashes on -i -F with non-ASCII
+  # input, and a crashed check looks exactly like a clean one.)
+  if ! git log --all --format='%h %B' | node "$SCRUB" --scan; then
     echo "error: text from the private list remains in commit messages (above)" >&2
     fail=1
   fi
 fi
 rm -f "$patterns"
-if git log --all --name-only --format= | sort -u | grep -E '^(CLAUDE\.md|docs/)' | grep -v -x -F "$PUBLIC_DOC" | grep .; then
+internal="$(git log --all --name-only --format= | sort -u | awk -v keep="$PUBLIC_DOC" '($0 == "CLAUDE.md" || index($0, "docs/") == 1) && $0 != keep')"
+if [ -n "$internal" ]; then
+  printf '%s\n' "$internal" | head -20
   echo "error: internal documents are still in the history (above)" >&2
   fail=1
 fi
