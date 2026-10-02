@@ -1,7 +1,7 @@
 /**
  * Daily brief (N1c): what's on today, from local data only (no model call). Shown as a notification
  * by the background tick at the brief time, and as a block the first time Jarvis opens that day.
- * Today's calendar events come from Google when calendar access is granted (N3); email comes in N4.
+ * Today's calendar events (N3) and unread Primary mail (N4) come from Google when access is granted.
  */
 import type { MemoryStore } from "../memory/store.js";
 import { addDays, today } from "../memory/store.js";
@@ -11,27 +11,51 @@ import { loadSettings } from "../settings.js";
 import { truncate } from "../util.js";
 import type { GoogleAuth } from "../google/auth.js";
 import { CalendarClient, hasCalendarAccess, todayLines } from "../google/calendar.js";
+import { displayName, GmailClient, hasGmailAccess, UNREAD_QUERY } from "../google/gmail.js";
 
-/** Today's events for the brief; undefined when the calendar isn't connected, "unavailable" when offline/expired. */
-export type BriefCalendar = string[] | "unavailable" | undefined;
+/** A Google section of the brief: undefined when not connected/granted, "unavailable" when offline or expired. */
+export type BriefSection = { lines: string[]; count: number } | "unavailable" | undefined;
+export interface BriefGoogle {
+  calendar?: BriefSection;
+  mail?: BriefSection;
+}
 
-const CALENDAR_TIMEOUT_MS = 15_000;
+const GOOGLE_TIMEOUT_MS = 15_000;
+const MAIL_SHOWN = 3;
 
-export async function briefCalendar(auth: GoogleAuth, now = new Date()): Promise<BriefCalendar> {
-  const s = auth.state();
-  if (!s || !hasCalendarAccess(s.scopes)) return undefined;
-  if (s.invalidAt) return "unavailable";
+async function section(granted: boolean, invalid: boolean, load: () => Promise<{ lines: string[]; count: number }>): Promise<BriefSection> {
+  if (!granted) return undefined;
+  if (invalid) return "unavailable";
   let timer: NodeJS.Timeout | undefined;
   try {
-    return await Promise.race([
-      todayLines(new CalendarClient(auth), now),
-      new Promise<never>((_, reject) => (timer = setTimeout(() => reject(new Error("timeout")), CALENDAR_TIMEOUT_MS))),
-    ]);
+    return await Promise.race([load(), new Promise<never>((_, reject) => (timer = setTimeout(() => reject(new Error("timeout")), GOOGLE_TIMEOUT_MS)))]);
   } catch {
     return "unavailable";
   } finally {
     clearTimeout(timer);
   }
+}
+
+/** Today's events and unread Primary mail from the last day, fetched in parallel. */
+export async function briefGoogle(auth: GoogleAuth, now = new Date()): Promise<BriefGoogle> {
+  const s = auth.state();
+  if (!s) return {};
+  const invalid = Boolean(s.invalidAt);
+  const [calendar, mail] = await Promise.all([
+    section(hasCalendarAccess(s.scopes), invalid, async () => {
+      const lines = await todayLines(new CalendarClient(auth), now);
+      return { lines, count: lines.length };
+    }),
+    section(hasGmailAccess(s.scopes), invalid, async () => {
+      const unread = await new GmailClient(auth).search(UNREAD_QUERY, 20);
+      if (!unread.length) return { lines: [], count: 0 };
+      const n = unread.length === 20 ? "20+" : String(unread.length);
+      const head = `✉ ${n} unread in Primary`;
+      // Unread mail is one thing to do ("check mail"), not one per message: 20 newsletters shouldn't read as "20 things today".
+      return { lines: [head, ...unread.slice(0, MAIL_SHOWN).map((m) => `   ${truncate(displayName(m.from), 24)} — ${truncate(m.subject, 60)}`)], count: 1 };
+    }),
+  ]);
+  return { calendar, mail };
 }
 
 export type BriefDays = "weekdays" | "daily" | "off";
@@ -62,10 +86,12 @@ export interface Brief {
   count: number;
 }
 
-export function composeBrief(memory: MemoryStore, reminders: ReminderStore, now = new Date(), calendar?: BriefCalendar): Brief {
+export function composeBrief(memory: MemoryStore, reminders: ReminderStore, now = new Date(), google: BriefGoogle = {}): Brief {
   const day = today();
-  const events = calendar === "unavailable" ? [] : (calendar ?? []);
-  const calendarNote = calendar === "unavailable" ? ["📅 calendar unavailable right now"] : [];
+  const lines = (s: BriefSection, what: string) => (s === "unavailable" ? [`${what} unavailable right now`] : (s?.lines ?? []));
+  const count = (s: BriefSection) => (s === "unavailable" || !s ? 0 : s.count);
+  const events = lines(google.calendar, "📅 calendar");
+  const mail = lines(google.mail, "✉ mail");
   const todays = reminders
     .upcoming()
     .filter((r) => (r.snoozedUntil ?? r.dueAt).slice(0, 10) === day)
@@ -79,12 +105,12 @@ export function composeBrief(memory: MemoryStore, reminders: ReminderStore, now 
   const pending = memory.list({ status: "pending" }).length;
   const review = pending ? [`🔒 ${pending} memor${pending === 1 ? "y" : "ies"} awaiting /memory review`] : [];
 
-  const count = events.length + todays.length + comingUp.length + pending;
+  const total = count(google.calendar) + todays.length + comingUp.length + count(google.mail) + pending;
   const date = formatDue(`${day}T00:00`, now).slice(0, -6); // "Thu 10-01"
   return {
-    title: count ? `☀ ${date} · ${count} thing${count === 1 ? "" : "s"} today` : `☀ ${date} · nothing scheduled`,
-    lines: [...events, ...calendarNote, ...todays, ...comingUp, ...review],
-    count,
+    title: total ? `☀ ${date} · ${total} thing${total === 1 ? "" : "s"} today` : `☀ ${date} · nothing scheduled`,
+    lines: [...events, ...todays, ...comingUp, ...mail, ...review],
+    count: total,
   };
 }
 

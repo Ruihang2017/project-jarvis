@@ -12,7 +12,9 @@ import { MemoryTidier } from "./memory/tidy.js";
 import { parseDuration } from "./reminders/schedule.js";
 import { describeReminder } from "./reminders/tools.js";
 import { installTask, removeTask, TASK_NAME, taskStatus } from "./background/task.js";
-import { briefCalendar, briefSchedule, composeBrief, nextBriefAt } from "./background/brief.js";
+import { briefGoogle, briefSchedule, composeBrief, nextBriefAt } from "./background/brief.js";
+import { GmailClient, summaryLine, UNREAD_QUERY } from "./google/gmail.js";
+import { GMAIL_SCOPES } from "./google/instructions.js";
 import { CALENDAR_SCOPES, CalendarClient, dayLabel, dayStart, eventLine, groupByDay, localDate, nextDate } from "./google/calendar.js";
 import { preview, renderPreview } from "./sixel.js";
 import { copyImageToClipboard, openWithDefaultApp } from "./system.js";
@@ -429,7 +431,7 @@ const COMMANDS: Record<string, Command> = {
         return console.log(dim(`[morning brief: ${val}${val === "off" ? "" : ` · next ${nextBriefAt() ?? "?"}`}]`));
       }
       if (sub) return console.log(dim(`[unknown /brief option "${sub}"]`));
-      const brief = composeBrief(session.memory, session.reminders, new Date(), await briefCalendar(session.google));
+      const brief = composeBrief(session.memory, session.reminders, new Date(), await briefGoogle(session.google));
       console.log(bold(brief.title));
       for (const l of brief.lines) console.log(`  ${l}`);
       const { time, days } = briefSchedule();
@@ -469,7 +471,7 @@ const COMMANDS: Record<string, Command> = {
       if (args !== "google") return console.log(dim("[usage: /connect google]"));
       console.log(dim("[opening your browser to sign in to Google — waiting up to 5 min, Ctrl+C cancels]"));
       const s = await session.google.connect(
-        CALENDAR_SCOPES,
+        [...CALENDAR_SCOPES, ...GMAIL_SCOPES],
         (url) => {
           console.log(dim(`  if it doesn't open, visit:\n  ${url}`));
           openWithDefaultApp(url);
@@ -495,6 +497,18 @@ const COMMANDS: Record<string, Command> = {
         if (!list.length) console.log(dim("  nothing"));
         for (const e of list) console.log(`  ${eventLine(e)}`);
       }
+    },
+  },
+
+  "/mail": {
+    usage: "/mail",
+    help: "Unread mail in Gmail's Primary tab from the last 24 hours (no model call)",
+    run: async (_, session) => {
+      const unread = await new GmailClient(session.google).search(UNREAD_QUERY, 20);
+      if (!unread.length) return console.log(dim("[no unread mail in Primary from the last 24 hours]"));
+      const now = new Date();
+      for (const m of unread) console.log(`  ${summaryLine(m, now)}`);
+      console.log(dim(`  ${unread.length === 20 ? "20+" : unread.length} unread · ask Jarvis to summarise or read one`));
     },
   },
 

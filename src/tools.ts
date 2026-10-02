@@ -17,6 +17,7 @@ import type { ReminderStore } from "./reminders/store.js";
 import { describeReminderCall, REMINDER_TOOLS } from "./reminders/tools.js";
 import type { GoogleAuth } from "./google/auth.js";
 import { CALENDAR_TOOLS, describeCalendarCall } from "./google/calendar-tools.js";
+import { describeGmailCall, GMAIL_TOOLS } from "./google/gmail-tools.js";
 
 const MAX_CLIPBOARD_CHARS = 50_000;
 
@@ -53,6 +54,7 @@ const TOOLS: Tool[] = [
   ...MEMORY_TOOLS,
   ...REMINDER_TOOLS,
   ...CALENDAR_TOOLS,
+  ...GMAIL_TOOLS,
   {
     name: "clipboard_read",
     description:
@@ -137,7 +139,7 @@ export function describeToolCall(tool: string, args: unknown, ok = true): string
     case "open":
       return `⚙ open ${truncate(String(a.target ?? ""), 80)}`;
     default:
-      return describeMemoryCall(tool, a, ok) ?? describeReminderCall(tool, a, ok) ?? describeCalendarCall(tool, a, ok) ?? `⚙ ${tool}`;
+      return describeMemoryCall(tool, a, ok) ?? describeReminderCall(tool, a, ok) ?? describeCalendarCall(tool, a, ok) ?? describeGmailCall(tool, a, ok) ?? `⚙ ${tool}`;
   }
 }
 

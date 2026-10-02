@@ -32,7 +32,7 @@ import { MemoryStore } from "./memory/store.js";
 import { REMINDER_INSTRUCTIONS } from "./reminders/prompt.js";
 import { ReminderStore } from "./reminders/store.js";
 import { GoogleAuth } from "./google/auth.js";
-import { googleInstructions } from "./google/calendar-tools.js";
+import { googleInstructions } from "./google/instructions.js";
 import { config, PERSONA } from "./config.js";
 
 export interface TurnCallbacks {
