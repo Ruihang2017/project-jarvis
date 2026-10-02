@@ -78,6 +78,8 @@ export async function copyImageToClipboard(path: string): Promise<void> {
   }
 }
 
+const RUNNABLE = /\.(exe|com|scr|pif|bat|cmd|ps1|psm1|vbs|vbe|js|jse|wsf|wsh|msi|msp|hta|lnk|reg|cpl|jar|appref-ms|application|gadget|sh|command|app)$/i;
+
 export type OpenTarget = { kind: "url"; value: string } | { kind: "path"; value: string };
 
 /** Classifies and validates what `open` may launch: web/mail URLs, or existing local paths. */
@@ -88,6 +90,8 @@ export function resolveOpenTarget(target: string, baseDir: string): OpenTarget {
   const expanded = t.replace(/^~(?=$|[\\/])/, homedir());
   const path = resolve(baseDir, expanded); // absolute paths pass through; also normalizes separators
   if (!existsSync(path)) throw new Error(`no such file or folder: ${path}`);
+  // "Opening" a program or script runs it. Jarvis opens documents and folders only.
+  if (RUNNABLE.test(path)) throw new Error(`refusing to open a program or script: ${path}`);
   return { kind: "path", value: path };
 }
 

@@ -39,6 +39,8 @@ import { config, PERSONA } from "./config.js";
 import { guardOutgoing, type Source } from "./privacy/outgoing.js";
 import type { Category } from "./privacy/guard.js";
 import { relative, isAbsolute, resolve } from "node:path";
+import { stripControlDeep } from "./util.js";
+import { loadSettings } from "./settings.js";
 
 /** Whether a path (absolute or workspace-relative) lies inside the Jarvis workspace. */
 function insideWorkspace(p: string): boolean {
@@ -111,6 +113,11 @@ interface ActiveTurn {
   interruptRequested: boolean;
 }
 
+/** Per-thread Codex config: effort, the mode's channel switches, and web search off when the user turned it off. */
+export function threadConfig(effort: string, mode: Mode) {
+  return { model_reasoning_effort: effort, ...codexChannels(MODES[mode].guarded), ...(loadSettings().webSearch === "off" ? { web_search: "disabled" } : {}) };
+}
+
 export class Session {
   readonly client: CodexClient;
   threadId: string | null = null;
@@ -166,7 +173,9 @@ export class Session {
   /** Server requests awaiting the user, keyed by item/call id → turn id. */
   private openRequests = new Map<string, string>();
 
-  private async handleServerRequest(req: ServerRequest): Promise<unknown> {
+  private async handleServerRequest(raw: ServerRequest): Promise<unknown> {
+    // What Codex asks or passes on is model-written: no terminal control characters in prompts or tool arguments.
+    const req = stripControlDeep(raw);
     const p = req.params as { itemId?: string; callId?: string; turnId?: string | null };
     const key = p.itemId ?? p.callId;
     if (key && p.turnId) this.openRequests.set(key, p.turnId);
@@ -260,7 +269,7 @@ export class Session {
       approvalPolicy: MODES[this.mode].approvalPolicy,
       // Rebuilt on every start/resume so the thread sees the current long-term core.
       developerInstructions: PERSONA + memoryInstructions(this.memory) + REMINDER_INSTRUCTIONS + googleInstructions(this.google.state()) + BILL_INSTRUCTIONS,
-      config: { model_reasoning_effort: this.effort, ...codexChannels(MODES[this.mode].guarded) },
+      config: threadConfig(this.effort, this.mode),
     };
   }
 
@@ -270,6 +279,14 @@ export class Session {
    * resumes it with the new channel switches: same thread id, history and Jarvis tools (verified
    * 2026-10-02). A chat turn therefore never runs with the shell still on.
    */
+  /** Reloads the current thread so changed thread-level settings (web search on/off) take effect. */
+  async reloadThread(): Promise<void> {
+    if (this.busy) throw new Error("can't change this during a reply");
+    if (!this.threadId) return;
+    await this.client.request("thread/unsubscribe", { threadId: this.threadId });
+    await this.client.request<ThreadResumeResponse>("thread/resume", { threadId: this.threadId, ...this.threadSettings() });
+  }
+
   async setMode(next: Mode): Promise<void> {
     if (this.busy) throw new Error("can't switch modes during a reply");
     const crossing = MODES[this.mode].guarded !== MODES[next].guarded;

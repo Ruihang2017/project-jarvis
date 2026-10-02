@@ -139,7 +139,7 @@ export function describeToolCall(tool: string, args: unknown, ok = true): string
     case "clipboard_read":
       return "⚙ read clipboard";
     case "clipboard_write":
-      return `⚙ copied ${typeof a.text === "string" ? a.text.length : "?"} chars to clipboard`;
+      return typeof a.text === "string" ? `⚙ copied to clipboard: "${truncate(a.text, 60)}"${a.text.length > 60 ? ` (${a.text.length} chars)` : ""}` : "⚙ copied to clipboard";
     case "open":
       return `⚙ open ${truncate(String(a.target ?? ""), 80)}`;
     default:

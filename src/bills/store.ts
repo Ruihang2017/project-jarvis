@@ -9,6 +9,7 @@ import { DatabaseSync } from "node:sqlite";
 import { memoryDbPath } from "../memory/store.js";
 import { redact, refuseSensitive } from "../privacy/guard.js";
 import { money } from "../region.js";
+import { stripControl } from "../util.js";
 
 export type BillKind = "bill" | "autopay" | "statement" | "receipt";
 /** pending: waiting for the user's OK. tracked: reminders on. autopay: recorded, no reminders. */
@@ -141,7 +142,7 @@ export class BillStore {
         "INSERT INTO bills (payee, category, kind, amount_cents, currency, due_date, status, message_id, sender_domain, title, flags, needs_check, detected_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       )
       .run(
-        b.payee.trim(),
+        stripControl(b.payee).trim(),
         b.category,
         b.kind,
         b.amountCents,
@@ -150,7 +151,7 @@ export class BillStore {
         b.status,
         b.messageId,
         b.senderDomain,
-        redact(b.title).text.slice(0, 200),
+        redact(stripControl(b.title)).text.slice(0, 200),
         JSON.stringify(b.flags),
         b.needsCheck ? 1 : 0,
         new Date().toISOString(),

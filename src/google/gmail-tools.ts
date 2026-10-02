@@ -256,7 +256,8 @@ export const GMAIL_TOOLS: Tool[] = [
           `Subject: ${now.subject}`,
           ...(edited ? ["(edited in Gmail since Jarvis drafted it)"] : []),
           "",
-          ...clip(now.body, 600).split("\n"),
+          ...now.body.slice(0, SEND_PREVIEW_CHARS).split("\n"),
+          ...(now.body.length > SEND_PREVIEW_CHARS ? [`⚠ ${now.body.length - SEND_PREVIEW_CHARS} more characters are not shown here — read the whole draft in Gmail before sending`] : []),
           ...firstTime.map((a) => `⚠ first email to ${a}`),
         ].join("\n  "),
         allowAlways: false, // a sent email can't be taken back
@@ -269,6 +270,9 @@ export const GMAIL_TOOLS: Tool[] = [
     },
   },
 ];
+
+/** How much of a draft the send prompt shows. A long body can't hide text past the preview: the prompt says how much is missing. */
+const SEND_PREVIEW_CHARS = 1500;
 
 /**
  * Drafts Jarvis wrote in this process ("d1" → Gmail draft id). gmail_send only sends these (D23),

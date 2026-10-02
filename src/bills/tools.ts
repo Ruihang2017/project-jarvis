@@ -48,6 +48,7 @@ export const BILL_TOOLS: Tool[] = [
       if (b.status === "pending") throw new Error(`#${b.id} is still waiting for the user's review (/bills review)`);
       return {
         summary: `mark paid: ${billLine(b)}`,
+        allowAlways: false, // a wrongly "paid" bill is never reminded about again
         execute: async () => {
           ctx.bills.update(b.id, { status: "paid" });
           return `Marked paid: #${b.id} ${b.payee} ${formatAmount(b)}`;

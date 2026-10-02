@@ -30,7 +30,7 @@ import { MemoryTidier } from "./memory/tidy.js";
 import { nowNote } from "./reminders/prompt.js";
 import { formatDue, lateness } from "./reminders/schedule.js";
 import type { Fired } from "./reminders/store.js";
-import { displayCommand, tildify, truncate } from "./util.js";
+import { displayCommand, stripControl, tildify, truncate } from "./util.js";
 
 const dim = (s: string) => styleText("dim", s);
 const USER_PROMPT = styleText("cyan", "you › ");
@@ -419,7 +419,7 @@ export async function runTurn(session: Session, text: string, opts: TurnOptions 
   const held: string[] = [];
   const writeDelta = (t: string) => {
     start();
-    out(md.write(t));
+    out(md.write(stripControl(t)));
   };
   activeRender = {
     pause: () => {
@@ -466,7 +466,7 @@ export async function runTurn(session: Session, text: string, opts: TurnOptions 
           updateSettings({ backgroundSuggested: true });
           lines.push("🔔 Reminders only pop up while Jarvis is open. /background on makes them work when it's closed too.");
         }
-        for (const line of lines) note(line);
+        for (const line of lines) note(stripControl(line));
         if (item.type === "imageGeneration" && session.lastGeneratedImage && preview.enabled) {
           out(renderPreview(session.lastGeneratedImage));
         }

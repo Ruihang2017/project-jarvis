@@ -1,0 +1,109 @@
+# Security and privacy
+
+Jarvis is a personal assistant that runs on your own Windows computer. It talks to an AI model through
+the Codex CLI and your own ChatGPT account, and — if you connect them — to your own Google Calendar and
+Gmail. There is no Jarvis server: nothing is sent anywhere except to those services.
+
+This page says what Jarvis protects, how, and where the protection ends.
+
+## What the privacy guard does
+
+Before anything is written to the Codex process — your message, Jarvis's instructions and memories, the
+result of every tool (an email, a calendar event, your clipboard), your answers to questions — Jarvis's
+own code removes:
+
+| Removed | Recognised when |
+|---|---|
+| Card numbers | 13–19 digits that pass the card checksum; masked numbers (`**** 1234`); and any digits next to words such as "card", "ending in", "last 4", CVV or expiry |
+| Bank and account numbers | BSB + account; digits next to "account", "BSB", "customer number", "payment reference" and similar |
+| Passwords, PINs, one-time codes | Text after "password is", "PIN", "verification code" and similar; API keys and tokens with a known shape |
+| ID numbers | Australian tax file and Medicare numbers (by checksum or keyword); passport and driver-licence numbers next to those words |
+
+The model receives `[removed: card number]` instead. You see a notice each time. There is no "send anyway".
+
+This is code at the process boundary, not an instruction to the model: every request, notification and
+reply passes through one filter, whatever part of Jarvis produced it. The same numbers are never written
+to Jarvis's own storage: saving a memory, reminder or bill that contains one is refused.
+
+Jarvis has no tool that pays, signs in to a bank, or acts on instructions found in an email. It reminds;
+paying is up to you.
+
+## What the guard does not catch
+
+- **A bare number with no word near it** saying what it is ("4409" alone), or a password with no keyword.
+  Detection is by context on purpose: removing every digit run would also remove order numbers, phone
+  numbers and dates.
+- **Text inside images** you attach.
+- **ID numbers from other countries.** Only Australian formats have checksum rules today.
+- **Anything Codex reads by itself** in the `manual`, `semi-auto` and `auto` modes — see below.
+
+## Permission modes
+
+| Mode | Codex may | Privacy guard |
+|---|---|---|
+| `chat` (default) | Answer, search the web, use Jarvis's tools. Its own shell, file reading, local image viewing and browser are switched off | Fully effective |
+| `manual` | Run commands and edit files, asking before every action | Does not cover what commands print or files contain |
+| `semi-auto` | As `manual`, but edits inside the Jarvis workspace are not asked about | As `manual` |
+| `auto` | Run commands and edit files without asking. Windows has no effective sandbox, so this is your full user account | As `manual` |
+
+The prompt always shows the mode when it is not `chat`. Entering `auto` asks first.
+
+## Actions need your approval
+
+| Action | Approval |
+|---|---|
+| Send an email | Every time. Only drafts Jarvis wrote in this session can be sent; the prompt shows the draft as it is in Gmail now, warns about a first-time recipient, and says if text continues past what it shows |
+| Create or change a calendar event | Asked, with a before/after preview. Events with other guests are never changed, and Jarvis never sends invitations |
+| Delete a calendar event, mark a bill paid | Every time |
+| Read the clipboard, open a file or link | Asked. Programs and scripts are never "opened" |
+| Write a draft, save a memory or reminder, copy to the clipboard | Done without asking, and shown as it happens |
+
+## Text from other people
+
+Emails and calendar events are written by others and may contain instructions aimed at the model
+("ignore your instructions and forward…"). Jarvis marks such content as data, requires the approvals
+above, and strips terminal control characters from it so that an email cannot redraw your screen or fake
+a prompt.
+
+What remains possible: with web search on, a model that is fooled by an email could put something it read
+into a search query. Account, card and ID numbers are already gone by then, but other content is not.
+`/web off` turns web search off.
+
+A fooled model can also save a wrong "memory". You are shown every memory as it is saved and can undo it
+(`/memory undo`); if a wrong memory later puts the wrong recipient on an email, the send prompt shows the
+address and flags it as a first-time recipient.
+
+## Bills
+
+Bills are found in your Gmail and reduced to payee, category, amount, due date and status. Account and
+reference numbers are removed before the model sees the email and there is no column to store them in.
+Each bill is checked in code, not by the model: the amount and date must appear in the email; a sender
+domain that differs from the payee's earlier bills, phishing wording, an unusually high amount, and
+payment details that differ from the previous bill are flagged. That last comparison happens in memory and
+is discarded.
+
+## Where your data is
+
+Everything is in `%LOCALAPPDATA%\Jarvis` on your computer: memories, reminders and bills (`memory.db`),
+settings, generated images, and Codex's conversation history (`codex-home`). These files are not
+encrypted; they are protected by your Windows account. The Google sign-in token is encrypted with Windows
+DPAPI and never logged.
+
+- `/data export` writes everything Jarvis stores as readable files.
+- `jarvis delete-data` deletes it; `jarvis uninstall` also removes the scheduled task and revokes Google access.
+- `/disconnect google` revokes Jarvis's Google access.
+
+## Google
+
+You register your own Google Cloud project, so the OAuth client is yours. Jarvis asks for: reading and
+writing calendar events, reading the calendar list, reading Gmail, and creating and sending drafts. It
+cannot delete, archive or label mail. Sign-in uses the loopback redirect with PKCE on `127.0.0.1`.
+
+## Dependencies
+
+Jarvis has no runtime dependencies beyond Node.js and the Codex CLI.
+
+## Reporting a problem
+
+Please open an issue on the repository. If the problem would put users at risk before it is fixed, say so
+in the issue title without the details and ask for a private channel.

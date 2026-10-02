@@ -4,7 +4,7 @@
  */
 import { timeZone } from "../reminders/prompt.js";
 import { fromLocal, isLocal, toLocal } from "../reminders/schedule.js";
-import { truncate } from "../util.js";
+import { stripControl, truncate } from "../util.js";
 import { GoogleAuthError, type GoogleAuth } from "./auth.js";
 
 export const CALENDAR_SCOPES = [
@@ -106,12 +106,12 @@ export function toEvent(e: ApiEvent, cal: CalendarInfo): CalendarEvent | null {
     calendarId: cal.id,
     calendarName: cal.name,
     primaryCalendar: cal.primary,
-    title: e.summary?.trim() || "(no title)",
+    title: stripControl(e.summary ?? "").trim() || "(no title)",
     start,
     end,
     allDay,
-    location: e.location?.trim() || undefined,
-    description: e.description?.trim() || undefined,
+    location: stripControl(e.location ?? "").trim() || undefined,
+    description: stripControl(e.description ?? "").trim() || undefined,
     busy: e.transparency !== "transparent",
     declined: e.attendees?.some((a) => a.self && a.responseStatus === "declined") ?? false,
     recurring: Boolean(e.recurringEventId),
@@ -137,7 +137,7 @@ export class CalendarClient {
     );
     return (res.items ?? [])
       .filter((c) => c.primary || c.selected)
-      .map((c) => ({ id: c.id, name: c.summaryOverride ?? c.summary ?? c.id, primary: Boolean(c.primary), writable: c.accessRole === "owner" || c.accessRole === "writer" }))
+      .map((c) => ({ id: c.id, name: stripControl(c.summaryOverride ?? c.summary ?? c.id), primary: Boolean(c.primary), writable: c.accessRole === "owner" || c.accessRole === "writer" }))
       .sort((a, b) => Number(b.primary) - Number(a.primary));
   }
 

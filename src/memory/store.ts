@@ -1,4 +1,5 @@
 import { redact, refuseSensitive } from "../privacy/guard.js";
+import { stripControl } from "../util.js";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -119,6 +120,7 @@ export class MemoryStore {
   }
 
   add(m: NewMemory): Memory {
+    m = { ...m, text: stripControl(m.text) };
     refuseSensitive(m.text);
     const now = new Date().toISOString();
     const tier: Tier = m.tier ?? (m.kind === "event" || m.validUntil ? "short" : "long");
@@ -170,7 +172,10 @@ export class MemoryStore {
   }
 
   update(id: number, patch: Partial<Pick<Memory, "text" | "kind" | "tier" | "importance" | "validUntil" | "keywords">>): Memory | undefined {
-    if (patch.text !== undefined) refuseSensitive(patch.text);
+    if (patch.text !== undefined) {
+      patch = { ...patch, text: stripControl(patch.text) };
+      refuseSensitive(patch.text!);
+    }
     const cols: Record<string, string> = { text: "text", kind: "kind", tier: "tier", importance: "importance", validUntil: "valid_until", keywords: "keywords" };
     const sets: string[] = [];
     const params: (string | number | null)[] = [];

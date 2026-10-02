@@ -238,6 +238,11 @@ gDrafts.set(newId, { ...newDraft, raw: g.buildRaw({ to: ["New Person <new@x.com>
 const send2 = await tool("gmail_send").prepare({ draft: newRef }, ctx);
 ok("send preview shows the Gmail version + edit note + first-time warning", send2.preview!.includes("(edited in Gmail since Jarvis drafted it)") && send2.preview!.includes("Hi there — edited by me") && send2.preview!.includes("⚠ first email to new@x.com"), send2.preview);
 
+// A long draft can not hide text past the preview: the prompt says how much is not shown (P3).
+const longDraft = await (await tool("gmail_draft").prepare({ to: "alice@x.com", subject: "Long", body: "A".repeat(1500) + "SECRET-TAIL" }, ctx)).execute();
+const longSend = await tool("gmail_send").prepare({ draft: longDraft.match(/\[(d\d+)\]/)![1]! }, ctx);
+ok("send preview warns about text beyond what it shows", longSend.preview!.includes("11 more characters are not shown here") && !longSend.preview!.includes("SECRET-TAIL"), longSend.preview!.slice(-140));
+
 const { ToolRunner } = await import("../src/tools.js");
 const runner = new ToolRunner(dir, {} as never, {} as never, fakeAuth, {} as never);
 const answer = (a: string) => ({ approveTool: async () => a }) as never;
@@ -249,7 +254,7 @@ ok("approved send → sent, threaded", okSend.success === true && sent.length ==
 const again = await runner.call(req("d1"), answer("accept"));
 ok("a sent draft can't be sent again", again.success === false && sent.length === 1, JSON.stringify(again));
 const after = await (await tool("gmail_draft").prepare({ to: "a@x.com", subject: "s", body: "b" }, ctx)).execute();
-ok("draft handles are never reused after sending", after.startsWith("Draft [d3]"), after);
+ok("draft handles are never reused after sending", after.startsWith("Draft [d4]"), after);
 gDrafts.delete(newId); // deleted in Gmail
 await throws("draft deleted in Gmail", () => tool("gmail_send").prepare({ draft: newRef }, ctx), "no longer exists");
 

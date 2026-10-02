@@ -11,6 +11,8 @@ export type NotificationHandler = (n: ServerNotification) => void;
 /** Rewrites what Jarvis sends to Codex (the privacy guard, S1). */
 export interface OutgoingFilter {
   request(method: string, params: unknown): unknown;
+  /** Client→server notifications go through the guard as well. */
+  notify(method: string, params: unknown): unknown;
   /** Result of a server→client request (tool call, question, approval) before it is sent back. */
   reply(requestMethod: string, result: unknown): unknown;
   error(requestMethod: string, message: string): string;
@@ -84,7 +86,7 @@ export class CodexClient extends EventEmitter<{
   }
 
   notify(method: string, params?: unknown) {
-    this.send(params === undefined ? { method } : { method, params });
+    this.send(params === undefined ? { method } : { method, params: this.filter ? this.filter.notify(method, params) : params });
   }
 
   close() {

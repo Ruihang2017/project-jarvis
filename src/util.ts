@@ -2,6 +2,24 @@ import { homedir } from "node:os";
 
 export { openWithDefaultApp as openBrowser } from "./system.js";
 
+/**
+ * Removes terminal control characters from text Jarvis didn't write (email, calendar, model
+ * output): ESC and the other C0/C1 codes can clear the screen, rewrite what is already shown
+ * (a fake approval prompt), or write to the clipboard; bidi overrides can make a name or address
+ * read differently from what it is. Newlines and tabs stay.
+ */
+export function stripControl(s: string): string {
+  return s.replace(/[\u0000-\u0008\u000B-\u001F\u007F-\u009F\u2028\u2029\u202A-\u202E\u2066-\u2069]/g, "");
+}
+
+/** stripControl over every string in a JSON value (requests from Codex: commands, questions, tool arguments). */
+export function stripControlDeep<T>(value: T): T {
+  if (typeof value === "string") return stripControl(value) as T;
+  if (Array.isArray(value)) return value.map(stripControlDeep) as T;
+  if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, stripControlDeep(v)])) as T;
+  return value;
+}
+
 /** Shortens paths under the home directory to `~/…` for display. */
 export function tildify(path: string): string {
   const home = homedir();

@@ -3,7 +3,7 @@
  * Google. Scopes don't allow archiving, labelling or deleting mail (D23).
  */
 import { toLocal } from "../reminders/schedule.js";
-import { truncate } from "../util.js";
+import { stripControl, truncate } from "../util.js";
 import { GoogleAuthError, type GoogleAuth } from "./auth.js";
 import { dayLabel, localDate } from "./calendar.js";
 
@@ -67,6 +67,10 @@ export const header = (headers: Header[] | undefined, name: string) => headers?.
 
 /** RFC 2047 encoded-words ("=?UTF-8?B?…?="), in case Gmail passes a header through undecoded. */
 export function decodeWords(s: string): string {
+  return stripControl(decodeWordsRaw(s));
+}
+
+function decodeWordsRaw(s: string): string {
   return s.replace(/=\?([^?]+)\?([bBqQ])\?([^?]*)\?=(\s+(?==\?))?/g, (_, charset: string, enc: string, text: string) => {
     try {
       const bytes =
@@ -131,7 +135,7 @@ export function extractContent(payload: Part | undefined): { body: string; attac
   const walk = (p: Part) => {
     const type = (p.mimeType ?? "").toLowerCase();
     if (p.filename) {
-      attachments.push({ filename: p.filename, size: p.body?.size ?? 0, mimeType: type });
+      attachments.push({ filename: stripControl(p.filename), size: p.body?.size ?? 0, mimeType: type });
       return;
     }
     if (type === "text/plain") plain.push(decodeData(p));
@@ -140,7 +144,7 @@ export function extractContent(payload: Part | undefined): { body: string; attac
   };
   if (payload) walk(payload);
   const body = plain.join("\n").trim() ? plain.join("\n").replace(/\r\n/g, "\n").trim() : htmlToText(html.join("\n"));
-  return { body, attachments };
+  return { body: stripControl(body), attachments };
 }
 
 /** Drops quoted history ("> …" lines and everything after "On … wrote:"), for thread views. */
@@ -162,7 +166,7 @@ export function toSummary(m: ApiMessage): MessageSummary {
     to: decodeWords(header(h, "To")),
     subject: decodeWords(header(h, "Subject")) || "(no subject)",
     date: m.internalDate ? new Date(Number(m.internalDate)) : new Date(header(h, "Date")),
-    snippet: htmlToText(m.snippet ?? ""),
+    snippet: stripControl(htmlToText(m.snippet ?? "")),
     unread: m.labelIds?.includes("UNREAD") ?? false,
   };
 }

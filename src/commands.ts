@@ -19,7 +19,7 @@ import { CALENDAR_SCOPES, CalendarClient, dayLabel, dayStart, eventLine, groupBy
 import { preview, renderPreview } from "./sixel.js";
 import { copyImageToClipboard, openWithDefaultApp } from "./system.js";
 import { GoogleAuthError, shortScope } from "./google/auth.js";
-import { tildify, truncate } from "./util.js";
+import { stripControl, tildify, truncate } from "./util.js";
 import { formatAmount, type Bill } from "./bills/store.js";
 import { billLine, billLines, billSettings, runScan, scanSummary } from "./bills/view.js";
 import { monthCsv, monthSummary } from "./bills/summary.js";
@@ -81,6 +81,7 @@ export const HELP_GROUPS: [string, [string, string][]][] = [
       ["/disconnect", "revoke Jarvis's Google access"],
       ["/background", "reminders even when Jarvis is closed"],
       ["/region", "date order and currency"],
+      ["/web", "let the model search the web, or not"],
       ["/data", "where your data is; back up; export everything"],
       ["/doctor", "check that everything works"],
       ["/help", "this list"],
@@ -124,6 +125,19 @@ const COMMANDS: Record<string, Command> = {
     run: async () => {
       console.log(bold(GETTING_STARTED[0]!));
       for (const l of GETTING_STARTED.slice(1)) console.log(dim(l));
+    },
+  },
+
+  "/web": {
+    usage: "/web [on|off]",
+    help: "Let the model search the web (on by default). Off also closes a path by which text in an email could send information out inside a search",
+    run: async (args, session) => {
+      if (args === "on" || args === "off") {
+        updateSettings({ webSearch: args });
+        await session.reloadThread();
+      } else if (args) return console.log(dim("[usage: /web on|off]"));
+      const on = loadSettings().webSearch !== "off";
+      console.log(`web search: ${bold(on ? "on" : "off")} ${dim(on ? "— the model can look things up online" : "— the model answers from what it knows and from your data only")}`);
     },
   },
 
@@ -882,7 +896,7 @@ function formatBytes(n: number): string {
 const shortId = (id: string) => id.slice(-8);
 
 function threadTitle(t: Thread): string {
-  const text = (t.name ?? t.preview).split("\n")[0]?.trim() || "(untitled)";
+  const text = stripControl(t.name ?? t.preview).split("\n")[0]?.trim() || "(untitled)";
   return truncate(text, 60);
 }
 
@@ -891,8 +905,8 @@ function printLastExchange(t: Thread) {
   const user = items.find((i): i is Extract<ThreadItem, { type: "userMessage" }> => i.type === "userMessage");
   const agent = items.findLast((i): i is Extract<ThreadItem, { type: "agentMessage" }> => i.type === "agentMessage");
   const userText = user?.content.map((c) => (c.type === "text" ? c.text : `[${c.type}]`)).join(" ");
-  if (userText) console.log(dim(`  you › ${truncate(userText, 200)}`));
-  if (agent) console.log(dim(`  jarvis › ${truncate(agent.text, 200)}`));
+  if (userText) console.log(dim(`  you › ${truncate(stripControl(userText), 200)}`));
+  if (agent) console.log(dim(`  jarvis › ${truncate(stripControl(agent.text), 200)}`));
 }
 
 function formatWindow(w: RateLimitWindow): string {

@@ -25,8 +25,11 @@ interface Span {
   category: Category;
 }
 
-// Full-width digits (０-９) count as digits; each is one UTF-16 unit, so offsets stay aligned.
-const normalise = (s: string) => s.replace(/[０-９]/g, (d) => String.fromCharCode(d.charCodeAt(0) - 0xfee0));
+// Full-width digits (０-９) count as digits, and invisible characters that can sit inside a copied
+// number (zero-width spaces and joiners, no-break spaces, BOM) count as a space. Every replacement
+// is one UTF-16 unit for one, so match offsets stay valid for the original text.
+const normalise = (s: string) =>
+  s.replace(/[０-９]/g, (d) => String.fromCharCode(d.charCodeAt(0) - 0xfee0)).replace(/[\u200B-\u200D\u2060\uFEFF\u00A0\u202F\u2007]/g, " ");
 
 const digitsOf = (s: string) => s.replace(/\D/g, "");
 
@@ -214,7 +217,7 @@ export function describeRemoved(removed: Category[]): string {
  * Deep copy of a JSON value with every string redacted. Used for replies to Codex (tool results,
  * answers to questions), where any string may carry user or email text.
  */
-export function redactDeep<T>(value: T, removed: Category[] = []): { value: T; removed: Category[] } {
+export function redactDeep<T>(value: T, removed: Category[] = [], skipKeys: ReadonlySet<string> = new Set()): { value: T; removed: Category[] } {
   const walk = (v: unknown): unknown => {
     if (typeof v === "string") {
       const r = redact(v);
@@ -222,7 +225,7 @@ export function redactDeep<T>(value: T, removed: Category[] = []): { value: T; r
       return r.text;
     }
     if (Array.isArray(v)) return v.map(walk);
-    if (v && typeof v === "object") return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, walk(x)]));
+    if (v && typeof v === "object") return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, skipKeys.has(k) ? x : walk(x)]));
     return v;
   };
   return { value: walk(value) as T, removed };

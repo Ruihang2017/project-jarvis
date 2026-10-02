@@ -41,6 +41,8 @@ export interface Settings {
   /** Region (P2): numeric date order and home currency; detected from the system locale when unset. */
   dateOrder?: "dmy" | "mdy";
   currency?: string;
+  /** Web search by the model (default on). Off closes a way for injected text to send data out in a search (P3). */
+  webSearch?: "on" | "off";
   /** Whether the getting-started tips were shown (first run). */
   onboarded?: boolean;
 }

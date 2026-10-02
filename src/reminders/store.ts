@@ -1,4 +1,5 @@
 import { refuseSensitive } from "../privacy/guard.js";
+import { stripControl } from "../util.js";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -60,6 +61,7 @@ export class ReminderStore {
 
   add(r: { text: string; dueAt: string; repeat?: Repeat; memoryId?: number | null; threadId?: string | null }): Reminder {
     fromLocal(r.dueAt); // validates
+    r = { ...r, text: stripControl(r.text) };
     refuseSensitive(r.text);
     const res = this.db
       .prepare("INSERT INTO reminders (text, due_at, repeat, memory_id, thread_id, created_at) VALUES (?, ?, ?, ?, ?, ?)")
