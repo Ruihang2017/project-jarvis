@@ -23,7 +23,8 @@ import { CALENDAR_SCOPES, CalendarClient, dayLabel, dayStart, freeSlots, hasCale
 import { GMAIL_SCOPES, GmailClient, displayName, hasGmailAccess, UNREAD_QUERY, type Message, type MessageSummary } from "../../src/google/gmail.js";
 import { missingFeatures } from "../../src/google/instructions.js";
 import { shortScope } from "../../src/google/auth.js";
-import { clientPath, loadClient, GoogleAuthError } from "../../src/google/oauth.js";
+import { clientPath, hasClient, loadClient, GoogleAuthError } from "../../src/google/oauth.js";
+import type { Account } from "../../src/accounts/accounts.js";
 import { formatAmount, type Bill } from "../../src/bills/store.js";
 import { acceptBill, editBill, ignoreBill, markPaid } from "../../src/bills/actions.js";
 import { billSettings, runScan, scanSummary } from "../../src/bills/view.js";
@@ -365,33 +366,27 @@ export class EdwardService implements A.EdwardApi {
     const hour = now.getHours();
     const evening = hour >= 18 || hour < 4;
     const greeting = hour < 4 ? "Good evening" : hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
-    const g = this.session.google.state();
-    const google = Boolean(g && !g.invalidAt);
+    const acc = this.session.accounts;
+    const google = acc.connected().some((a) => !acc.state(a)?.invalidAt);
     let events: A.EventInfo[] = [];
     let tomorrow: A.EventInfo[] = [];
     let calendarProblem: string | undefined;
-    if (google && hasCalendarAccess(g!.scopes)) {
-      try {
-        const day = localDate(now);
-        const all = await new CalendarClient(this.session.google).events(dayStart(day), dayStart(nextDate(day, 2)));
-        const live = all.filter((e) => !e.declined);
-        events = live.filter((e) => localDate(e.start) === day && (e.allDay || e.end > now)).map(eventInfo);
-        tomorrow = live.filter((e) => localDate(e.start) === nextDate(day)).map(eventInfo);
-      } catch (e) {
-        calendarProblem = googleProblem(e);
-      }
+    if (acc.for("calendar").length) {
+      const day = localDate(now);
+      const { events: all, problem } = await this.eventsAcross(dayStart(day), dayStart(nextDate(day, 2)));
+      const live = all.filter(({ e }) => !e.declined);
+      events = live.filter(({ e }) => localDate(e.start) === day && (e.allDay || e.end > now)).map((x) => this.eventInfo(x));
+      tomorrow = live.filter(({ e }) => localDate(e.start) === nextDate(day)).map((x) => this.eventInfo(x));
+      calendarProblem = problem;
     }
     let mail: A.MailSummary[] = [];
     let mailCount = 0;
     let mailProblem: string | undefined;
-    if (google && hasGmailAccess(g!.scopes)) {
-      try {
-        const unread = await new GmailClient(this.session.google).search(UNREAD_QUERY, 20);
-        mailCount = unread.length;
-        mail = unread.slice(0, 3).map((m) => this.mailSummary(m));
-      } catch (e) {
-        mailProblem = googleProblem(e);
-      }
+    if (acc.for("mail").length) {
+      const { unread, problem } = await this.unreadAcross();
+      mailCount = unread.length;
+      mail = unread.slice(0, 3);
+      mailProblem = problem;
     }
     const tracked = this.session.bills.list("tracked").filter((b) => b.dueDate && daysUntil(b.dueDate, now) <= 14).sort((a, b) => (a.dueDate ?? "").localeCompare(b.dueDate ?? ""));
     const reminders = this.session.reminders.upcoming().filter((r) => (r.snoozedUntil ?? r.dueAt).slice(0, 10) === localDate(now)).map(reminderInfo);
@@ -429,47 +424,110 @@ export class EdwardService implements A.EdwardApi {
   // ---------------------------------------------------------------- calendar and mail
 
   async calendar(days: number): Promise<A.CalendarView> {
-    const g = this.session.google.state();
+    const acc = this.session.accounts;
+    const accounts = acc.for("calendar");
     const empty = { days: [], free: [], calendars: [] };
-    if (!g || g.invalidAt || !hasCalendarAccess(g.scopes)) return { connected: false, ...empty };
-    try {
-      const cal = new CalendarClient(this.session.google);
-      const first = localDate(new Date());
-      const from = dayStart(first);
-      const to = dayStart(nextDate(first, days));
-      const [events, calendars] = await Promise.all([cal.events(from, to), cal.calendars()]);
-      const list: A.CalendarView["days"] = [];
-      for (let d = first; dayStart(d) < to; d = nextDate(d)) {
-        list.push({ date: d, label: niceDay(d, first), events: events.filter((e) => localDate(e.start) === d || (e.allDay && localDate(e.start) <= d && localDate(e.end) > d)).map(eventInfo) });
-      }
-      const slots = freeSlots(events, new Date(), to, { minutes: 30, weekends: true });
-      const free: A.CalendarView["free"] = [];
-      for (const s of slots) {
-        const d = localDate(s.start);
-        let day = free.find((f) => f.date === d);
-        if (!day) free.push((day = { date: d, label: niceDay(d, first), slots: [] }));
-        day.slots.push(`${hhmm(s.start)} to ${hhmm(s.end)}`);
-      }
-      return { connected: true, days: list, free: free.slice(0, 4), calendars: calendars.map((c) => ({ name: clean(c.name), primary: c.primary })) };
-    } catch (e) {
-      return { connected: true, problem: googleProblem(e), ...empty };
+    if (!accounts.length) return { connected: false, ...empty };
+    const first = localDate(new Date());
+    const from = dayStart(first);
+    const to = dayStart(nextDate(first, days));
+    const [{ events, problem }, calendars] = await Promise.all([
+      this.eventsAcross(from, to),
+      Promise.all(accounts.map(async (a) => (await new CalendarClient(acc.auth(a)).calendars().catch(() => [])).map((c) => ({ name: clean(c.name), primary: c.primary, ...this.from(a) })))),
+    ]);
+    if (problem && !events.length) return { connected: true, problem, ...empty };
+    const list: A.CalendarView["days"] = [];
+    for (let d = first; dayStart(d) < to; d = nextDate(d)) {
+      list.push({
+        date: d,
+        label: niceDay(d, first),
+        events: events.filter(({ e }) => localDate(e.start) === d || (e.allDay && localDate(e.start) <= d && localDate(e.end) > d)).map((x) => this.eventInfo(x)),
+      });
     }
+    // Busy in any account is busy.
+    const slots = freeSlots(
+      events.map((x) => x.e),
+      new Date(),
+      to,
+      { minutes: 30, weekends: true },
+    );
+    const free: A.CalendarView["free"] = [];
+    for (const s of slots) {
+      const d = localDate(s.start);
+      let day = free.find((f) => f.date === d);
+      if (!day) free.push((day = { date: d, label: niceDay(d, first), slots: [] }));
+      day.slots.push(`${hhmm(s.start)} to ${hhmm(s.end)}`);
+    }
+    return { connected: true, problem, days: list, free: free.slice(0, 4), calendars: calendars.flat(), manyAccounts: accounts.length > 1 };
   }
 
   async mail(): Promise<A.MailView> {
-    const g = this.session.google.state();
-    if (!g || g.invalidAt || !hasGmailAccess(g.scopes)) return { connected: false, unread: [] };
-    try {
-      const unread = await new GmailClient(this.session.google).search(UNREAD_QUERY, 20);
-      return { connected: true, unread: unread.map((m) => this.mailSummary(m)) };
-    } catch (e) {
-      return { connected: true, problem: googleProblem(e), unread: [] };
-    }
+    if (!this.session.accounts.for("mail").length) return { connected: false, unread: [] };
+    const { unread, problem } = await this.unreadAcross();
+    return { connected: true, problem, unread, manyAccounts: this.session.accounts.for("mail").length > 1 };
   }
 
-  private mailSummary(m: MessageSummary): A.MailSummary {
+  /** Which account something is from, for the window's label and colour. */
+  private from(a: Account): A.FromAccount {
+    return { account: a.id, accountLabel: this.session.accounts.label(a), color: a.color };
+  }
+
+  /** Events from every calendar account; one account failing doesn't hide the others. */
+  private async eventsAcross(from: Date, to: Date): Promise<{ events: { e: CalendarEvent; a: Account }[]; problem?: string }> {
+    const acc = this.session.accounts;
+    const problems: string[] = [];
+    const lists = await Promise.all(
+      acc.for("calendar").map(async (a) => {
+        try {
+          return (await new CalendarClient(acc.auth(a)).events(from, to)).map((e) => ({ e, a }));
+        } catch (e) {
+          problems.push(acc.for("calendar").length > 1 ? `${acc.label(a)}: ${googleProblem(e)}` : googleProblem(e));
+          return [];
+        }
+      }),
+    );
+    const events = lists.flat().sort((x, y) => x.e.start.getTime() - y.e.start.getTime() || Number(y.e.allDay) - Number(x.e.allDay));
+    return { events, problem: problems.join(" · ") || undefined };
+  }
+
+  /** Unread Primary mail from every mail account, newest first. */
+  private async unreadAcross(): Promise<{ unread: A.MailSummary[]; problem?: string }> {
+    const acc = this.session.accounts;
+    const problems: string[] = [];
+    const lists = await Promise.all(
+      acc.for("mail").map(async (a) => {
+        try {
+          return (await new GmailClient(acc.auth(a)).search(UNREAD_QUERY, 20)).map((m) => ({ m, a }));
+        } catch (e) {
+          problems.push(acc.for("mail").length > 1 ? `${acc.label(a)}: ${googleProblem(e)}` : googleProblem(e));
+          return [];
+        }
+      }),
+    );
+    const unread = lists
+      .flat()
+      .sort((x, y) => y.m.date.getTime() - x.m.date.getTime())
+      .map(({ m, a }) => this.mailSummary(m, a));
+    return { unread, problem: problems.join(" · ") || undefined };
+  }
+
+  private eventInfo({ e, a }: { e: CalendarEvent; a: Account }): A.EventInfo {
+    return { ...eventInfo(e), id: `${a.id}/${e.id}`, ...this.from(a) };
+  }
+
+  /** "g2/abc123" → the account and Gmail's id. Ids from before A1 (no account) are the first account's. */
+  private message(key: string): { gmail: GmailClient; id: string } {
+    const acc = this.session.accounts;
+    const slash = key.indexOf("/");
+    const a = slash > 0 ? acc.get(key.slice(0, slash)) : acc.for("mail")[0];
+    if (!a || !acc.usable(a, "mail")) throw new Error("That email's account isn't connected any more.");
+    return { gmail: new GmailClient(acc.auth(a)), id: slash > 0 ? key.slice(slash + 1) : key };
+  }
+
+  private mailSummary(m: MessageSummary, a: Account): A.MailSummary {
     return {
-      id: m.id,
+      ...this.from(a),
+      id: `${a.id}/${m.id}`,
       threadId: m.threadId,
       from: clean(displayName(m.from)),
       subject: clean(m.subject) || "(no subject)",
@@ -480,12 +538,13 @@ export class EdwardService implements A.EdwardApi {
   }
 
   async mailMessage(id: string): Promise<A.MailMessage> {
-    const m = await new GmailClient(this.session.google).message(id);
+    const where = this.message(id);
+    const m = await where.gmail.message(where.id);
     this.opened.set(id, m);
     while (this.opened.size > 10) this.opened.delete(this.opened.keys().next().value!);
     const body = clean(m.body);
     return {
-      id: m.id,
+      id,
       from: clean(m.from),
       to: clean(m.to),
       subject: clean(m.subject),
@@ -501,8 +560,8 @@ export class EdwardService implements A.EdwardApi {
   private readonly prepared = new Map<string, string>();
 
   async mailOriginal(id: string, pictures: boolean): Promise<A.MailOriginal | null> {
-    const gmail = new GmailClient(this.session.google);
-    const m = this.opened.get(id) ?? (await gmail.message(id));
+    const { gmail, id: messageId } = this.message(id);
+    const m = this.opened.get(id) ?? (await gmail.message(messageId));
     if (!m.html) return null;
     let html = this.prepared.get(id);
     if (html === undefined) {
@@ -530,7 +589,6 @@ export class EdwardService implements A.EdwardApi {
     const toPay = store.list("tracked").sort(byDue);
     const autopay = store.list("autopay").filter((b) => !b.dueDate || b.dueDate >= today).sort(byDue);
     const paidThisMonth = store.list("paid").filter((b) => (b.paidAt ?? b.dueDate ?? "").slice(0, 7) === month);
-    const g = this.session.google.state();
     return {
       pending: store.list("pending").map(billInfo),
       toPay: toPay.map(billInfo),
@@ -539,7 +597,7 @@ export class EdwardService implements A.EdwardApi {
       toPayTotal: total(toPay),
       paidTotal: total(paidThisMonth),
       settings: billSettings() as A.BillSettings,
-      canScan: Boolean(g && !g.invalidAt && hasGmailAccess(g.scopes)),
+      canScan: this.session.accounts.for("mail").length > 0,
     };
   }
 
@@ -844,9 +902,14 @@ export class EdwardService implements A.EdwardApi {
 
   /** Deletes everything Edward stored, then quits. The window asked the user twice before calling this. */
   async deleteEverything(): Promise<A.Result> {
-    const google = this.session.google;
+    const accounts = this.session.accounts;
     this.close();
-    const report = await wipeData({ disconnectGoogle: () => google.disconnect(), removeTask: () => removeTask() });
+    const report = await wipeData({
+      disconnectGoogle: async () => {
+        for (const a of accounts.list()) await accounts.disconnect(a.id);
+      },
+      removeTask: () => removeTask(),
+    });
     setTimeout(() => app.quit(), 1500);
     return report.problems.length ? { ok: false, message: report.problems.join("; ") } : ok("Deleted. Edward will close now.");
   }
@@ -854,16 +917,39 @@ export class EdwardService implements A.EdwardApi {
   // ---------------------------------------------------------------- Google
 
   async google(): Promise<A.GoogleInfo> {
-    const g = this.session?.google.state() ?? null;
+    const acc = this.session?.accounts;
+    const list: A.AccountInfo[] = (acc?.connected() ?? []).map((a) => {
+      const g = acc!.state(a)!;
+      return {
+        id: a.id,
+        email: a.email ?? g.email,
+        name: a.name,
+        label: acc!.label(a),
+        color: a.color,
+        mail: a.mail,
+        calendar: a.calendar,
+        mailWorks: acc!.usable(a, "mail"),
+        calendarWorks: acc!.usable(a, "calendar"),
+        expired: Boolean(g.invalidAt),
+        missing: missingFeatures(g),
+        permissions: g.scopes.map(shortScope).filter((s) => s !== "openid" && s !== "email" && s !== "userinfo.email"),
+        connectedAt: new Date(g.connectedAt).toLocaleDateString("en-AU", { day: "numeric", month: "long" }),
+        checkedAt: g.checkedAt ? new Date(g.checkedAt).toLocaleString("en-AU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : undefined,
+        sendsMail: acc!.primary("mail")?.id === a.id,
+        getsEvents: acc!.primary("calendar")?.id === a.id,
+      };
+    });
+    const first = list[0];
     return {
-      connected: Boolean(g),
-      email: g?.email,
-      permissions: (g?.scopes ?? []).map(shortScope).filter((s) => s !== "openid" && s !== "email"),
-      expired: Boolean(g?.invalidAt),
-      missing: missingFeatures(g),
-      connectedAt: g?.connectedAt ? new Date(g.connectedAt).toLocaleDateString("en-AU", { day: "numeric", month: "long" }) : undefined,
-      checkedAt: g?.checkedAt ? new Date(g.checkedAt).toLocaleString("en-AU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : undefined,
-      clientFile: existsSync(clientPath()),
+      connected: list.length > 0,
+      email: list.map((a) => a.email).filter(Boolean).join(", ") || undefined,
+      permissions: [...new Set(list.flatMap((a) => a.permissions))],
+      expired: list.some((a) => a.expired),
+      missing: [...new Set(list.flatMap((a) => a.missing))],
+      connectedAt: first?.connectedAt,
+      checkedAt: first?.checkedAt,
+      clientFile: hasClient(),
+      accounts: list,
     };
   }
 
@@ -881,31 +967,73 @@ export class EdwardService implements A.EdwardApi {
     }
   }
 
-  async connectGoogle(): Promise<A.Result> {
+  async connectGoogle(account?: string): Promise<A.Result> {
     try {
-      const s = await this.session.google.connect([...CALENDAR_SCOPES, ...GMAIL_SCOPES], (url) => void shell.openExternal(url));
+      const r = await this.session.accounts.connect([...CALENDAR_SCOPES, ...GMAIL_SCOPES], (url) => void shell.openExternal(url), { account });
+      await this.session.reloadThread().catch(() => {}); // the conversation learns about the account
       this.pushState();
-      return ok(`Connected as ${s.email ?? "your Google account"}`);
+      return ok(`${r.added && this.session.accounts.list().length > 1 ? "Added" : "Connected as"} ${r.state.email ?? "your Google account"}`);
     } catch (e) {
       if (e instanceof GoogleAuthError && e.code === "cancelled") return { ok: false, message: "Cancelled" };
       return fail(e);
     }
   }
 
-  async checkGoogle(): Promise<A.Result> {
+  async checkGoogle(account?: string): Promise<A.Result> {
+    const acc = this.session.accounts;
+    const list = account ? acc.list().filter((a) => a.id === account) : acc.connected();
+    if (!list.length) return { ok: false, message: "Not connected" };
     try {
-      const r = await this.session.google.check();
+      const bad: string[] = [];
+      for (const a of list) if ((await acc.auth(a).check()) !== "ok") bad.push(acc.label(a));
       this.pushState();
-      return r === "ok" ? ok("Working") : { ok: false, message: r === "none" ? "Not connected" : "The connection expired. Reconnect." };
+      return bad.length ? { ok: false, message: `The connection expired: ${bad.join(", ")}. Sign in again.` } : ok(list.length > 1 ? "All working" : "Working");
     } catch (e) {
       return fail(e);
     }
   }
 
-  async disconnectGoogle(): Promise<A.Result> {
-    const { revoked } = await this.session.google.disconnect();
-    this.pushState();
-    return ok(revoked ? "Disconnected" : "Removed from this computer; check myaccount.google.com/connections to be sure");
+  async disconnectGoogle(account?: string): Promise<A.Result> {
+    const acc = this.session.accounts;
+    const id = account ?? (acc.list().length === 1 ? acc.list()[0]!.id : undefined);
+    if (!id) return { ok: false, message: "Choose which account to remove." };
+    try {
+      const { revoked } = await acc.disconnect(id);
+      await this.session.reloadThread().catch(() => {});
+      this.pushState();
+      return ok(revoked ? "Removed" : "Removed from this computer; check myaccount.google.com/connections to be sure");
+    } catch (e) {
+      return fail(e);
+    }
+  }
+
+  async updateAccount(account: string, patch: { name?: string; color?: string; mail?: boolean; calendar?: boolean }): Promise<A.Result> {
+    try {
+      const clean = {
+        name: typeof patch.name === "string" ? stripControl(patch.name) : undefined,
+        color: typeof patch.color === "string" ? patch.color : undefined,
+        mail: typeof patch.mail === "boolean" ? patch.mail : undefined,
+        calendar: typeof patch.calendar === "boolean" ? patch.calendar : undefined,
+      };
+      this.session.accounts.update(account, clean);
+      await this.session.reloadThread().catch(() => {});
+      this.pushState();
+      return ok("Saved");
+    } catch (e) {
+      return fail(e);
+    }
+  }
+
+  async setDefaultAccount(feature: "mail" | "calendar", account: string): Promise<A.Result> {
+    if (feature !== "mail" && feature !== "calendar") return { ok: false, message: "Unknown feature" };
+    try {
+      this.session.accounts.setDefault(feature, account);
+      await this.session.reloadThread().catch(() => {});
+      this.pushState();
+      return ok(feature === "mail" ? "New emails will go from this account" : "New events will go into this account");
+    } catch (e) {
+      return fail(e);
+    }
   }
 
   async openGuide() {

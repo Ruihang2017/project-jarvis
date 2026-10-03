@@ -1,4 +1,6 @@
-import type { Tool } from "../tools.js";
+import type { Account } from "../accounts/accounts.js";
+import type { Tool, ToolContext } from "../tools.js";
+import { GoogleAuthError } from "./oauth.js";
 import { truncate } from "../util.js";
 import {
   CalendarClient,
@@ -43,33 +45,63 @@ const rangeLabel = (from: Date, to: Date) => {
 
 /**
  * Short handles ("e3") for events the model has seen, so it can say which one to change without
- * copying Google's long ids. Per Edward process; the same event keeps its handle.
+ * copying Google's long ids. Per Edward process; the same event keeps its handle. Each remembers
+ * its account (A1).
  */
-const refs = new Map<string, { calendar: CalendarInfo; eventId: string }>();
+const refs = new Map<string, { account: string; calendar: CalendarInfo; eventId: string }>();
 const refByKey = new Map<string, string>();
 
-export function refFor(e: CalendarEvent, calendar: CalendarInfo): string {
-  const key = `${e.calendarId}\n${e.id}`;
+export function refFor(e: CalendarEvent, calendar: CalendarInfo, account = "g1"): string {
+  const key = `${account}\n${e.calendarId}\n${e.id}`;
   let ref = refByKey.get(key);
   if (!ref) {
     ref = `e${refByKey.size + 1}`;
     refByKey.set(key, ref);
   }
-  refs.set(ref, { calendar, eventId: e.id });
+  refs.set(ref, { account, calendar, eventId: e.id });
   return ref;
 }
 
+const ACCOUNT_PROP = { type: "string", description: "Only this account (its name or address). Default: every connected calendar account." };
+
+/** The calendar accounts a call may use; a clear error when there are none. */
+function calendarAccounts(ctx: ToolContext, ref?: unknown): Account[] {
+  const list = ctx.accounts.pick("calendar", ref);
+  if (!list.length) {
+    const any = ctx.accounts.connected().length > 0;
+    throw new GoogleAuthError(any ? "no_scope" : "not_connected", any ? "no account has calendar access (or the sign-in expired) — run /connect google" : "Google isn't connected — run /connect google");
+  }
+  return list;
+}
+
+const client = (ctx: ToolContext, a: Account) => new CalendarClient(ctx.accounts.auth(a));
+
+/** Every event in the range across the accounts, each with its calendar and account. */
+async function eventsAcross(ctx: ToolContext, accounts: Account[], from: Date, to: Date, query?: string) {
+  const per = await Promise.all(
+    accounts.map(async (a) => {
+      const cal = client(ctx, a);
+      const byId = new Map((await cal.calendars()).map((c) => [c.id, c]));
+      return (await cal.events(from, to, query)).map((e) => ({ e, a, calendar: byId.get(e.calendarId)! }));
+    }),
+  );
+  return per.flat().sort((x, y) => x.e.start.getTime() - y.e.start.getTime() || Number(y.e.allDay) - Number(x.e.allDay));
+}
+
 /** Looks up a handle and re-reads the event; refuses read-only calendars and events with guests (D22). */
-async function resolveRef(cal: CalendarClient, ref: unknown): Promise<{ calendar: CalendarInfo; event: CalendarEvent }> {
+async function resolveRef(ctx: ToolContext, ref: unknown): Promise<{ cal: CalendarClient; calendar: CalendarInfo; event: CalendarEvent }> {
   const r = typeof ref === "string" ? refs.get(ref.trim().replace(/^\[|\]$/g, "")) : undefined;
   if (!r) throw new Error(`unknown event "${String(ref)}"; find it with calendar_events first and use its [eN] handle`);
   if (!r.calendar.writable) throw new Error(`the "${r.calendar.name}" calendar is read-only`);
+  const account = ctx.accounts.get(r.account);
+  if (!account || !ctx.accounts.usable(account, "calendar")) throw new GoogleAuthError("not_connected", "that event's account is no longer connected (or its sign-in expired) — run /connect google");
+  const cal = client(ctx, account);
   const event = await cal.getEvent(r.calendar, r.eventId);
   if (!event) throw new Error("that event no longer exists");
   if (event.guests > 0) {
     throw new Error("this event has other guests; Edward doesn't change shared events (they wouldn't be notified). Ask the user to change it in Google Calendar");
   }
-  return { calendar: r.calendar, event };
+  return { cal, calendar: r.calendar, event };
 }
 
 const str = (v: unknown) => (typeof v === "string" ? v.trim() : undefined);
@@ -90,12 +122,12 @@ export const CALENDAR_TOOLS: Tool[] = [
   {
     name: "calendar_events",
     description:
-      "List events on the user's Google Calendar (primary + calendars they show) between two local dates/times, optionally filtered by a search text. " +
-      "Use for 'what's on tomorrow', 'when is my dentist appointment', 'am I busy Friday afternoon'. Convert relative dates using the current time you were given. " +
-      "Each event has an [eN] handle for calendar_update / calendar_delete.",
+      "List events on the user's Google Calendar (primary + calendars they show, in every connected calendar account unless `account` is given) between two local dates/times, " +
+      "optionally filtered by a search text. Use for 'what's on tomorrow', 'when is my dentist appointment', 'am I busy Friday afternoon'. " +
+      "Convert relative dates using the current time you were given. Each event has an [eN] handle for calendar_update / calendar_delete.",
     inputSchema: {
       type: "object",
-      properties: { ...rangeProps, query: { type: "string", description: "Optional free-text search (title, location, notes, attendees)." } },
+      properties: { ...rangeProps, query: { type: "string", description: "Optional free-text search (title, location, notes, attendees)." }, account: ACCOUNT_PROP },
       required: ["from"],
       additionalProperties: false,
     },
@@ -103,19 +135,22 @@ export const CALENDAR_TOOLS: Tool[] = [
     async prepare(args, ctx) {
       const { from, to } = range(args);
       const query = str(args.query) || undefined;
-      const cal = new CalendarClient(ctx.google);
-      cal.ensureAccess();
+      const accounts = calendarAccounts(ctx, args.account);
+      const many = ctx.accounts.for("calendar").length > 1;
       return {
         summary: `calendar ${rangeLabel(from, to)}${query ? ` "${query}"` : ""}`,
         execute: async () => {
-          const byId = new Map((await cal.calendars()).map((c) => [c.id, c]));
-          const events = await cal.events(from, to, query);
-          if (!events.length) return query ? `No events matching "${query}" in that range.` : "No events in that range.";
+          const found = await eventsAcross(ctx, accounts, from, to, query);
+          if (!found.length) return query ? `No events matching "${query}" in that range.` : "No events in that range.";
           const out = [DATA_NOTE];
-          for (const [day, list] of groupByDay(events, from, to)) {
+          const info = new Map(found.map((x) => [x.e, x]));
+          for (const [day, list] of groupByDay(found.map((x) => x.e), from, to)) {
             if (!list.length) continue;
             out.push(dayLabel(day));
-            for (const e of list) out.push(`  [${refFor(e, byId.get(e.calendarId)!)}] ${eventLine(e, { notes: true })}`);
+            for (const e of list) {
+              const { a, calendar } = info.get(e)!;
+              out.push(`  [${refFor(e, calendar, a.id)}] ${eventLine(e, { notes: true })}${many ? ` (${ctx.accounts.label(a)})` : ""}`);
+            }
           }
           return out.join("\n");
         },
@@ -126,7 +161,7 @@ export const CALENDAR_TOOLS: Tool[] = [
     name: "calendar_free",
     description:
       "Find open time on the user's Google Calendar: gaps of at least `minutes` within working hours (default 09:00–18:00, weekdays). " +
-      "Events marked free and declined invitations don't block time. Use for 'when am I free next week for 2 hours'.",
+      "An event in any connected calendar account blocks the time; events marked free and declined invitations don't. Use for 'when am I free next week for 2 hours'.",
     inputSchema: {
       type: "object",
       properties: {
@@ -147,12 +182,11 @@ export const CALENDAR_TOOLS: Tool[] = [
       for (const k of ["day_start", "day_end"] as const) if (args[k] !== undefined && !HHMM_RE.test(String(args[k]))) throw new Error(`\`${k}\` must be HH:MM`);
       const opts = { minutes, dayStart: args.day_start as string | undefined, dayEnd: args.day_end as string | undefined, weekends: args.include_weekends === true };
       if ((opts.dayStart ?? "09:00") >= (opts.dayEnd ?? "18:00")) throw new Error("`day_start` must be before `day_end`");
-      const cal = new CalendarClient(ctx.google);
-      cal.ensureAccess();
+      const accounts = calendarAccounts(ctx);
       return {
         summary: `free ${minutes}m ${rangeLabel(from, to)}`,
         execute: async () => {
-          const slots = freeSlots(await cal.events(from, to), from, to, opts);
+          const slots = freeSlots((await eventsAcross(ctx, accounts, from, to)).map((x) => x.e), from, to, opts);
           const hours = `${opts.dayStart ?? "09:00"}–${opts.dayEnd ?? "18:00"}${opts.weekends ? ", incl. weekends" : ", weekdays"}`;
           return slots.length ? [`Free slots ≥ ${minutes} min (${hours}):`, ...slots.map(slotLine)].join("\n") : `No free slot of ${minutes} min (${hours}) in that range.`;
         },
@@ -164,7 +198,7 @@ export const CALENDAR_TOOLS: Tool[] = [
     description:
       "Add an event to the user's Google Calendar. The user sees a preview and approves it, so don't ask for confirmation in text first. " +
       "Local times: start/end as YYYY-MM-DDTHH:MM (end defaults to 1 hour later), or YYYY-MM-DD for an all-day event (end date inclusive). " +
-      "No guests or invitations. Defaults to the primary calendar.",
+      "No guests or invitations. Defaults to the primary calendar of the user's default calendar account.",
     inputSchema: {
       type: "object",
       properties: {
@@ -174,6 +208,7 @@ export const CALENDAR_TOOLS: Tool[] = [
         location: { type: "string" },
         notes: { type: "string", description: "Optional description." },
         calendar: { type: "string", description: "Calendar name, if not the primary one." },
+        account: { type: "string", description: "The account to add it to (name or address), if not the default one." },
       },
       required: ["title", "start"],
       additionalProperties: false,
@@ -183,20 +218,33 @@ export const CALENDAR_TOOLS: Tool[] = [
       const title = str(args.title);
       if (!title) throw new Error("`title` is required");
       const times = resolveTimes(str(args.start), str(args.end));
-      const cal = new CalendarClient(ctx.google);
-      cal.ensureAccess();
-      const calendars = await cal.calendars();
       const wanted = str(args.calendar);
-      const target = wanted ? calendars.find((c) => c.name.toLowerCase() === wanted.toLowerCase() || c.id === wanted) : calendars.find((c) => c.primary);
-      if (!target) throw new Error(`no calendar named "${wanted}"; shown calendars: ${calendars.map((c) => c.name).join(", ")}`);
+      // Where it goes: the named account, else the account that has the named calendar, else the default.
+      const candidates = args.account !== undefined ? calendarAccounts(ctx, args.account) : wanted ? calendarAccounts(ctx) : [ctx.accounts.primary("calendar") ?? calendarAccounts(ctx)[0]!];
+      let target: CalendarInfo | undefined;
+      let account: Account | undefined;
+      const shown: string[] = [];
+      for (const a of candidates) {
+        const calendars = await client(ctx, a).calendars();
+        shown.push(...calendars.map((c) => c.name));
+        const hit = wanted ? calendars.find((c) => c.name.toLowerCase() === wanted.toLowerCase() || c.id === wanted) : calendars.find((c) => c.primary);
+        if (hit) {
+          target = hit;
+          account = a;
+          break;
+        }
+      }
+      if (!target || !account) throw new Error(`no calendar named "${wanted}"; shown calendars: ${[...new Set(shown)].join(", ")}`);
       if (!target.writable) throw new Error(`the "${target.name}" calendar is read-only`);
+      const cal = client(ctx, account);
+      const many = ctx.accounts.for("calendar").length > 1;
       const input: EventInput = { title, ...times, location: str(args.location) || undefined, notes: str(args.notes) || undefined };
       return {
         summary: `add to calendar: ${whenText(times.start!, times.end!)} ${title}`,
-        preview: preview([input.location && `@ ${input.location}`, `calendar: ${target.name}`, input.notes && `notes: ${truncate(input.notes, 120)}`]),
+        preview: preview([input.location && `@ ${input.location}`, `calendar: ${target.name}${many ? ` (${ctx.accounts.label(account)})` : ""}`, input.notes && `notes: ${truncate(input.notes, 120)}`]),
         execute: async () => {
           const e = await cal.createEvent(target, input);
-          return `Created [${refFor(e, target)}] ${describeEvent(e)}`;
+          return `Created [${refFor(e, target, account.id)}] ${describeEvent(e)}`;
         },
       };
     },
@@ -221,9 +269,8 @@ export const CALENDAR_TOOLS: Tool[] = [
     },
     approval: "ask",
     async prepare(args, ctx) {
-      const cal = new CalendarClient(ctx.google);
-      cal.ensureAccess();
-      const { calendar, event } = await resolveRef(cal, args.event);
+      const { cal, calendar, event } = await resolveRef(ctx, args.event);
+      const account = refs.get(String(args.event).trim().replace(/^\[|\]$/g, ""))!.account;
       const input: EventInput = { ...resolveTimes(str(args.start), str(args.end), event) };
       if (args.title !== undefined) input.title = str(args.title);
       if (args.location !== undefined) input.location = str(args.location);
@@ -238,7 +285,7 @@ export const CALENDAR_TOOLS: Tool[] = [
         preview: preview([`before: ${describeEvent(event)}`, `after:  ${after}`, input.notes !== undefined && `notes: ${truncate(input.notes ?? "", 120) || "(cleared)"}`]),
         execute: async () => {
           const e = await cal.updateEvent(calendar, event.id, input);
-          return `Updated [${refFor(e, calendar)}] ${describeEvent(e)}`;
+          return `Updated [${refFor(e, calendar, account)}] ${describeEvent(e)}`;
         },
       };
     },
@@ -256,9 +303,7 @@ export const CALENDAR_TOOLS: Tool[] = [
     },
     approval: "ask",
     async prepare(args, ctx) {
-      const cal = new CalendarClient(ctx.google);
-      cal.ensureAccess();
-      const { calendar, event } = await resolveRef(cal, args.event);
+      const { cal, calendar, event } = await resolveRef(ctx, args.event);
       const line = describeEvent(event);
       return {
         summary: `delete calendar event: ${line}${event.recurring ? " (this occurrence only)" : ""}`,

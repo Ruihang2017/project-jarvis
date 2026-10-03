@@ -13,7 +13,7 @@ import { showToast } from "./notify.js";
 import { heartbeatPath } from "./task.js";
 import { briefDue, briefGoogle, composeBrief, markBriefShown } from "./brief.js";
 import { MemoryStore } from "../memory/store.js";
-import { GoogleAuth } from "../google/auth.js";
+import { Accounts } from "../accounts/accounts.js";
 import { backgroundCheck } from "../google/health.js";
 import { BillStore } from "../bills/store.js";
 import { claimDueNotices, noticeToast } from "../bills/remind.js";
@@ -52,10 +52,14 @@ export async function runTick(now = new Date()): Promise<Fired[]> {
     store.close();
     bills.close();
   }
-  try {
-    await backgroundCheck(new GoogleAuth(), showToast, now);
-  } catch (e) {
-    log(`google check failed: ${e instanceof Error ? e.message : String(e)}`); // message only: never token data
+  const accounts = new Accounts();
+  const many = accounts.connected().length > 1;
+  for (const a of accounts.connected()) {
+    try {
+      await backgroundCheck(accounts.auth(a), showToast, now, many ? { id: a.id, label: accounts.label(a) } : undefined);
+    } catch (e) {
+      log(`google check failed (${a.id}): ${e instanceof Error ? e.message : String(e)}`); // message only: never token data
+    }
   }
   return fired;
 }
@@ -66,7 +70,7 @@ async function maybeBrief(reminders: ReminderStore, bills: BillStore, now: Date)
   try {
     if (!briefDue(memory, "toast", now)) return;
     markBriefShown(memory, "toast"); // mark first: a slow toast must not repeat next minute
-    const brief = composeBrief(memory, reminders, now, await briefGoogle(new GoogleAuth(), now), bills);
+    const brief = composeBrief(memory, reminders, now, await briefGoogle(new Accounts(), now), bills);
     if (brief.count) await showToast({ title: brief.title, body: brief.lines.join("\n"), tag: "brief", kind: "info" });
   } finally {
     memory.close();

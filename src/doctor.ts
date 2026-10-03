@@ -79,17 +79,33 @@ async function backgroundCheck(): Promise<Check> {
   return { name: "Background", status: "ok", detail: `on, last ran ${age}s ago` };
 }
 
-async function googleCheck(session: Session): Promise<Check> {
-  const s = session.google.state();
-  if (!s) return { name: "Google", status: "ok", detail: "not connected (optional) — /connect google" };
-  try {
-    if ((await session.google.check()) !== "ok") return { name: "Google", status: "fail", detail: "the connection expired or was revoked — /connect google" };
-  } catch (e) {
-    return { name: "Google", status: "warn", detail: `couldn't reach Google: ${e instanceof Error ? e.message : String(e)}` };
+/** One check per connected Google account (A1). */
+async function googleChecks(session: Session): Promise<Check[]> {
+  const acc = session.accounts;
+  const list = acc.connected();
+  if (!list.length) return [{ name: "Google", status: "ok", detail: "not connected (optional) — /connect google" }];
+  const checks: Check[] = [];
+  for (const a of list) {
+    const name = list.length > 1 ? `Google · ${acc.label(a)}` : "Google";
+    const s = acc.state(a)!;
+    const who = s.email ?? "connected";
+    try {
+      if ((await acc.auth(a).check()) !== "ok") {
+        checks.push({ name, status: "fail", detail: `${who}: the connection expired or was revoked — /connect google ${s.email ?? a.id}` });
+        continue;
+      }
+    } catch (e) {
+      checks.push({ name, status: "warn", detail: `couldn't reach Google: ${e instanceof Error ? e.message : String(e)}` });
+      continue;
+    }
+    const missing = missingFeatures(s);
+    checks.push(
+      missing.length
+        ? { name, status: "warn", detail: `${who}; no permission yet for ${missing.join(" and ")} — /connect google ${s.email ?? a.id}` }
+        : { name, status: "ok", detail: `${who} · ${s.scopes.map(shortScope).filter((x) => x !== "openid").join(", ")}` },
+    );
   }
-  const missing = missingFeatures(s);
-  if (missing.length) return { name: "Google", status: "warn", detail: `${s.email ?? "connected"}; no permission yet for ${missing.join(" and ")} — /connect google` };
-  return { name: "Google", status: "ok", detail: `${s.email ?? "connected"} · ${s.scopes.map(shortScope).filter((x) => x !== "openid").join(", ")}` };
+  return checks;
 }
 
 /** All checks. With a session, also ChatGPT sign-in, Google and the current mode. */
@@ -108,7 +124,7 @@ export async function runDoctor(session?: Session): Promise<Check[]> {
     }
   }
   checks.push(dataDirCheck(), dataVersionCheck(), await backgroundCheck());
-  if (session) checks.push(await googleCheck(session));
+  if (session) checks.push(...(await googleChecks(session)));
   checks.push(guardSelfTest());
   if (session) {
     checks.push(

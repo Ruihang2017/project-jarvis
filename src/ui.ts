@@ -301,9 +301,13 @@ export async function repl(session: Session): Promise<void> {
     console.log(styleText("bold", GETTING_STARTED[0]!));
     for (const l of GETTING_STARTED.slice(1)) console.log(dim(l));
   }
-  const google = session.google.state();
-  if (google?.invalidAt) queued.push("Google connection expired — /connect google to reconnect");
-  else if (missingFeatures(google).length) queued.push(`${missingFeatures(google).join(" and ")} need${missingFeatures(google).length === 1 ? "s" : ""} one more Google permission — /connect google to add it`);
+  for (const a of session.accounts.connected()) {
+    const google = session.accounts.state(a);
+    const who = session.accounts.connected().length > 1 ? ` (${session.accounts.label(a)})` : "";
+    const again = `/connect google${who ? ` ${a.email ?? a.id}` : ""}`;
+    if (google?.invalidAt) queued.push(`Google connection expired${who} — ${again} to reconnect`);
+    else if (missingFeatures(google).length) queued.push(`${missingFeatures(google).join(" and ")}${who} need${missingFeatures(google).length === 1 ? "s" : ""} one more Google permission — ${again} to add it`);
+  }
   showPrompt();
   checkReminders(); // anything that came due while Edward was closed
   for (let raw = await input.next(); raw !== null; raw = await input.next()) {

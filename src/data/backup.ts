@@ -10,7 +10,7 @@ import { memoryDbPath } from "../memory/store.js";
 import { appDataDir } from "../settings.js";
 
 export const KEEP_BACKUPS = 10;
-const COPIED = ["settings.json", "google.json"];
+const COPIED = ["settings.json", "google.json", "accounts.json"];
 
 export const backupsDir = () => join(appDataDir(), "backups");
 
@@ -34,6 +34,16 @@ export function backupData(reason = "manual", now = new Date()): string {
   for (const name of COPIED) {
     const src = join(appDataDir(), name);
     if (existsSync(src)) copyFileSync(src, join(dir, name));
+  }
+  // Each account's connection state (A1); its token stays out, as above.
+  const accounts = join(appDataDir(), "accounts");
+  if (existsSync(accounts)) {
+    for (const id of readdirSync(accounts)) {
+      const state = join(accounts, id, "google.json");
+      if (id.startsWith(".") || !existsSync(state)) continue;
+      mkdirSync(join(dir, "accounts", id), { recursive: true });
+      copyFileSync(state, join(dir, "accounts", id, "google.json"));
+    }
   }
   prune();
   return dir;

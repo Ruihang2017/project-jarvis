@@ -1,5 +1,7 @@
 /**
- * The Google connection (N2): one personal account, shared by the REPL and the background tick.
+ * One Google sign-in (N2), shared by the REPL, the app and the background tick. Each connected
+ * account has its own folder (accounts/<id>/, see src/accounts/accounts.ts); before A1 the single
+ * account lived in the data folder itself, which is still the default here.
  *
  * - google-token.bin: the refresh token, DPAPI-encrypted (never logged, never printed)
  * - google.json: non-secret state (email, granted scopes, when it was connected/checked/expired)
@@ -11,7 +13,7 @@ import { appDataDir } from "../settings.js";
 import { protect, unprotect } from "./dpapi.js";
 import {
   authUrl,
-  emailFromIdToken,
+  claimsFromIdToken,
   exchangeCode,
   GoogleAuthError,
   listenForCode,
@@ -39,29 +41,31 @@ export interface GoogleState {
   invalidAt?: string;
   /** invalidAt value already announced by a background notification (once per expiry). */
   notifiedAt?: string;
+  /** Google Workspace domain ("hd" claim); personal Gmail accounts have none. Such accounts are refused (D34). */
+  hostedDomain?: string;
 }
 
-export const tokenPath = () => join(appDataDir(), "google-token.bin");
-const statePath = () => join(appDataDir(), "google.json");
+export const tokenPath = (dir = appDataDir()) => join(dir, "google-token.bin");
+export const statePath = (dir = appDataDir()) => join(dir, "google.json");
 
-export function readState(): GoogleState | null {
+export function readState(dir = appDataDir()): GoogleState | null {
   try {
-    return JSON.parse(readFileSync(statePath(), "utf8")) as GoogleState;
+    return JSON.parse(readFileSync(statePath(dir), "utf8")) as GoogleState;
   } catch {
     return null;
   }
 }
 
-function writeState(s: GoogleState) {
-  mkdirSync(appDataDir(), { recursive: true });
-  writeFileSync(statePath(), JSON.stringify(s, null, 2) + "\n");
+function writeState(s: GoogleState, dir: string) {
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(statePath(dir),JSON.stringify(s, null, 2) + "\n");
 }
 
-export function updateState(patch: Partial<GoogleState>): GoogleState | null {
-  const s = readState();
+export function updateState(patch: Partial<GoogleState>, dir = appDataDir()): GoogleState | null {
+  const s = readState(dir);
   if (!s) return null;
   const next = { ...s, ...patch };
-  writeState(next);
+  writeState(next, dir);
   return next;
 }
 
@@ -74,11 +78,20 @@ export class GoogleAuth {
   private access?: { token: string; expiresAt: number };
   private client?: OAuthClient;
 
-  constructor(private http: Http = fetch) {}
+  /** `dir` holds this account's token and state; the data folder itself for the pre-A1 single account. */
+  constructor(
+    private http: Http = fetch,
+    readonly dir: string = appDataDir(),
+  ) {}
 
   /** null when never connected (or disconnected). */
   state(): GoogleState | null {
-    return existsSync(tokenPath()) ? readState() : null;
+    return existsSync(tokenPath(this.dir)) ? readState(this.dir) : null;
+  }
+
+  /** Records something about this sign-in (background checks, notifications). */
+  update(patch: Partial<GoogleState>): GoogleState | null {
+    return updateState(patch, this.dir);
   }
 
   private getClient(): OAuthClient {
@@ -99,12 +112,13 @@ export class GoogleAuth {
     const code = await listener.code;
     const t = await exchangeCode(this.http, client, code, verifier, listener.redirectUri);
     if (!t.refresh_token) throw new GoogleAuthError("no_refresh_token", "Google didn't return a refresh token; try /connect google again");
-    mkdirSync(appDataDir(), { recursive: true });
-    writeFileSync(tokenPath(), await protect(t.refresh_token));
+    mkdirSync(this.dir, { recursive: true });
+    writeFileSync(tokenPath(this.dir), await protect(t.refresh_token));
     this.access = { token: t.access_token, expiresAt: Date.now() + t.expires_in * 1000 };
     const now = new Date().toISOString();
-    const next: GoogleState = { email: emailFromIdToken(t.id_token), scopes: t.scope?.split(" ").filter(Boolean) ?? wanted, connectedAt: now, checkedAt: now };
-    writeState(next);
+    const claims = claimsFromIdToken(t.id_token);
+    const next: GoogleState = { email: claims.email, hostedDomain: claims.hd, scopes: t.scope?.split(" ").filter(Boolean) ?? wanted, connectedAt: now, checkedAt: now };
+    writeState(next, this.dir);
     return next;
   }
 
@@ -114,16 +128,16 @@ export class GoogleAuth {
     const s = this.state();
     if (!s) throw new GoogleAuthError("not_connected", "Google isn't connected; run /connect google");
     if (s.invalidAt) throw new GoogleAuthError("invalid_grant", "the Google connection expired; run /connect google");
-    const refreshToken = await unprotect(readFileSync(tokenPath()));
+    const refreshToken = await unprotect(readFileSync(tokenPath(this.dir)));
     try {
       const t = await refreshAccess(this.http, this.getClient(), refreshToken);
       this.access = { token: t.access_token, expiresAt: Date.now() + t.expires_in * 1000 };
-      updateState({ checkedAt: new Date().toISOString() });
+      this.update({ checkedAt: new Date().toISOString() });
       return t.access_token;
     } catch (e) {
       if (e instanceof GoogleAuthError && e.code === "invalid_grant") {
         this.access = undefined;
-        updateState({ invalidAt: new Date().toISOString() });
+        this.update({ invalidAt: new Date().toISOString() });
         throw new GoogleAuthError("invalid_grant", "the Google connection expired or was revoked; run /connect google");
       }
       throw e;
@@ -146,15 +160,15 @@ export class GoogleAuth {
   /** Revokes at Google (best effort) and deletes the local token and state. */
   async disconnect(): Promise<{ revoked: boolean }> {
     let revoked = false;
-    if (existsSync(tokenPath())) {
+    if (existsSync(tokenPath(this.dir))) {
       try {
-        revoked = await revoke(this.http, await unprotect(readFileSync(tokenPath())));
+        revoked = await revoke(this.http, await unprotect(readFileSync(tokenPath(this.dir))));
       } catch {
         // offline or already revoked: still forget it locally
       }
     }
-    rmSync(tokenPath(), { force: true });
-    rmSync(statePath(), { force: true });
+    rmSync(tokenPath(this.dir), { force: true });
+    rmSync(statePath(this.dir), { force: true });
     this.access = undefined;
     return { revoked };
   }

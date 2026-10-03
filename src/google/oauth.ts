@@ -3,9 +3,10 @@
  * https://developers.google.com/identity/protocols/oauth2/native-app
  */
 import { createHash, randomBytes } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { join } from "node:path";
+import { runtime } from "../runtime.js";
 import { appDataDir } from "../settings.js";
 
 export const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
@@ -31,13 +32,20 @@ export class GoogleAuthError extends Error {
 
 export const clientPath = () => join(appDataDir(), "google-client.json");
 
-/** Reads the desktop client downloaded from Google Cloud (see docs/guides/google-cloud-setup.md). */
+/** A client to sign in with: the user's own file, or the one built into the app. */
+export const hasClient = () => existsSync(clientPath()) || Boolean(runtime.googleClient);
+
+/**
+ * The desktop client: the file downloaded from Google Cloud (docs/guides/google-cloud-setup.md) when
+ * there is one, otherwise the one built into the app (D37; not in the repository).
+ */
 export function loadClient(path = clientPath()): OAuthClient {
   let json: { installed?: { client_id?: string; client_secret?: string }; web?: unknown };
   try {
     json = JSON.parse(readFileSync(path, "utf8"));
   } catch (e) {
     const missing = (e as NodeJS.ErrnoException).code === "ENOENT";
+    if (missing && path === clientPath() && runtime.googleClient) return runtime.googleClient;
     throw new GoogleAuthError("no_client", missing ? `missing ${path} — create a Desktop app client in Google Cloud and save its JSON there` : `can't read ${path}: ${(e as Error).message}`);
   }
   if (json.web) throw new GoogleAuthError("no_client", `${path} is a "Web application" client; Edward needs a "Desktop app" client`);
@@ -179,12 +187,17 @@ export async function revoke(http: Http, token: string): Promise<boolean> {
   return res.ok;
 }
 
-/** The id_token comes straight from Google's token endpoint over TLS, so reading it unverified is fine. */
-export function emailFromIdToken(idToken: string | undefined): string | undefined {
+/**
+ * The id_token comes straight from Google's token endpoint over TLS, so reading it unverified is fine.
+ * `hd` is the Google Workspace domain; personal accounts have none.
+ */
+export function claimsFromIdToken(idToken: string | undefined): { email?: string; hd?: string } {
   try {
     const payload = JSON.parse(Buffer.from(idToken!.split(".")[1]!, "base64url").toString("utf8"));
-    return typeof payload.email === "string" ? payload.email : undefined;
+    return { email: typeof payload.email === "string" ? payload.email : undefined, hd: typeof payload.hd === "string" && payload.hd ? payload.hd : undefined };
   } catch {
-    return undefined;
+    return {};
   }
 }
+
+export const emailFromIdToken = (idToken: string | undefined) => claimsFromIdToken(idToken).email;

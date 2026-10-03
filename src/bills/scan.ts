@@ -67,8 +67,12 @@ interface Extracted {
   due_date: string | null;
 }
 
+type Mail = Pick<GmailClient, "listIds" | "message">;
+
 export interface ScanDeps {
-  gmail: Pick<GmailClient, "listIds" | "message">;
+  /** Every mail account to look in (A1); `gmail` alone means one unnamed account. */
+  mailboxes?: { account: string; gmail: Mail }[];
+  gmail?: Mail;
   store: BillStore;
   /** One-off model call returning JSON matching SCHEMA (Session.runEphemeral). */
   classify: (instructions: string, input: string, schema: object) => Promise<string>;
@@ -95,7 +99,7 @@ function present(m: Message, n: number): { text: string; removed: number } {
 }
 
 /** Checks one extracted bill against the email itself and the payee's history. */
-export async function assess(e: Extracted, m: Message, deps: ScanDeps): Promise<{ flags: string[]; needsCheck: boolean; amountCents: number | null; dueDate: string | null }> {
+export async function assess(e: Extracted, m: Message, deps: ScanDeps & { boxes?: Box[] }): Promise<{ flags: string[]; needsCheck: boolean; amountCents: number | null; dueDate: string | null }> {
   const flags: string[] = [];
   let needsCheck = false;
   const text = `${m.subject}\n${m.body}`;
@@ -131,7 +135,10 @@ export async function assess(e: Extracted, m: Message, deps: ScanDeps): Promise<
   const previous = history[0];
   if (previous) {
     try {
-      const old = await deps.gmail.message(previous.messageId);
+      // The earlier bill may be in another account; bills from before A1 are in the first one.
+      const boxes = deps.boxes ?? mailboxes(deps);
+      const box = boxes.find((b) => b.account === previous.mailbox) ?? boxes[0]!;
+      const old = await box.gmail.message(previous.messageId);
       if (paymentDetailsChanged(old.body, m.body)) {
         flags.push("the payment details differ from this payee's last bill — phone them to check first (use a number from their website or an old bill, not this email)");
       }
@@ -142,16 +149,21 @@ export async function assess(e: Extracted, m: Message, deps: ScanDeps): Promise<
   return { flags, needsCheck, amountCents, dueDate };
 }
 
+type Box = { account?: string; gmail: Mail };
+const mailboxes = (deps: ScanDeps): Box[] => deps.mailboxes ?? (deps.gmail ? [{ gmail: deps.gmail }] : []);
+
 export async function scanBills(deps: ScanDeps): Promise<ScanResult> {
-  const { gmail, store } = deps;
-  const ids = (await gmail.listIds(BILL_QUERY, 100)).filter((id) => !store.wasScanned(id));
+  const { store } = deps;
+  const boxes = mailboxes(deps);
+  const ids = (await Promise.all(boxes.map(async (box) => (await box.gmail.listIds(BILL_QUERY, 100)).map((id) => ({ box, id }))))).flat().filter((x) => !store.wasScanned(x.id));
   const todo = ids.slice(0, MAX_PER_SCAN);
   const result: ScanResult = { scanned: 0, pending: [], tracked: [], removed: 0, remaining: ids.length - todo.length };
   const autoTrack = loadSettings().billsConfirm === "known";
   const home = region().currency;
 
   for (let i = 0; i < todo.length; i += BATCH) {
-    const messages = await Promise.all(todo.slice(i, i + BATCH).map((id) => gmail.message(id)));
+    const batch = todo.slice(i, i + BATCH);
+    const messages = await Promise.all(batch.map((x) => x.box.gmail.message(x.id)));
     const shown = messages.map((m, n) => present(m, n + 1));
     result.removed += shown.reduce((s, x) => s + x.removed, 0);
     const reply = JSON.parse(await deps.classify(instructions(home), shown.map((x) => x.text).join("\n\n"), SCHEMA)) as { emails?: Extracted[] };
@@ -165,7 +177,7 @@ export async function scanBills(deps: ScanDeps): Promise<ScanResult> {
         store.markScanned(m.id, false);
         continue;
       }
-      const checked = await assess({ ...e, payee }, m, deps);
+      const checked = await assess({ ...e, payee }, m, { ...deps, boxes });
       const domain = senderDomain(m.from);
       // A second email about a bill already recorded (a reminder, or the same bill under a slightly
       // different company name) isn't a second bill: same amount and due date, same payee or sender.
@@ -192,6 +204,7 @@ export async function scanBills(deps: ScanDeps): Promise<ScanResult> {
         dueDate: checked.dueDate,
         status: trusted ? (e.kind === "autopay" ? "autopay" : "tracked") : "pending",
         messageId: m.id,
+        mailbox: batch[n]!.box.account,
         senderDomain: domain,
         title: `${displayName(m.from)} — ${m.subject}`,
         flags: checked.flags,

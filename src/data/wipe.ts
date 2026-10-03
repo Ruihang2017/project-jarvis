@@ -9,7 +9,7 @@ import { config } from "../config.js";
 import { appDataDir, envVar } from "../settings.js";
 
 /** Files and folders in the data directory that hold the user's data. */
-const DATA_ENTRIES = ["memory.db", "memory.db-wal", "memory.db-shm", "settings.json", "google.json", "google-token.bin", "images", "images.jsonl", "logs", "backups", "exports", "tick-heartbeat.txt", "tick.vbs"];
+const DATA_ENTRIES = ["memory.db", "memory.db-wal", "memory.db-shm", "settings.json", "google.json", "google-token.bin", "accounts.json", "accounts", "images", "images.jsonl", "logs", "backups", "exports", "tick-heartbeat.txt", "tick.vbs"];
 /** Kept unless `all`: the ChatGPT sign-in, the user's own Google Cloud client file, and files they made in assist mode. */
 const KEPT = ["codex-home/auth.json", "codex-home/config.toml", "google-client.json", "workspace"];
 const CODEX_KEEP = new Set(["auth.json", "config.toml", "installation_id"]);
@@ -25,7 +25,7 @@ export function looksLikeDataDir(dir: string): boolean {
   // Never a drive root, a top-level folder or the home directory, whatever an environment variable says.
   const full = resolve(dir);
   if (full.split(/[\\/]/).filter(Boolean).length < 3 || full === resolve(homedir())) return false;
-  const marker = ["memory.db", "settings.json", "codex-home", "google.json", "tick.vbs"].some((f) => existsSync(join(dir, f)));
+  const marker = ["memory.db", "settings.json", "codex-home", "google.json", "accounts.json", "tick.vbs"].some((f) => existsSync(join(dir, f)));
   return marker && (/^(edward|jarvis)$/i.test(basename(resolve(dir))) || Boolean(envVar("DATA_DIR")));
 }
 

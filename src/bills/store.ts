@@ -31,6 +31,8 @@ export interface Bill {
   status: BillStatus;
   /** Gmail message id the bill came from. */
   messageId: string;
+  /** Connected account (mailbox) the email is in (A1); unset for bills found before A1 (the first account). */
+  mailbox?: string;
   senderDomain: string;
   /** Email subject with guarded data removed, for display. */
   title: string;
@@ -73,6 +75,7 @@ interface Row {
   needs_check: number;
   detected_at: string;
   paid_at: string | null;
+  mailbox: string | null;
 }
 
 const toBill = (r: Row): Bill => ({
@@ -91,6 +94,7 @@ const toBill = (r: Row): Bill => ({
   needsCheck: r.needs_check === 1,
   detectedAt: r.detected_at,
   paidAt: r.paid_at,
+  mailbox: r.mailbox ?? undefined,
 });
 
 export class BillStore {
@@ -116,7 +120,8 @@ export class BillStore {
         flags TEXT NOT NULL DEFAULT '[]',
         needs_check INTEGER NOT NULL DEFAULT 0,
         detected_at TEXT NOT NULL,
-        paid_at TEXT
+        paid_at TEXT,
+        mailbox TEXT
       );
       CREATE INDEX IF NOT EXISTS bills_status_due ON bills (status, due_date);
       -- Payees the user has confirmed, with the sender domains their bills came from.
@@ -127,6 +132,15 @@ export class BillStore {
       CREATE TABLE IF NOT EXISTS bill_reminders (bill_id INTEGER NOT NULL, due_date TEXT NOT NULL, days_before INTEGER NOT NULL, sent_at TEXT NOT NULL, PRIMARY KEY (bill_id, due_date, days_before));
       CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
     `);
+    // Bills from before A1 have no mailbox column: add it (nullable, so nothing changes for them).
+    const cols = this.db.prepare("PRAGMA table_info(bills)").all() as { name: string }[];
+    if (!cols.some((c) => c.name === "mailbox")) {
+      try {
+        this.db.exec("ALTER TABLE bills ADD COLUMN mailbox TEXT");
+      } catch {
+        // the background tick added it at the same moment
+      }
+    }
   }
 
   close() {
@@ -139,7 +153,7 @@ export class BillStore {
     for (const f of b.flags) refuseSensitive(f);
     const res = this.db
       .prepare(
-        "INSERT INTO bills (payee, category, kind, amount_cents, currency, due_date, status, message_id, sender_domain, title, flags, needs_check, detected_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO bills (payee, category, kind, amount_cents, currency, due_date, status, message_id, sender_domain, title, flags, needs_check, detected_at, mailbox) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       )
       .run(
         stripControl(b.payee).trim(),
@@ -155,6 +169,7 @@ export class BillStore {
         JSON.stringify(b.flags),
         b.needsCheck ? 1 : 0,
         new Date().toISOString(),
+        b.mailbox ?? null,
       );
     return this.get(Number(res.lastInsertRowid))!;
   }

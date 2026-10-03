@@ -4,6 +4,7 @@
  */
 import { join } from "node:path";
 import { runtime } from "../../src/runtime.js";
+import "./builtin.js";
 import { runTick } from "../../src/background/tick.js";
 
 runtime.iconPath = join(import.meta.dirname, "..", "icon.png");

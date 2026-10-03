@@ -1,3 +1,4 @@
+import type { Account, Accounts } from "../accounts/accounts.js";
 import type { GoogleState } from "./auth.js";
 import { hasCalendarAccess } from "./calendar.js";
 import { hasGmailAccess } from "./gmail.js";
@@ -12,15 +13,36 @@ export function missingFeatures(state: GoogleState | null): string[] {
   return [!hasCalendarAccess(state.scopes) && "calendar", !hasGmailAccess(state.scopes) && "Gmail"].filter((x): x is string => Boolean(x));
 }
 
-/** Thread instructions about Google, from the connection state when the conversation starts. */
-export function googleInstructions(state: GoogleState | null): string {
+/** Thread instructions about Google, from the connected accounts when the conversation starts. */
+export function googleInstructions(accounts: Accounts): string {
   const lines = ["", "## Google"];
-  if (!state) {
+  const connected = accounts.connected();
+  if (!connected.length) {
     lines.push("The user's Google account isn't connected. If they ask about their calendar or Gmail, tell them to run /connect google first.");
     return lines.join("\n");
   }
-  lines.push(`Connected Google account: ${state.email ?? "(unknown)"}.${state.invalidAt ? " The connection has expired: ask them to run /connect google." : ""}`);
-  if (hasCalendarAccess(state.scopes)) {
+  const what = (a: Account) => {
+    const s = accounts.state(a)!;
+    if (s.invalidAt) return "connection expired: ask them to run /connect google";
+    const uses = [accounts.usable(a, "mail") && "mail", accounts.usable(a, "calendar") && "calendar"].filter(Boolean);
+    return uses.length ? uses.join(" + ") : "not used for mail or calendar";
+  };
+  lines.push(
+    connected.length === 1
+      ? `Connected Google account: ${connected[0]!.email ?? "(unknown)"} (${what(connected[0]!)}).`
+      : `Connected Google accounts: ${connected.map((a) => `${accounts.label(a)}${a.name && a.email ? ` <${a.email}>` : ""} (${what(a)})`).join("; ")}.`,
+  );
+  if (connected.length > 1) {
+    const send = accounts.primary("mail");
+    const cal = accounts.primary("calendar");
+    lines.push(
+      "Mail and calendar tools look at all accounts unless you pass `account`; results say which account each item is in. Replies go from the account the email came to. " +
+        `New emails go from ${send ? accounts.label(send) : "the default account"} and new events into ${cal ? accounts.label(cal) : "the default account"} unless the user names another account.`,
+    );
+  }
+  const canCalendar = accounts.for("calendar").length > 0;
+  const canMail = accounts.for("mail").length > 0;
+  if (canCalendar) {
     lines.push(
       'Google Calendar: use calendar_events for questions about their schedule and calendar_free to find open time. Pass local dates/times computed from the "[Edward] Now:" note. ' +
         'calendar_create / calendar_update / calendar_delete change events; the user approves each one in a preview, so call the tool directly instead of asking "shall I?" first. ' +
@@ -31,7 +53,7 @@ export function googleInstructions(state: GoogleState | null): string {
   } else {
     lines.push("Calendar access hasn't been granted yet: if they ask about their calendar, tell them to run /connect google to add it.");
   }
-  if (hasGmailAccess(state.scopes)) {
+  if (canMail) {
     lines.push(
       "Gmail: use gmail_search (Gmail search syntax: from:, newer_than:7d, is:unread, category:primary …) and gmail_read with the [mN] handle; summarise rather than paste whole emails. " +
         "To write: gmail_draft saves a Gmail draft (new email, or reply_to=[mN]; reply only to the sender unless the user says reply all). " +

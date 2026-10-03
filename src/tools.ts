@@ -15,7 +15,7 @@ import type { MemoryStore } from "./memory/store.js";
 import { describeMemoryCall, MEMORY_TOOLS } from "./memory/tools.js";
 import type { ReminderStore } from "./reminders/store.js";
 import { describeReminderCall, REMINDER_TOOLS } from "./reminders/tools.js";
-import type { GoogleAuth } from "./google/auth.js";
+import type { Accounts } from "./accounts/accounts.js";
 import { CALENDAR_TOOLS, describeCalendarCall } from "./google/calendar-tools.js";
 import { describeGmailCall, GMAIL_TOOLS } from "./google/gmail-tools.js";
 import type { BillStore } from "./bills/store.js";
@@ -40,7 +40,8 @@ export interface ToolContext {
   workspace: string;
   memory: MemoryStore;
   reminders: ReminderStore;
-  google: GoogleAuth;
+  /** Connected Google accounts (A1). */
+  accounts: Accounts;
   bills: BillStore;
   threadId: string;
 }
@@ -157,7 +158,7 @@ export class ToolRunner {
     private readonly workspace: string,
     private readonly memory: MemoryStore,
     private readonly reminders: ReminderStore,
-    private readonly google: GoogleAuth,
+    private readonly accounts: Accounts,
     private readonly bills: BillStore,
   ) {}
 
@@ -169,7 +170,7 @@ export class ToolRunner {
     const args = req.arguments && typeof req.arguments === "object" && !Array.isArray(req.arguments) ? req.arguments : {};
     let call: PreparedCall;
     try {
-      call = await tool.prepare(args as Record<string, unknown>, { workspace: this.workspace, memory: this.memory, reminders: this.reminders, google: this.google, bills: this.bills, threadId: req.threadId });
+      call = await tool.prepare(args as Record<string, unknown>, { workspace: this.workspace, memory: this.memory, reminders: this.reminders, accounts: this.accounts, bills: this.bills, threadId: req.threadId });
     } catch (e) {
       return fail(`Invalid call: ${e instanceof Error ? e.message : String(e)}`);
     }

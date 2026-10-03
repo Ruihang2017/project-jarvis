@@ -122,7 +122,7 @@ export function App() {
   useEffect(() => {
     if (!state?.signedIn) return;
     void call("bills").then((b) => setBadges((x) => ({ ...x, bills: b.pending.length })), () => {});
-    if (state.google.connected && !state.google.expired) void call("mail").then((m) => setBadges((x) => ({ ...x, mail: m.unread.length })), () => {});
+    if (state.google.connected) void call("mail").then((m) => setBadges((x) => ({ ...x, mail: m.unread.length })), () => {});
   }, [state?.signedIn, state?.google.connected, route.page]);
 
   const setMode = useCallback(
@@ -220,7 +220,7 @@ function Sidebar({ badges }: { badges: { bills: number; mail: number } }) {
       <div className="nav-status">
         <div>
           <span>Google</span>
-          <span className={g.expired ? "bad" : g.connected ? "on" : "off"}>{g.expired ? "Reconnect" : g.connected ? "Connected" : "Not connected"}</span>
+          <span className={g.expired ? "bad" : g.connected ? "on" : "off"}>{g.expired ? "Sign in again" : g.connected ? (g.accounts.length > 1 ? `${g.accounts.length} accounts` : "Connected") : "Not connected"}</span>
         </div>
         <div>
           <span>Background</span>

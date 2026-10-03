@@ -31,7 +31,7 @@ import { memoryInstructions } from "./memory/prompt.js";
 import { MemoryStore } from "./memory/store.js";
 import { REMINDER_INSTRUCTIONS } from "./reminders/prompt.js";
 import { ReminderStore } from "./reminders/store.js";
-import { GoogleAuth } from "./google/auth.js";
+import { Accounts } from "./accounts/accounts.js";
 import { BillStore } from "./bills/store.js";
 import { BILL_INSTRUCTIONS } from "./bills/tools.js";
 import { googleInstructions } from "./google/instructions.js";
@@ -138,9 +138,10 @@ export class Session {
   private fileChanges = new Map<string, FileUpdateChange[]>();
   readonly memory = new MemoryStore();
   readonly reminders = new ReminderStore();
-  readonly google = new GoogleAuth();
+  /** Connected Google accounts (A1). */
+  readonly accounts = new Accounts();
   readonly bills = new BillStore();
-  private tools = new ToolRunner(config.workspace, this.memory, this.reminders, this.google, this.bills);
+  private tools = new ToolRunner(config.workspace, this.memory, this.reminders, this.accounts, this.bills);
   /** Told whenever the privacy guard removed something on its way to Codex. */
   onRedacted?: (source: Source, removed: Category[]) => void;
   /** Throwaway threads (runEphemeral): their redactions are reported as "background", not "your message". */
@@ -268,7 +269,7 @@ export class Session {
       sandbox: MODES[this.mode].sandbox,
       approvalPolicy: MODES[this.mode].approvalPolicy,
       // Rebuilt on every start/resume so the thread sees the current long-term core.
-      developerInstructions: PERSONA + memoryInstructions(this.memory) + REMINDER_INSTRUCTIONS + googleInstructions(this.google.state()) + BILL_INSTRUCTIONS,
+      developerInstructions: PERSONA + memoryInstructions(this.memory) + REMINDER_INSTRUCTIONS + googleInstructions(this.accounts) + BILL_INSTRUCTIONS,
       config: threadConfig(this.effort, this.mode),
     };
   }

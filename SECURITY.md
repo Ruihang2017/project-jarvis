@@ -86,18 +86,31 @@ is discarded.
 
 Everything is in `%LOCALAPPDATA%\Edward` on your computer: memories, reminders and bills (`memory.db`),
 settings, generated images, and Codex's conversation history (`codex-home`). These files are not
-encrypted; they are protected by your Windows account. The Google sign-in token is encrypted with Windows
-DPAPI and never logged.
+encrypted; they are protected by your Windows account. Each Google sign-in token is encrypted with Windows
+DPAPI (one per account, in `accounts\<id>\`) and never logged.
 
 - `/data export` writes everything Edward stores as readable files.
 - `edward delete-data` deletes it; `edward uninstall` also removes the scheduled task and revokes Google access.
-- `/disconnect google` revokes Edward's Google access.
+- `/disconnect google <account>` revokes Edward's access to one Google account.
 
 ## Google
 
-You register your own Google Cloud project, so the OAuth client is yours. Edward asks for: reading and
-writing calendar events, reading the calendar list, reading Gmail, and creating and sending drafts. It
-cannot delete, archive or label mail. Sign-in uses the loopback redirect with PKCE on `127.0.0.1`.
+Edward asks for: reading and writing calendar events, reading the calendar list, reading Gmail, and
+creating and sending drafts. It cannot delete, archive or label mail. Sign-in uses the loopback redirect
+with PKCE on `127.0.0.1`.
+
+- **Several accounts.** You can connect more than one personal Google account. Edward reads mail and
+  calendars from all of them, labels what comes from which, replies from the account an email came to,
+  and shows the "from" address in every send preview.
+- **Personal accounts only, enforced in code.** A Google Workspace (work or school) account is refused
+  when it signs in: Edward sees the workspace domain in Google's answer, revokes that sign-in at Google
+  and keeps nothing. You can also list domains Edward must never connect (`blockedDomains` in
+  `settings.json`, kept on your computer only).
+- **The OAuth client.** Running from source, you register your own Google Cloud project. The desktop
+  installer can carry a client built in for testers. A desktop app's client secret isn't really secret:
+  Google treats installed apps as public clients, and anyone could take it out of the installer. What
+  protects your data is that each person signs in with their own account and the tokens stay on their
+  own computer.
 
 ## The desktop app
 

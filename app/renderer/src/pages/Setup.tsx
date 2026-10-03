@@ -198,15 +198,18 @@ export function Setup() {
         );
       case 3:
         return (
-          <Section title="Connect your Google account" lead="Optional. Edward talks to Google through a small project that belongs to you, so your mail and calendar go from Google straight to this computer.">
+          <Section title="Connect your Google account" lead="Optional. Your mail and calendar go from Google straight to this computer. You can add more accounts later in Settings.">
             <Card className="pad stack" style={{ gap: 16 }}>
               {google.connected && !google.expired ? (
                 <div className="row">
                   <Icon name="check" width={2.2} color="var(--sage-ink)" />
                   <b>Connected as {google.email}</b>
+                  <span className="muted">· more accounts can be added in Settings → Accounts</span>
                 </div>
               ) : (
                 <>
+                  {!google.clientFile && (
+                  <>
                   <div className="row" style={{ alignItems: "flex-start", gap: 14 }}>
                     <b style={{ color: "var(--blue)", fontSize: 18 }}>1</b>
                     <div className="stack grow" style={{ gap: 6 }}>
@@ -233,10 +236,15 @@ export function Setup() {
                       </div>
                     </div>
                   </div>
+                  </>
+                  )}
                   <div className="row" style={{ alignItems: "flex-start", gap: 14 }}>
-                    <b style={{ color: "var(--blue)", fontSize: 18 }}>3</b>
+                    {!google.clientFile && <b style={{ color: "var(--blue)", fontSize: 18 }}>3</b>}
                     <div className="stack grow" style={{ gap: 6 }}>
                       <b>Sign in with Google</b>
+                      <span className="muted pretty">
+                        Personal accounts only; work and school accounts are turned away. While Edward is in testing, Google says it hasn't verified the app: choose Advanced, then continue.
+                      </span>
                       <div>
                         <Button
                           kind="primary"

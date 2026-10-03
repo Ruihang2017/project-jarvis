@@ -8,6 +8,7 @@ import { appendFileSync, writeFileSync } from "node:fs";
 import { join, sep } from "node:path";
 import { AUMID } from "../../src/background/notify.js";
 import { runtime } from "../../src/runtime.js";
+import "./builtin.js";
 import { handleScheme, registerScheme } from "./images.js";
 import { handleMailScheme, MAIL_PRIVILEGES, MAIL_SCHEME } from "./mailview.js";
 import { EdwardService } from "./service.js";
@@ -114,7 +115,7 @@ const METHODS = new Set<keyof EdwardApi>([
   "billEdit", "billScan", "billMonth", "billExport", "forgetBills", "reminders", "reminderAction", "memory", "memoryAdd", "memoryEdit",
   "memoryForget", "memoryReview", "memoryUndo", "memoryExport", "pictures", "pictureAction", "settings", "updateSettings", "chooseImagesFolder",
   "doctor", "data", "backup", "exportAll", "openDataFolder", "deleteEverything", "google", "chooseGoogleClient", "connectGoogle", "checkGoogle",
-  "disconnectGoogle", "openGuide", "finishSetup",
+  "disconnectGoogle", "updateAccount", "setDefaultAccount", "openGuide", "finishSetup",
 ]);
 
 app.on("second-instance", () => {

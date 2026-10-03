@@ -19,4 +19,6 @@ export const runtime: {
   silent?: boolean;
   /** No background work at start (memory learning, tidying, bill scan): automated checks only look. */
   noBackgroundWork?: boolean;
+  /** Google desktop client built into the app at packaging time (D37); a google-client.json in the data folder wins. */
+  googleClient?: { clientId: string; clientSecret: string };
 } = {};

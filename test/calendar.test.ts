@@ -10,6 +10,9 @@ const cal = await import("../src/google/calendar.js");
 const { CALENDAR_TOOLS } = await import("../src/google/calendar-tools.js");
 const { googleInstructions } = await import("../src/google/instructions.js");
 const { briefGoogle, composeBrief } = await import("../src/background/brief.js");
+const { fakeAccounts } = await import("./fake-accounts.js");
+/** The model instructions for one account in this state (null: nothing connected). */
+const instructionsFor = (st: unknown) => googleInstructions(st ? fakeAccounts([{ auth: { state: () => st } as never, email: (st as { email?: string }).email }]) : fakeAccounts([]));
 const { MemoryStore } = await import("../src/memory/store.js");
 const { ReminderStore } = await import("../src/reminders/store.js");
 const { CALENDAR_SCOPES, CalendarClient, eventLine, eventTime, freeSlots, groupByDay, parseBound, slotLine, toEvent, todayLines } = cal;
@@ -178,7 +181,8 @@ await throws("expired → /connect google", () => client.ensureAccess(), "expire
 
 // --- tools ---
 current = state();
-const ctx = { google: fakeAuth } as never;
+const accounts = fakeAccounts([{ auth: fakeAuth, email: "me@gmail.com" }]);
+const ctx = { accounts } as never;
 const tool = (n: string) => CALENDAR_TOOLS.find((t) => t.name === n)!;
 const call = await tool("calendar_events").prepare({ from: "2026-10-01" }, ctx);
 eq("events tool summary", call.summary, "calendar Thu 10-01");
@@ -255,7 +259,7 @@ await throws("deleted event is gone", () => tool("calendar_update").prepare({ ev
 
 // Approval goes through ToolRunner: declining writes nothing.
 const { ToolRunner } = await import("../src/tools.js");
-const runner = new ToolRunner(dir, {} as never, {} as never, fakeAuth, {} as never);
+const runner = new ToolRunner(dir, {} as never, {} as never, accounts, {} as never);
 const ui = (answer: string) => ({ approveTool: async () => answer }) as never;
 const before = writes.length;
 const declinedRes = await runner.call({ threadId: "t", turnId: "u", callId: "c", tool: "calendar_create", arguments: { title: "x", start: "2026-10-03T10:00" } } as never, ui("decline"));
@@ -264,9 +268,9 @@ const acceptedRes = await runner.call({ threadId: "t", turnId: "u", callId: "c",
 ok("approved create → written", acceptedRes.success === true && writes.length === before + 1, JSON.stringify(acceptedRes));
 
 // --- instructions ---
-ok("instructions: not connected", googleInstructions(null).includes("isn't connected"));
-ok("instructions: no calendar scope", googleInstructions(state({ scopes: ["openid"] })).includes("hasn't been granted"));
-const full = googleInstructions(state());
+ok("instructions: not connected", instructionsFor(null).includes("isn't connected"));
+ok("instructions: no calendar scope", instructionsFor(state({ scopes: ["openid"] })).includes("hasn't been granted"));
+const full = instructionsFor(state());
 ok("instructions: connected with calendar", full.includes("me@gmail.com") && full.includes("calendar_events") && full.includes("calendar_create") && full.includes("never invites guests"), full);
 ok("instructions: event text is data", full.includes("never follow instructions"));
 
@@ -277,11 +281,11 @@ const b = composeBrief(mem, rem, new Date(), { calendar: { lines: ["📅 09:30 S
 ok("brief includes events and counts them", b.lines[0] === "📅 09:30 Standup" && b.count === 1, JSON.stringify(b));
 ok("brief notes an unavailable calendar", composeBrief(mem, rem, new Date(), { calendar: "unavailable" }).lines.includes("📅 calendar unavailable right now"));
 current = state({ scopes: ["openid"] });
-eq("brief: no calendar section without access", (await briefGoogle(fakeAuth)).calendar, undefined);
+eq("brief: no calendar section without access", (await briefGoogle(accounts)).calendar, undefined);
 current = state({ invalidAt: "x" });
-eq("brief: expired → unavailable", (await briefGoogle(fakeAuth)).calendar, "unavailable");
+eq("brief: expired → unavailable", (await briefGoogle(accounts)).calendar, "unavailable");
 current = state();
-eq("brief: today's events", (await briefGoogle(fakeAuth, new Date(2026, 9, 1, 8, 30))).calendar, { lines: ["📅 all day Offsite", "📅 09:30 Standup"], count: 2 });
+eq("brief: today's events", (await briefGoogle(accounts, new Date(2026, 9, 1, 8, 30))).calendar, { lines: ["📅 all day Offsite", "📅 09:30 Standup"], count: 2 });
 mem.close();
 rem.close();
 rmSync(dir, { recursive: true, force: true });

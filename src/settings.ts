@@ -65,6 +65,11 @@ export interface Settings {
   webSearch?: "on" | "off";
   /** Whether the getting-started tips were shown (first run). */
   onboarded?: boolean;
+  /**
+   * Email domains Edward must never connect (D34), e.g. an employer's. Kept here, on this computer
+   * only, so a company domain never appears in the code.
+   */
+  blockedDomains?: string[];
 }
 
 const settingsPath = () => join(appDataDir(), "settings.json");

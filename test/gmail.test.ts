@@ -10,6 +10,9 @@ const g = await import("../src/google/gmail.js");
 const { GMAIL_TOOLS, clip, formatThread } = await import("../src/google/gmail-tools.js");
 const { googleInstructions, missingFeatures, CALENDAR_SCOPES, GMAIL_SCOPES } = await import("../src/google/instructions.js");
 const { briefGoogle, composeBrief } = await import("../src/background/brief.js");
+const { fakeAccounts } = await import("./fake-accounts.js");
+/** The model instructions for one account in this state (null: nothing connected). */
+const instructionsFor = (st: unknown) => googleInstructions(st ? fakeAccounts([{ auth: { state: () => st } as never, email: (st as { email?: string }).email }]) : fakeAccounts([]));
 const { GoogleAuthError } = await import("../src/google/auth.js");
 const { MemoryStore } = await import("../src/memory/store.js");
 const { ReminderStore } = await import("../src/reminders/store.js");
@@ -184,7 +187,8 @@ eq("summary line", g.summaryLine(found[1]!, now), "● Alice — Contract · 09:
 eq("snippet entities decoded", found[0]!.snippet, "Snippet & more");
 
 // --- tools ---
-const ctx = { google: fakeAuth } as never;
+const accounts = fakeAccounts([{ auth: fakeAuth, email: "me@gmail.com" }]);
+const ctx = { accounts } as never;
 const tool = (n: string) => GMAIL_TOOLS.find((t) => t.name === n)!;
 const search = await tool("gmail_search").prepare({ query: "is:unread" }, ctx);
 eq("search summary", search.summary, 'search mail "is:unread"');
@@ -228,7 +232,7 @@ current = state([...CALENDAR_SCOPES, ...GMAIL_SCOPES]);
 const draftReply = await tool("gmail_draft").prepare({ reply_to: "m2", body: "Friday works for me." }, ctx);
 eq("draft reply summary", draftReply.summary, "draft reply to Alice: Re: Contract");
 const d1 = await draftReply.execute();
-ok("draft result says NOT sent + handle", d1.startsWith("Draft [d1] saved in the user's Gmail drafts — NOT sent.") && d1.includes("To: Alice <alice@x.com>") && d1.includes("gmail_send with draft d1"), d1);
+ok("draft result says NOT sent + handle", d1.startsWith("Draft [d1] saved in the Gmail drafts of me@gmail.com — NOT sent.") && d1.includes("From: me@gmail.com") && d1.includes("To: Alice <alice@x.com>") && d1.includes("gmail_send with draft d1"), d1);
 const stored = [...gDrafts.values()][0]!;
 const storedRaw = parseRaw(stored.raw);
 eq("reply draft is threaded", [stored.threadId, storedRaw.headers.find((h) => h.name === "In-Reply-To")?.value], ["T1", "<a1@mail>"]);
@@ -244,7 +248,7 @@ await throws("send: only Edward drafts", () => tool("gmail_send").prepare({ draf
 const send1 = await tool("gmail_send").prepare({ draft: "d1" }, ctx);
 eq("send preview", [send1.summary, send1.preview, send1.allowAlways], [
   "send email to Alice: Re: Contract",
-  "To: Alice <alice@x.com>\n  Subject: Re: Contract\n  \n  Friday 3pm works for me.",
+  "From: me@gmail.com\n  To: Alice <alice@x.com>\n  Subject: Re: Contract\n  \n  Friday 3pm works for me.",
   false,
 ]);
 
@@ -262,7 +266,7 @@ const longSend = await tool("gmail_send").prepare({ draft: longDraft.match(/\[(d
 ok("send preview warns about text beyond what it shows", longSend.preview!.includes("11 more characters are not shown here") && !longSend.preview!.includes("SECRET-TAIL"), longSend.preview!.slice(-140));
 
 const { ToolRunner } = await import("../src/tools.js");
-const runner = new ToolRunner(dir, {} as never, {} as never, fakeAuth, {} as never);
+const runner = new ToolRunner(dir, {} as never, {} as never, accounts, {} as never);
 const answer = (a: string) => ({ approveTool: async () => a }) as never;
 const req = (draft: string) => ({ threadId: "t", turnId: "u", callId: "c", tool: "gmail_send", arguments: { draft } }) as never;
 const declinedSend = await runner.call(req("d1"), answer("decline"));
@@ -277,14 +281,14 @@ gDrafts.delete(newId); // deleted in Gmail
 await throws("draft deleted in Gmail", () => tool("gmail_send").prepare({ draft: newRef }, ctx), "no longer exists");
 
 // --- instructions & notices ---
-ok("instructions: Gmail granted", googleInstructions(state([...CALENDAR_SCOPES, ...GMAIL_SCOPES])).includes("gmail_search"));
-ok("instructions: draft then send, can't delete", /gmail_draft[\s\S]*gmail_send[\s\S]*can't archive, label, mark read or delete/.test(googleInstructions(state(GMAIL_SCOPES))));
-ok("instructions: Gmail not granted", googleInstructions(state(CALENDAR_SCOPES)).includes("Gmail access hasn't been granted"));
+ok("instructions: Gmail granted", instructionsFor(state([...CALENDAR_SCOPES, ...GMAIL_SCOPES])).includes("gmail_search"));
+ok("instructions: draft then send, can't delete", /gmail_draft[\s\S]*gmail_send[\s\S]*can't archive, label, mark read or delete/.test(instructionsFor(state(GMAIL_SCOPES))));
+ok("instructions: Gmail not granted", instructionsFor(state(CALENDAR_SCOPES)).includes("Gmail access hasn't been granted"));
 eq("missing features", [missingFeatures(null), missingFeatures(state([])), missingFeatures(state(CALENDAR_SCOPES)), missingFeatures(state([...CALENDAR_SCOPES, ...GMAIL_SCOPES]))], [[], ["calendar", "Gmail"], ["Gmail"], []]);
 
 // --- brief ---
 current = state(GMAIL_SCOPES);
-const bg = await briefGoogle(fakeAuth, now);
+const bg = await briefGoogle(accounts, now);
 eq("brief: no calendar section without calendar access", bg.calendar, undefined);
 eq("brief: unread mail section (counts as one thing)", bg.mail, { lines: ["✉ 2 unread in Primary", "   张三 — 会议", "   Alice — Contract"], count: 1 });
 const mem = new MemoryStore(join(dir, "memory.db"));
@@ -293,7 +297,7 @@ const brief = composeBrief(mem, rem, now, bg);
 eq("brief counts unread mail once", [brief.count, brief.lines], [1, ["✉ 2 unread in Primary", "   张三 — 会议", "   Alice — Contract"]]);
 eq("brief: mail unavailable", composeBrief(mem, rem, now, { mail: "unavailable" }).lines, ["✉ mail unavailable right now"]);
 for (const m of Object.values(store)) m.labelIds = ["INBOX"];
-eq("brief: no unread → nothing shown", (await briefGoogle(fakeAuth, now)).mail, { lines: [], count: 0 });
+eq("brief: no unread → nothing shown", (await briefGoogle(accounts, now)).mail, { lines: [], count: 0 });
 mem.close();
 rem.close();
 rmSync(dir, { recursive: true, force: true });

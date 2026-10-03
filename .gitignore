@@ -7,3 +7,6 @@ scripts/scrub-map.local.mjs
 app/build/
 app/dist/
 app/renderer/public/
+
+# The Google client built into the installer (D37): never commit
+app/build-secrets/

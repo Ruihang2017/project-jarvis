@@ -32,8 +32,8 @@ you › reply to Sam's update and ask whether the energy account is set up
 |---|---|
 | **Chat** | Answers, web search, image generation, with memory of what you tell it |
 | **Reminders** | "Remind me at 5pm to call the dentist" — a Windows notification, even when Edward is closed |
-| **Calendar** | What's on, when you're free, add / move / delete events (each one confirmed) |
-| **Gmail** | Search, read, summarise; draft replies; send only after you approve the draft |
+| **Calendar** | What's on, when you're free, add / move / delete events (each one confirmed) — across all your Google accounts |
+| **Gmail** | Search, read, summarise; draft replies; send only after you approve the draft — one or several personal Gmail accounts |
 | **Bills** | Finds bills in your email, checks them for signs of fraud, reminds you before they are due |
 | **Daily brief** | Today's events, reminders, bills and unread mail in one glance |
 
@@ -74,7 +74,7 @@ Just type. Slash commands cover the rest — `/help` lists them in three groups:
 
 | Conversation | What Edward looks after | Setup and care |
 |---|---|---|
-| `/new` `/resume` `/image` `/model` `/effort` `/usage` `/mode` | `/brief` `/calendar` `/mail` `/bills` `/remind` `/memory` `/images` | `/start` `/connect` `/google` `/disconnect` `/background` `/region` `/web` `/data` `/doctor` |
+| `/new` `/resume` `/image` `/model` `/effort` `/usage` `/mode` | `/brief` `/calendar` `/mail` `/bills` `/remind` `/memory` `/images` | `/start` `/connect` `/accounts` `/google` `/disconnect` `/background` `/region` `/web` `/data` `/doctor` |
 
 ### The desktop app
 

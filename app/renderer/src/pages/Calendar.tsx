@@ -39,7 +39,7 @@ export function Calendar() {
   return (
     <Shell
       title="Calendar"
-      sub="From your Google Calendar"
+      sub={data?.manyAccounts ? "From your Google Calendars, every account together" : "From your Google Calendar"}
       actions={
         <>
           <Segmented label="Range" value={days} onChange={setDays} options={[{ value: "2", label: "Today and tomorrow" }, { value: "7", label: "Week" }]} />
@@ -67,7 +67,7 @@ export function Calendar() {
             {data.days.map((d) => (
               <div key={d.date} className="stack" style={{ gap: 8 }}>
                 <div className="label">{d.label}</div>
-                {d.events.length ? d.events.map((e) => <EventRow key={e.id} e={e} color={colorOf(e.calendar)} />) : <p className="muted">Nothing.</p>}
+                {d.events.length ? d.events.map((e) => <EventRow key={e.id} e={e} color={data.manyAccounts && e.color ? e.color : colorOf(e.calendar)} />) : <p className="muted">Nothing.</p>}
               </div>
             ))}
             <Note tone="blue" icon="chat">
@@ -101,10 +101,13 @@ export function Calendar() {
             <Card className="pad stack" style={{ gap: 8 }}>
               <h2>Calendars shown</h2>
               {data.calendars.map((c) => (
-                <div className="row" key={c.name} style={{ minHeight: 36 }}>
-                  <span style={{ width: 10, height: 10, borderRadius: 3, background: colorOf(c.name) }} />
-                  <span>{c.name}</span>
-                  {c.primary && <Tag>Main</Tag>}
+                <div className="row" key={`${c.account ?? ""}/${c.name}`} style={{ minHeight: 36 }}>
+                  <span style={{ width: 10, height: 10, borderRadius: 3, background: data.manyAccounts && c.color ? c.color : colorOf(c.name) }} />
+                  <span className="grow ellipsis">
+                    {c.name}
+                    {data.manyAccounts && c.accountLabel && c.accountLabel !== c.name && <span className="muted"> · {c.accountLabel}</span>}
+                  </span>
+                  {c.primary && !data.manyAccounts && <Tag>Main</Tag>}
                 </div>
               ))}
               <p className="muted">These follow what's ticked in Google Calendar.</p>

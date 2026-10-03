@@ -17,7 +17,11 @@ const { ReminderStore } = await import("../src/reminders/store.js");
 const { resolveOpenTarget } = await import("../src/system.js");
 const { describeToolCall, TOOL_SPECS } = await import("../src/tools.js");
 const { BILL_TOOLS } = await import("../src/bills/tools.js");
-const { googleInstructions } = await import("../src/google/instructions.js");
+const { googleInstructions: forAccounts } = await import("../src/google/instructions.js");
+const { fakeAccounts } = await import("./fake-accounts.js");
+/** The Google instructions with nothing connected (null) or one account in this state. */
+const googleInstructions = (st: { email: string; scopes: string[]; connectedAt: string } | null) =>
+  forAccounts(fakeAccounts(st ? [{ auth: { state: () => st } as never, email: st.email }] : []));
 const { threadConfig } = await import("../src/session.js");
 const { updateSettings } = await import("../src/settings.js");
 const { PERSONA } = await import("../src/config.js");

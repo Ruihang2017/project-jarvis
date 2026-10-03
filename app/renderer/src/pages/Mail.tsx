@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { MailMessage, MailOriginal, MailSummary } from "../../../shared/api";
 import { useApp, Shell } from "../App";
 import { call, useData } from "../api";
-import { Button, Card, IconButton, Loading, Note, Segmented, Spot, Tag } from "../ui";
+import { AccountChip, Button, Card, IconButton, Loading, Note, Segmented, Spot, Tag } from "../ui";
 import { NotConnected } from "./Calendar";
 
 export function Mail() {
@@ -87,6 +87,7 @@ export function Mail() {
                   {m.subject}
                 </span>
                 <span className="muted ellipsis">{m.snippet}</span>
+                {data.manyAccounts && m.accountLabel && <AccountChip label={m.accountLabel} color={m.color} />}
                 {m.looksLikeBill && (
                   <span style={{ marginTop: 4 }}>
                     <Tag tone="apricot" icon="bill">
@@ -117,6 +118,7 @@ export function Mail() {
                     <div className="muted">
                       {message.from} · {message.date}
                     </div>
+                    {data.manyAccounts && picked.accountLabel && <AccountChip label={`To ${picked.accountLabel}`} color={picked.color} />}
                   </div>
                   {message.hasHtml && (
                     <Segmented

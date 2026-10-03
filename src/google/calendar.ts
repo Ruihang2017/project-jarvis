@@ -304,10 +304,11 @@ export function slotLine(s: Slot): string {
   return `${dayLabel(localDate(s.start))} ${hhmm(s.start)}–${hhmm(s.end)} (${len})`;
 }
 
-/** Today's events for the daily brief: "📅 09:30 Standup", "📅 all day Public holiday". */
-export async function todayLines(cal: CalendarClient, now = new Date()): Promise<string[]> {
+/** Today's events for the daily brief, from one or several accounts: "📅 09:30 Standup", "📅 all day Public holiday". */
+export async function todayLines(cals: CalendarClient | CalendarClient[], now = new Date()): Promise<string[]> {
   const day = localDate(now);
-  const events = await cal.events(dayStart(day), dayStart(nextDate(day)));
+  const lists = await Promise.all((Array.isArray(cals) ? cals : [cals]).map((cal) => cal.events(dayStart(day), dayStart(nextDate(day)))));
+  const events = lists.flat().sort((a, b) => a.start.getTime() - b.start.getTime() || Number(b.allDay) - Number(a.allDay));
   return events
     .filter((e) => !e.declined)
     .map((e) => `📅 ${e.allDay ? "all day" : hhmm(e.start < dayStart(day) ? dayStart(day) : e.start)} ${truncate(e.title, 60)}${e.location ? ` @ ${truncate(e.location, 30)}` : ""}`);

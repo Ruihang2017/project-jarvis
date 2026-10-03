@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useApp, Shell } from "../App";
 import { call, useData } from "../api";
-import { Button, Card, Confirm, Icon, Loading, Note, Segmented, Spot, Tag, Toggle } from "../ui";
+import type { AccountInfo } from "../../../shared/api";
+import { Button, Card, Confirm, Icon, IconButton, Loading, Note, Segmented, Spot, Tag, Toggle } from "../ui";
 
 const Row = ({ name, help, children }: { name: string; help?: React.ReactNode; children?: React.ReactNode }) => (
   <div className="between" style={{ minHeight: 52, gap: 16 }}>
@@ -120,7 +121,7 @@ export function Settings() {
                 </div>
               </div>
               <div className="stack" style={{ gap: 8 }}>
-                <SettingsLink icon="key" text="Google connection" page="google" />
+                <SettingsLink icon="key" text="Accounts (Google)" page="google" />
                 <SettingsLink icon="shield" text="Permission modes" page="modes" />
                 <SettingsLink icon="bill" text="How bills work" page="bills-month" />
                 <SettingsLink icon="box" text="Your data: back up, export, delete" page="data" />
@@ -143,11 +144,15 @@ export function Settings() {
   );
 }
 
+/** Colours an account can have (the same list as src/accounts/accounts.ts). */
+const ACCOUNT_COLORS = ["#2A52BE", "#C8742C", "#4F8A6B", "#B5536A", "#6B5BB5", "#2C8C99"];
+
 export function GooglePage() {
   const { go, toast, refresh } = useApp();
   const { data, reload } = useData(() => call("google"));
   const [busy, setBusy] = useState("");
-  const [leave, setLeave] = useState(false);
+  const [leave, setLeave] = useState<AccountInfo | null>(null);
+  const [naming, setNaming] = useState<{ id: string; name: string } | null>(null);
   const run = async (what: string, p: () => Promise<{ ok: boolean; message: string }>) => {
     setBusy(what);
     toast(await p());
@@ -161,10 +166,16 @@ export function GooglePage() {
     "gmail.readonly": ["Gmail", "Search and read your mail", "Read only"],
     "gmail.compose": ["Gmail drafts", "Write drafts, and send the ones you approve", "Write drafts"],
   };
+  const many = (data?.accounts.length ?? 0) > 1;
+  const signIn = (
+    <Button kind="primary" icon="link" disabled={!data?.clientFile || busy === "connect"} onClick={() => run("connect", () => call("connectGoogle"))}>
+      {busy === "connect" ? "Waiting for the browser…" : "Sign in with Google"}
+    </Button>
+  );
   return (
     <Shell
-      title="Google connection"
-      sub="Your personal Google account, through your own Google Cloud project"
+      title="Accounts"
+      sub="Your personal Google accounts: mail and calendar"
       actions={
         <Button kind="ghost" icon="left" onClick={() => go("settings")}>
           Settings
@@ -181,122 +192,214 @@ export function GooglePage() {
               <div>
                 <h2 style={{ fontSize: 24 }}>Connect your Google account</h2>
                 <p className="muted pretty" style={{ fontSize: 14 }}>
-                  Edward talks to Google through a small project that belongs to you, so your mail and calendar travel from Google straight to this computer and nowhere else.
+                  Your mail and calendar travel from Google straight to this computer and nowhere else. You can add more accounts afterwards.
                 </p>
               </div>
             </div>
-            <Step n={1} title="Create your Google Cloud project">
-              <p className="muted">A step-by-step guide with pictures. About ten minutes; it costs nothing.</p>
-              <div>
-                <Button icon="link" onClick={() => void call("openGuide")}>
-                  Open the guide
-                </Button>
-              </div>
-            </Step>
-            <Hr />
-            <Step n={2} title="Choose the file you downloaded">
-              <div className="row" style={{ padding: "6px 6px 6px 14px", border: "1px solid var(--line)", borderRadius: 12, background: "var(--bg)" }}>
-                <Icon name="file" color="var(--ink3)" />
-                <span className="grow mono">{data.clientFile ? "google-client.json" : "No file chosen yet"}</span>
-                {data.clientFile && (
-                  <Tag tone="sage" icon="check">
-                    In place
-                  </Tag>
-                )}
-                <Button onClick={() => run("file", () => call("chooseGoogleClient"))}>{data.clientFile ? "Choose another" : "Choose the file"}</Button>
-              </div>
-              <p className="muted">The file stays on this computer. Don't share it or put it online.</p>
-            </Step>
-            <Hr />
-            <Step n={3} title="Sign in with Google">
-              <p className="muted">Your browser opens. Google lists what Edward asks for: your calendar, reading mail, and writing drafts.</p>
-              <div>
-                <Button kind="primary" icon="link" disabled={!data.clientFile || busy === "connect"} onClick={() => run("connect", () => call("connectGoogle"))}>
-                  {busy === "connect" ? "Waiting for the browser…" : "Sign in with Google"}
-                </Button>
-              </div>
-            </Step>
+            {data.clientFile ? (
+              <>
+                <p className="muted pretty">
+                  Your browser opens. Google lists what Edward asks for: your calendar, reading mail, and writing drafts. While Edward is in testing, Google says it hasn't verified the app: choose
+                  Advanced, then continue.
+                </p>
+                <div>{signIn}</div>
+              </>
+            ) : (
+              <>
+                <Step n={1} title="Create your Google Cloud project">
+                  <p className="muted">A step-by-step guide with pictures. About ten minutes; it costs nothing.</p>
+                  <div>
+                    <Button icon="link" onClick={() => void call("openGuide")}>
+                      Open the guide
+                    </Button>
+                  </div>
+                </Step>
+                <Hr />
+                <Step n={2} title="Choose the file you downloaded">
+                  <div className="row" style={{ padding: "6px 6px 6px 14px", border: "1px solid var(--line)", borderRadius: 12, background: "var(--bg)" }}>
+                    <Icon name="file" color="var(--ink3)" />
+                    <span className="grow mono">No file chosen yet</span>
+                    <Button onClick={() => run("file", () => call("chooseGoogleClient"))}>Choose the file</Button>
+                  </div>
+                  <p className="muted">The file stays on this computer. Don't share it or put it online.</p>
+                </Step>
+                <Hr />
+                <Step n={3} title="Sign in with Google">
+                  <p className="muted">Your browser opens. Google lists what Edward asks for: your calendar, reading mail, and writing drafts.</p>
+                  <div>{signIn}</div>
+                </Step>
+              </>
+            )}
           </Card>
-          <Card className="pad stack">
-            <h2>Optional</h2>
-            <p className="muted pretty">Without Google, Edward still chats, remembers, reminds and makes pictures. Calendar, mail and bills need it.</p>
-          </Card>
+          <div className="stack" style={{ gap: 16 }}>
+            <Card className="pad stack">
+              <h2>Optional</h2>
+              <p className="muted pretty">Without Google, Edward still chats, remembers, reminds and makes pictures. Calendar, mail and bills need it.</p>
+            </Card>
+            <Card className="pad stack">
+              <h2>Personal accounts only</h2>
+              <p className="muted pretty">Work and school accounts (Google Workspace) are turned away, so nothing from your employer ends up here.</p>
+            </Card>
+          </div>
         </div>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 360px", gap: 16, alignItems: "start" }}>
           <div className="stack" style={{ gap: 16 }}>
-            <Card className="row" style={{ padding: "20px 24px", gap: 20 }}>
-              <Spot name={data.expired ? "spot-umbrella" : "spot-key"} size={104} />
-              <div className="grow">
-                <div className="row">
-                  <div style={{ fontFamily: "var(--disp)", fontSize: 24, fontWeight: 600, letterSpacing: "-0.015em" }}>{data.email ?? "Your Google account"}</div>
-                  {data.expired ? (
-                    <Tag tone="apricot" icon="warn">
-                      Needs reconnecting
-                    </Tag>
-                  ) : (
-                    <Tag tone="sage" icon="check">
-                      Connected
-                    </Tag>
+            {data.accounts.map((a) => (
+              <Card key={a.id} className="stack" style={{ padding: "18px 22px", gap: 12 }}>
+                <div className="row" style={{ gap: 14 }}>
+                  <span aria-hidden style={{ width: 14, height: 14, borderRadius: "50%", background: a.color, flexShrink: 0 }} />
+                  <div className="grow" style={{ minWidth: 0 }}>
+                    {naming?.id === a.id ? (
+                      <form
+                        className="row"
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          const name = naming.name;
+                          setNaming(null);
+                          void run("name", () => call("updateAccount", a.id, { name }));
+                        }}
+                      >
+                        <input className="input" aria-label="Name for this account" autoFocus value={naming.name} placeholder={a.email} maxLength={40} onChange={(e) => setNaming({ id: a.id, name: e.target.value })} />
+                        <Button small kind="primary" type="submit">
+                          Save
+                        </Button>
+                        <Button small kind="ghost" onClick={() => setNaming(null)}>
+                          Cancel
+                        </Button>
+                      </form>
+                    ) : (
+                      <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+                        <div style={{ fontFamily: "var(--disp)", fontSize: 21, fontWeight: 600, letterSpacing: "-0.015em" }}>{a.label}</div>
+                        {a.expired ? (
+                          <Tag tone="apricot" icon="warn">
+                            Needs signing in again
+                          </Tag>
+                        ) : (
+                          <Tag tone="sage" icon="check">
+                            Connected
+                          </Tag>
+                        )}
+                      </div>
+                    )}
+                    <p className="muted">
+                      {a.name ? `${a.email} · ` : ""}
+                      {a.connectedAt ? `connected ${a.connectedAt}` : ""}
+                      {a.checkedAt ? ` · last checked ${a.checkedAt}` : ""}
+                    </p>
+                  </div>
+                  {naming?.id !== a.id && (
+                    <IconButton icon="pencil" label={`Rename ${a.label}`} onClick={() => setNaming({ id: a.id, name: a.name ?? "" })} />
                   )}
                 </div>
-                <p className="muted">
-                  {data.connectedAt ? `Connected ${data.connectedAt}` : ""}
-                  {data.checkedAt ? ` · last checked ${data.checkedAt}` : ""} · Edward checks every 6 hours
-                </p>
+                <div className="row" style={{ gap: 18, flexWrap: "wrap" }}>
+                  <label className="row" style={{ gap: 8 }}>
+                    <Toggle on={a.mail} label={`Use mail from ${a.label}`} onChange={(v) => void run("use", () => call("updateAccount", a.id, { mail: v }))} />
+                    Mail
+                  </label>
+                  <label className="row" style={{ gap: 8 }}>
+                    <Toggle on={a.calendar} label={`Use the calendar of ${a.label}`} onChange={(v) => void run("use", () => call("updateAccount", a.id, { calendar: v }))} />
+                    Calendar
+                  </label>
+                  <span className="row" style={{ gap: 6 }} aria-label="Colour">
+                    {ACCOUNT_COLORS.map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        aria-label={`Colour ${c}`}
+                        aria-pressed={a.color === c}
+                        onClick={() => void run("color", () => call("updateAccount", a.id, { color: c }))}
+                        style={{ width: 18, height: 18, borderRadius: "50%", background: c, border: a.color === c ? "2px solid var(--ink)" : "2px solid transparent", cursor: "pointer", padding: 0 }}
+                      />
+                    ))}
+                  </span>
+                </div>
+                {many && (
+                  <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                    {a.mailWorks &&
+                      (a.sendsMail ? (
+                        <Tag tone="blue" icon="mail">
+                          New emails go from here
+                        </Tag>
+                      ) : (
+                        <Button small kind="ghost" onClick={() => run("default", () => call("setDefaultAccount", "mail", a.id))}>
+                          Send new emails from here
+                        </Button>
+                      ))}
+                    {a.calendarWorks &&
+                      (a.getsEvents ? (
+                        <Tag tone="blue" icon="calendar">
+                          New events go here
+                        </Tag>
+                      ) : (
+                        <Button small kind="ghost" onClick={() => run("default", () => call("setDefaultAccount", "calendar", a.id))}>
+                          Put new events here
+                        </Button>
+                      ))}
+                  </div>
+                )}
+                {a.missing.length > 0 && (
+                  <Note tone="apricot" icon="warn">
+                    {a.missing.join(" and ")} need{a.missing.length === 1 ? "s" : ""} one more permission. Sign in again to add it.
+                  </Note>
+                )}
+                <div className="row" style={{ gap: 8, flexWrap: "wrap", borderTop: "1px solid var(--line)", paddingTop: 12 }}>
+                  <Button small icon="refresh" disabled={busy === `check-${a.id}`} onClick={() => run(`check-${a.id}`, () => call("checkGoogle", a.id))}>
+                    Check now
+                  </Button>
+                  <Button small icon="link" disabled={busy === `again-${a.id}`} onClick={() => run(`again-${a.id}`, () => call("connectGoogle", a.id))}>
+                    {busy === `again-${a.id}` ? "Waiting for the browser…" : "Sign in again"}
+                  </Button>
+                  <span className="grow" />
+                  <Button small kind="ghost" onClick={() => setLeave(a)}>
+                    Remove
+                  </Button>
+                </div>
+              </Card>
+            ))}
+            <Card className="row" style={{ padding: "16px 22px", gap: 16 }}>
+              <Icon name="plus" color="var(--ink3)" />
+              <div className="grow">
+                <b>Add another account</b>
+                <p className="muted">A family or second personal Gmail. In Google's list, pick the account to add.</p>
               </div>
-              <Button icon="refresh" disabled={busy === "check"} onClick={() => run("check", () => call("checkGoogle"))}>
-                Check now
+              <Button icon="link" disabled={busy === "connect"} onClick={() => run("connect", () => call("connectGoogle"))}>
+                {busy === "connect" ? "Waiting for the browser…" : "Add account"}
               </Button>
             </Card>
+          </div>
+          <div className="stack" style={{ gap: 16 }}>
             <Card className="pad stack" style={{ gap: 0 }}>
               <div className="between" style={{ paddingBottom: 12 }}>
                 <h2>What Edward may do</h2>
-                <span className="muted">Each of these still asks you first</span>
               </div>
               {data.permissions.map((p) => {
-                const [name, what, level] = PERMS[p] ?? [p, "", ""];
+                const [name, what] = PERMS[p] ?? [p, ""];
                 return (
-                  <div key={p} style={{ display: "grid", gridTemplateColumns: "150px minmax(0,1fr) 120px", gap: 12, alignItems: "center", minHeight: 52, borderTop: "1px solid var(--line)" }}>
+                  <div key={p} style={{ display: "grid", gap: 2, padding: "10px 0", borderTop: "1px solid var(--line)" }}>
                     <b>{name}</b>
                     <span className="muted">{what}</span>
-                    <span style={{ textAlign: "right" }}>{level && <Tag tone={level === "Read only" ? undefined : "blue"}>{level}</Tag>}</span>
                   </div>
                 );
               })}
-              {data.missing.length > 0 && (
-                <Note tone="apricot" icon="warn">
-                  {data.missing.join(" and ")} need{data.missing.length === 1 ? "s" : ""} one more permission. Reconnect to add it.
-                </Note>
-              )}
               <div style={{ paddingTop: 14 }}>
                 <Note icon="x">Not asked for, so not possible: deleting or archiving mail, changing Gmail settings, your contacts, your Drive.</Note>
               </div>
             </Card>
-          </div>
-          <div className="stack" style={{ gap: 16 }}>
             <Card className="pad stack">
               <h2>How it's kept</h2>
               <div className="row" style={{ alignItems: "flex-start", fontSize: 13.5 }}>
                 <Icon name="lock" size={17} width={2} color="var(--sage-ink)" />
-                The sign-in is encrypted by Windows for your user account, and never written to a log.
+                Each sign-in is encrypted by Windows for your user account, and never written to a log.
               </div>
               <div className="row" style={{ alignItems: "flex-start", fontSize: 13.5 }}>
                 <Icon name="check" size={17} width={2} color="var(--sage-ink)" />
                 Mail and calendar data go from Google to this computer. There is no Edward server.
               </div>
-            </Card>
-            <Card className="pad stack">
-              <h2>Reconnect or leave</h2>
-              <p className="muted">Reconnect if a permission is missing or Google stopped answering.</p>
-              <Button icon="refresh" disabled={busy === "connect"} onClick={() => run("connect", () => call("connectGoogle"))}>
-                {busy === "connect" ? "Waiting for the browser…" : "Reconnect"}
-              </Button>
-              <Hr />
-              <p className="muted pretty">Disconnecting tells Google to withdraw Edward's access and deletes the sign-in from this computer. Calendar, mail and bills stop working until you connect again.</p>
-              <Button kind="danger" onClick={() => setLeave(true)}>
-                Disconnect Google
-              </Button>
+              <div className="row" style={{ alignItems: "flex-start", fontSize: 13.5 }}>
+                <Icon name="shield" size={17} width={2} color="var(--sage-ink)" />
+                Work and school accounts (Google Workspace) are turned away.
+              </div>
             </Card>
           </div>
         </div>
@@ -304,14 +407,15 @@ export function GooglePage() {
       {leave && (
         <Confirm
           danger
-          title="Disconnect Google?"
-          yes="Disconnect"
+          title={`Remove ${leave.label}?`}
+          yes="Remove"
           onAnswer={(yes) => {
-            setLeave(false);
-            if (yes) void run("leave", () => call("disconnectGoogle"));
+            const id = leave.id;
+            setLeave(null);
+            if (yes) void run("leave", () => call("disconnectGoogle", id));
           }}
         >
-          Edward's access is withdrawn at Google and the sign-in is deleted from this computer. Your calendar and mail aren't touched.
+          Edward's access to {leave.email ?? "this account"} is withdrawn at Google and its sign-in is deleted from this computer. The mail and calendar themselves aren't touched.
         </Confirm>
       )}
     </Shell>

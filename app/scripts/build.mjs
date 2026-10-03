@@ -1,6 +1,6 @@
 // Builds the app into build/: main (with the core bundled in), the tick script, preload, and the page.
 //   node scripts/build.mjs [main|preload|renderer]   (default: all)
-import { copyFileSync, cpSync, mkdirSync, rmSync } from "node:fs";
+import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { builtinModules } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,8 +17,18 @@ mkdirSync(join(app, "build"), { recursive: true });
 copyFileSync(join(repo, "assets", "icon.png"), join(app, "build", "icon.png"));
 copyFileSync(join(repo, "assets", "icon.ico"), join(app, "build", "icon.ico"));
 
+// The Google client built into the app (D37), from a git-ignored file; none when it isn't there.
+const secretFile = process.env.EDWARD_GOOGLE_CLIENT_FILE ?? join(app, "build-secrets", "google-client.json");
+let googleClient = null;
+if (existsSync(secretFile)) {
+  const c = JSON.parse(readFileSync(secretFile, "utf8")).installed;
+  if (!c?.client_id || !c?.client_secret) throw new Error(`${secretFile} is not a Google "Desktop app" client file`);
+  googleClient = { clientId: c.client_id, clientSecret: c.client_secret };
+}
+
 if (!only || only === "main") {
   await build({
+    define: { __EDWARD_GOOGLE_CLIENT__: JSON.stringify(googleClient) },
     configFile: false,
     logLevel: "warn",
     root: app,
@@ -70,4 +80,4 @@ if (!only || only === "renderer") {
     build: { outDir: join(app, "build", "renderer"), emptyOutDir: true, target: "chrome140", assetsInlineLimit: 0, minify: false, sourcemap: true },
   });
 }
-console.log(`built ${only ?? "everything"}`);
+console.log(`built ${only ?? "everything"}${googleClient ? " (with the built-in Google client)" : ""}`);

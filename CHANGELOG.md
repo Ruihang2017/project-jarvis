@@ -5,6 +5,12 @@
 - Renamed from Jarvis to Edward, with a new icon. The command is `edward` (`jarvis` still works for now).
   On the first start the data moves from `%LOCALAPPDATA%\Jarvis` to `%LOCALAPPDATA%\Edward`, after a
   backup; the background task and notifications move with it. `JARVIS_*` environment variables still work.
+- Desktop app (Electron): every page, the setup flow, tray, Windows installer.
+- Several Google accounts: mail, calendars and bills from all of them, labelled by account; replies go
+  from the account the email came to; defaults for new emails and events; `/accounts`. Google Workspace
+  (work or school) accounts are refused. The existing account moves into `accounts\g1\` on first start.
+- Emails show as sent (their own HTML in a sandboxed frame; pictures from the web only when asked), and
+  marketing mail with a broken plain-text part reads properly.
 
 ## 0.1.0 — developer preview
 

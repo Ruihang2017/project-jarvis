@@ -9,7 +9,7 @@ import { formatDue, fromLocal } from "../reminders/schedule.js";
 import type { ReminderStore } from "../reminders/store.js";
 import { loadSettings } from "../settings.js";
 import { truncate } from "../util.js";
-import type { GoogleAuth } from "../google/auth.js";
+import type { Account, Accounts } from "../accounts/accounts.js";
 import type { BillStore } from "../bills/store.js";
 import { briefBills } from "../bills/remind.js";
 import { CalendarClient, hasCalendarAccess, todayLines } from "../google/calendar.js";
@@ -38,20 +38,25 @@ async function section(granted: boolean, invalid: boolean, load: () => Promise<{
   }
 }
 
-/** Today's events and unread Primary mail from the last day, fetched in parallel. */
-export async function briefGoogle(auth: GoogleAuth, now = new Date()): Promise<BriefGoogle> {
-  const s = auth.state();
-  if (!s) return {};
-  const invalid = Boolean(s.invalidAt);
+/** Today's events and unread Primary mail from the last day, from every account, fetched in parallel. */
+export async function briefGoogle(accounts: Accounts, now = new Date()): Promise<BriefGoogle> {
+  const connected = accounts.connected();
+  if (!connected.length) return {};
+  // Accounts that granted the feature (and have it switched on), and those of them still signed in.
+  const granted = (f: "mail" | "calendar") => connected.filter((a) => a[f] && (f === "mail" ? hasGmailAccess : hasCalendarAccess)(accounts.state(a)!.scopes));
+  const live = (list: Account[]) => list.filter((a) => !accounts.state(a)!.invalidAt);
+  const cal = granted("calendar");
+  const box = granted("mail");
   const [calendar, mail] = await Promise.all([
-    section(hasCalendarAccess(s.scopes), invalid, async () => {
-      const lines = await todayLines(new CalendarClient(auth), now);
+    section(cal.length > 0, live(cal).length === 0, async () => {
+      const lines = await todayLines(live(cal).map((a) => new CalendarClient(accounts.auth(a))), now);
       return { lines, count: lines.length };
     }),
-    section(hasGmailAccess(s.scopes), invalid, async () => {
-      const unread = await new GmailClient(auth).search(UNREAD_QUERY, 20);
+    section(box.length > 0, live(box).length === 0, async () => {
+      const lists = await Promise.all(live(box).map((a) => new GmailClient(accounts.auth(a)).search(UNREAD_QUERY, 20)));
+      const unread = lists.flat().sort((a, b) => b.date.getTime() - a.date.getTime());
       if (!unread.length) return { lines: [], count: 0 };
-      const n = unread.length === 20 ? "20+" : String(unread.length);
+      const n = lists.some((l) => l.length === 20) ? `${unread.length}+` : String(unread.length);
       const head = `✉ ${n} unread in Primary`;
       // Unread mail is one thing to do ("check mail"), not one per message: 20 newsletters shouldn't read as "20 things today".
       return { lines: [head, ...unread.slice(0, MAIL_SHOWN).map((m) => `   ${truncate(displayName(m.from), 24)} — ${truncate(m.subject, 60)}`)], count: 1 };

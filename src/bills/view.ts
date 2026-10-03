@@ -27,7 +27,7 @@ export function billLines(b: Bill, now = new Date()): string[] {
 
 export function runScan(session: Session): Promise<ScanResult> {
   return scanBills({
-    gmail: new GmailClient(session.google),
+    mailboxes: session.accounts.for("mail").map((a) => ({ account: a.id, gmail: new GmailClient(session.accounts.auth(a)) })),
     store: session.bills,
     classify: (instructions, input, schema) => session.runEphemeral(instructions, input, schema),
   });

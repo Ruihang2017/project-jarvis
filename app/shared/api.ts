@@ -29,17 +29,50 @@ export interface AppState {
   attachments: Attachment[];
 }
 
+/** All connected Google accounts together (A1); `accounts` has each one. */
 export interface GoogleInfo {
   connected: boolean;
+  /** Every connected address, comma-separated. */
   email?: string;
   permissions: string[];
-  /** The connection stopped working (revoked or expired). */
+  /** Some connection stopped working (revoked or expired). */
   expired: boolean;
   missing: string[];
   connectedAt?: string;
   checkedAt?: string;
-  /** Whether the user's own Google Cloud client file is in place. */
+  /** A client to sign in with: the user's own Google Cloud file, or the one built into the app. */
   clientFile: boolean;
+  accounts: AccountInfo[];
+}
+
+export interface AccountInfo {
+  id: string;
+  email?: string;
+  name?: string;
+  /** The name, or the address. */
+  label: string;
+  color: string;
+  /** Switched on by the user. */
+  mail: boolean;
+  calendar: boolean;
+  /** Switched on, permitted and signed in. */
+  mailWorks: boolean;
+  calendarWorks: boolean;
+  expired: boolean;
+  missing: string[];
+  permissions: string[];
+  connectedAt?: string;
+  checkedAt?: string;
+  /** New emails go from here / new events go here. */
+  sendsMail: boolean;
+  getsEvents: boolean;
+}
+
+/** Which account something came from, for its label and colour. */
+export interface FromAccount {
+  account: string;
+  accountLabel: string;
+  color: string;
 }
 
 export interface Attachment {
@@ -85,7 +118,7 @@ export type AskAnswer =
 
 // ---------------------------------------------------------------- today and the things Edward looks after
 
-export interface EventInfo {
+export interface EventInfo extends Partial<FromAccount> {
   id: string;
   title: string;
   start: string;
@@ -102,10 +135,13 @@ export interface CalendarView {
   problem?: string;
   days: { date: string; label: string; events: EventInfo[] }[];
   free: { date: string; label: string; slots: string[] }[];
-  calendars: { name: string; primary: boolean }[];
+  calendars: ({ name: string; primary: boolean } & Partial<FromAccount>)[];
+  /** More than one calendar account: show which account each event is in. */
+  manyAccounts?: boolean;
 }
 
-export interface MailSummary {
+export interface MailSummary extends Partial<FromAccount> {
+  /** "account/messageId": what mailMessage and mailOriginal take. */
   id: string;
   threadId: string;
   from: string;
@@ -138,6 +174,8 @@ export interface MailView {
   connected: boolean;
   problem?: string;
   unread: MailSummary[];
+  /** More than one mail account: show which account each email is in. */
+  manyAccounts?: boolean;
 }
 
 export interface BillInfo {
@@ -368,9 +406,14 @@ export interface EdwardApi {
   deleteEverything(): Promise<Result>;
   google(): Promise<GoogleInfo>;
   chooseGoogleClient(): Promise<Result>;
-  connectGoogle(): Promise<Result>;
-  checkGoogle(): Promise<Result>;
-  disconnectGoogle(): Promise<Result>;
+  /** Adds an account (none given), or signs in to that one again. */
+  connectGoogle(account?: string): Promise<Result>;
+  /** Tests one account's sign-in, or all of them. */
+  checkGoogle(account?: string): Promise<Result>;
+  /** The only account when there is one. */
+  disconnectGoogle(account?: string): Promise<Result>;
+  updateAccount(account: string, patch: { name?: string; color?: string; mail?: boolean; calendar?: boolean }): Promise<Result>;
+  setDefaultAccount(feature: "mail" | "calendar", account: string): Promise<Result>;
   openGuide(): Promise<void>;
   finishSetup(): Promise<void>;
 }

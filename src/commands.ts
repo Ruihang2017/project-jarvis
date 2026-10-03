@@ -78,8 +78,9 @@ export const HELP_GROUPS: [string, [string, string][]][] = [
     "Setup and care",
     [
       ["/start", "getting-started tips"],
-      ["/connect", "connect your Google account"],
-      ["/google", "Google connection status"],
+      ["/connect", "add a Google account"],
+      ["/accounts", "connected accounts and defaults"],
+      ["/google", "check each Google sign-in works"],
       ["/disconnect", "revoke Edward's Google access"],
       ["/background", "reminders even when Edward is closed"],
       ["/region", "date order and currency"],
@@ -545,7 +546,7 @@ const COMMANDS: Record<string, Command> = {
         return console.log(dim(`[morning brief: ${val}${val === "off" ? "" : ` · next ${nextBriefAt() ?? "?"}`}]`));
       }
       if (sub) return console.log(dim(`[unknown /brief option "${sub}"]`));
-      const brief = composeBrief(session.memory, session.reminders, new Date(), await briefGoogle(session.google), session.bills);
+      const brief = composeBrief(session.memory, session.reminders, new Date(), await briefGoogle(session.accounts), session.bills);
       console.log(bold(brief.title));
       for (const l of brief.lines) console.log(`  ${l}`);
       const { time, days } = briefSchedule();
@@ -705,80 +706,142 @@ const COMMANDS: Record<string, Command> = {
   },
 
   "/connect": {
-    usage: "/connect google",
-    help: "Connect your Google account (browser sign-in); run again to reconnect",
+    usage: "/connect google [account]",
+    help: "Add a Google account (browser sign-in), or sign in to one again: /connect google <name or address>",
     run: async (args, session, signal) => {
-      if (args !== "google") return console.log(dim("[usage: /connect google]"));
+      const [what, ...rest] = args.split(/\s+/).filter(Boolean);
+      if (what !== "google") return console.log(dim("[usage: /connect google [account]]"));
+      const again = rest.length ? session.accounts.find(rest.join(" ")) : undefined;
+      if (rest.length && !again) return console.log(dim(`[no account "${rest.join(" ")}" — /accounts lists them]`));
       console.log(dim("[opening your browser to sign in to Google — waiting up to 5 min, Ctrl+C cancels]"));
-      const s = await session.google.connect(
+      if (!again && session.accounts.connected().length) console.log(dim("  pick the account to add in Google's list (or the one to sign in to again)"));
+      const r = await session.accounts.connect(
         [...CALENDAR_SCOPES, ...GMAIL_SCOPES],
         (url) => {
           console.log(dim(`  if it doesn't open, visit:\n  ${url}`));
           openWithDefaultApp(url);
         },
-        { signal },
+        { signal, account: again?.id },
       );
-      console.log(dim(`[connected to Google as ${s.email ?? "(unknown account)"} · ${s.scopes.map(shortScope).join(", ")}]`));
+      console.log(dim(`[${r.added ? "added" : "signed in again to"} ${r.state.email ?? "(unknown account)"} · ${r.state.scopes.map(shortScope).join(", ")}]`));
+      await session.reloadThread(); // the conversation learns about the account
     },
   },
 
   "/calendar": {
     usage: "/calendar [week]",
-    help: "Your Google Calendar: today and tomorrow, or the next 7 days (no model call)",
+    help: "Your Google Calendar: today and tomorrow, or the next 7 days, from every account (no model call)",
     run: async (args, session) => {
       if (args && args !== "week") return console.log(dim("[usage: /calendar [week]]"));
+      const accounts = session.accounts.for("calendar");
+      if (!accounts.length) return console.log(dim("[no calendar connected — /connect google]"));
       const days = args === "week" ? 7 : 2;
       const first = localDate(new Date());
       const from = dayStart(first);
       const to = dayStart(nextDate(first, days));
-      const events = await new CalendarClient(session.google).events(from, to);
+      const many = accounts.length > 1;
+      const tagged = (await Promise.all(accounts.map(async (a) => (await new CalendarClient(session.accounts.auth(a)).events(from, to)).map((e) => ({ e, a }))))).flat();
+      const owner = new Map(tagged.map((x) => [x.e, x.a]));
+      const events = tagged.map((x) => x.e).sort((a, b) => a.start.getTime() - b.start.getTime() || Number(b.allDay) - Number(a.allDay));
       for (const [day, list] of groupByDay(events, from, to)) {
         console.log(bold(dayLabel(day) + (day === first ? " · today" : day === nextDate(first) ? " · tomorrow" : "")));
         if (!list.length) console.log(dim("  nothing"));
-        for (const e of list) console.log(`  ${eventLine(e)}`);
+        for (const e of list) console.log(`  ${eventLine(e)}${many ? dim(` · ${session.accounts.label(owner.get(e)!)}`) : ""}`);
       }
     },
   },
 
   "/mail": {
     usage: "/mail",
-    help: "Unread mail in Gmail's Primary tab from the last 24 hours (no model call)",
+    help: "Unread mail in Gmail's Primary tab from the last 24 hours, from every account (no model call)",
     run: async (_, session) => {
-      const unread = await new GmailClient(session.google).search(UNREAD_QUERY, 20);
+      const accounts = session.accounts.for("mail");
+      if (!accounts.length) return console.log(dim("[no mail connected — /connect google]"));
+      const lists = await Promise.all(accounts.map(async (a) => (await new GmailClient(session.accounts.auth(a)).search(UNREAD_QUERY, 20)).map((m) => ({ m, a }))));
+      const unread = lists.flat().sort((x, y) => y.m.date.getTime() - x.m.date.getTime());
       if (!unread.length) return console.log(dim("[no unread mail in Primary from the last 24 hours]"));
       const now = new Date();
-      for (const m of unread) console.log(`  ${summaryLine(m, now)}`);
-      console.log(dim(`  ${unread.length === 20 ? "20+" : unread.length} unread · ask Edward to summarise or read one`));
+      const many = accounts.length > 1;
+      for (const { m, a } of unread) console.log(`  ${summaryLine(m, now)}${many ? dim(` · ${session.accounts.label(a)}`) : ""}`);
+      console.log(dim(`  ${unread.length}${lists.some((l) => l.length === 20) ? "+" : ""} unread · ask Edward to summarise or read one`));
+    },
+  },
+
+  "/accounts": {
+    usage: "/accounts [name|default|use] …",
+    help: "Connected Google accounts and whether they work. /accounts name <account> <name> · default mail|calendar <account> · use <account> mail|calendar on|off",
+    run: async (args, session) => {
+      const [sub, ...rest] = args.split(/\s+/).filter(Boolean);
+      const acc = session.accounts;
+      if (sub === "name" && rest.length >= 1) {
+        const a = acc.find(rest[0]);
+        if (!a) return console.log(dim(`[no account "${rest[0]}"]`));
+        acc.update(a.id, { name: rest.slice(1).join(" ") });
+        await session.reloadThread();
+        return console.log(dim(`[${a.email ?? a.id} is now called "${rest.slice(1).join(" ") || a.email}"]`));
+      }
+      if (sub === "default" && (rest[0] === "mail" || rest[0] === "calendar") && rest[1]) {
+        const a = acc.find(rest.slice(1).join(" "));
+        if (!a) return console.log(dim(`[no account "${rest.slice(1).join(" ")}"]`));
+        acc.setDefault(rest[0], a.id);
+        await session.reloadThread();
+        return console.log(dim(`[new ${rest[0] === "mail" ? "emails go from" : "events go into"} ${acc.label(a)}]`));
+      }
+      if (sub === "use" && rest.length === 3 && (rest[1] === "mail" || rest[1] === "calendar") && (rest[2] === "on" || rest[2] === "off")) {
+        const a = acc.find(rest[0]);
+        if (!a) return console.log(dim(`[no account "${rest[0]}"]`));
+        acc.update(a.id, { [rest[1]]: rest[2] === "on" });
+        await session.reloadThread();
+        return console.log(dim(`[${acc.label(a)}: ${rest[1]} ${rest[2]}]`));
+      }
+      if (sub && sub !== "check") return console.log(dim(`[usage: ${COMMANDS["/accounts"]!.usage}]`));
+      const list = acc.list();
+      if (!list.length) return console.log(`google: ${bold("not connected")} ${dim("— /connect google")}`);
+      const sendFrom = acc.primary("mail");
+      const calendarIn = acc.primary("calendar");
+      for (const a of list) {
+        const s = acc.state(a);
+        let status: string;
+        if (!s) status = styleText("yellow", "signed out — /connect google");
+        else if (sub === "check") {
+          try {
+            status = (await acc.auth(a).check()) === "ok" ? styleText("green", "working") : styleText("yellow", `expired — /connect google ${a.email ?? a.id}`);
+          } catch (e) {
+            status = styleText("yellow", `couldn't reach Google (${e instanceof Error ? e.message : String(e)})`);
+          }
+        } else status = s.invalidAt ? styleText("yellow", `expired — /connect google ${a.email ?? a.id}`) : styleText("green", "connected");
+        const uses = [acc.usable(a, "mail") && `mail${sendFrom?.id === a.id && list.length > 1 ? " (default)" : ""}`, acc.usable(a, "calendar") && `calendar${calendarIn?.id === a.id && list.length > 1 ? " (default)" : ""}`].filter(Boolean);
+        console.log(`${bold(acc.label(a))}${a.name && a.email ? dim(` <${a.email}>`) : ""} · ${status} · ${uses.join(", ") || dim("not used")}`);
+        if (s) console.log(dim(`  permissions: ${s.scopes.map(shortScope).join(", ")} · connected ${s.connectedAt.slice(0, 10)}`));
+      }
+      console.log(dim("  /connect google adds another · /disconnect google <account> removes one · /accounts check tests each sign-in"));
     },
   },
 
   "/google": {
     usage: "/google",
-    help: "Google connection status: account, permissions, whether it still works",
-    run: async (_, session) => {
-      const s = session.google.state();
-      if (!s) return console.log(`google: ${bold("not connected")} ${dim("— /connect google")}`);
-      let status: string;
-      try {
-        status = (await session.google.check()) === "ok" ? styleText("green", "working") : styleText("yellow", "expired — /connect google to reconnect");
-      } catch (e) {
-        status = styleText("yellow", `couldn't reach Google (${e instanceof Error ? e.message : String(e)})`);
-      }
-      console.log(`google: ${bold(s.email ?? "(unknown account)")} · ${status}`);
-      console.log(dim(`  permissions: ${s.scopes.map(shortScope).join(", ")}`));
-      console.log(dim(`  connected ${s.connectedAt.slice(0, 10)} · /disconnect google removes access`));
-    },
+    help: "Same as /accounts check: each Google account, its permissions, whether it still works",
+    run: async (_, session, signal) => COMMANDS["/accounts"]!.run("check", session, signal),
   },
 
   "/disconnect": {
-    usage: "/disconnect google",
-    help: "Revoke Edward's Google access and delete the local token",
+    usage: "/disconnect google [account]",
+    help: "Revoke Edward's access to a Google account and delete its local token",
     run: async (args, session) => {
-      if (args !== "google") return console.log(dim("[usage: /disconnect google]"));
-      if (!session.google.state()) return console.log(dim("[Google isn't connected]"));
-      const { revoked } = await session.google.disconnect();
+      const [what, ...rest] = args.split(/\s+/).filter(Boolean);
+      if (what !== "google") return console.log(dim("[usage: /disconnect google [account]]"));
+      const list = session.accounts.list();
+      if (!list.length) return console.log(dim("[Google isn't connected]"));
+      const a = rest.length ? session.accounts.find(rest.join(" ")) : list.length === 1 ? list[0] : undefined;
+      if (!a) return console.log(dim(rest.length ? `[no account "${rest.join(" ")}"]` : `[which one? /disconnect google <account> — ${list.map((x) => session.accounts.label(x)).join(", ")}]`));
+      const { revoked } = await session.accounts.disconnect(a.id);
+      await session.reloadThread();
       console.log(
-        dim(revoked ? "[disconnected: access revoked at Google, local token deleted]" : "[local token deleted; couldn't confirm the revocation with Google — check myaccount.google.com/connections]"),
+        dim(
+          revoked
+            ? `[disconnected ${a.email ?? a.id}: access revoked at Google, local token deleted]`
+            : `[${a.email ?? a.id}: local token deleted; couldn't confirm the revocation with Google — check myaccount.google.com/connections]`,
+        ),
       );
     },
   },

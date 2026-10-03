@@ -9,7 +9,6 @@ import type { ThreadItem } from "./protocol/v2/index.js";
 import { saveGeneratedImage, type ImageRecord } from "./images.js";
 import { loadSettings, updateSettings } from "./settings.js";
 import { briefDue, briefGoogle, composeBrief, markBriefShown, type Brief } from "./background/brief.js";
-import { hasGmailAccess } from "./google/gmail.js";
 import { scanDue } from "./bills/scan.js";
 import { runScan, scanSummary } from "./bills/view.js";
 import { claimDueNotices, type DueNotice } from "./bills/remind.js";
@@ -105,8 +104,7 @@ export function startBackgroundWork(session: Session, notify: (lines: string[]) 
     const codex = compareCodex(await codexVersion());
     if (codex.status !== "ok") notify([`Codex ${codex.detail} · the health check looks at everything`]);
     if (learner.enabled()) notify(await new MemoryTidier(session).runIfDue());
-    const g = session.google.state();
-    if (g && !g.invalidAt && hasGmailAccess(g.scopes) && scanDue(session.bills)) notify(scanSummary(await runScan(session)));
+    if (session.accounts.for("mail").length && scanDue(session.bills)) notify(scanSummary(await runScan(session)));
   })().catch(onError);
   return learner;
 }
@@ -128,7 +126,7 @@ export function claimDueNow(session: Session, now = new Date()): DueNow {
   let brief: Promise<Brief> | null = null;
   if (briefDue(session.memory, "repl", now)) {
     markBriefShown(session.memory, "repl");
-    brief = briefGoogle(session.google, now).then((google) => composeBrief(session.memory, session.reminders, now, google, session.bills));
+    brief = briefGoogle(session.accounts, now).then((google) => composeBrief(session.memory, session.reminders, now, google, session.bills));
   }
   return { reminders, bills, brief };
 }

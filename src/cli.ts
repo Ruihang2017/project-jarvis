@@ -7,7 +7,7 @@ import { unregisterNotifications } from "./background/notify.js";
 import { installTask, removeTask, taskStatus } from "./background/task.js";
 import { codexVersion, compareCodex } from "./doctor.js";
 import { CALENDAR_SCOPES, GMAIL_SCOPES, missingFeatures } from "./google/instructions.js";
-import { clientPath } from "./google/oauth.js";
+import { clientPath, hasClient } from "./google/oauth.js";
 import { region } from "./region.js";
 import { updateSettings } from "./settings.js";
 import { runSetup, type SetupEnv, type SetupIO } from "./setup.js";
@@ -15,7 +15,7 @@ import { openBrowser } from "./util.js";
 import { dirname, resolve } from "node:path";
 import { wipeData } from "./data/wipe.js";
 import { formatChecks, runDoctor } from "./doctor.js";
-import { GoogleAuth } from "./google/auth.js";
+import { Accounts } from "./accounts/accounts.js";
 import { Session } from "./session.js";
 import { appDataDir, envVar } from "./settings.js";
 import { tildify } from "./util.js";
@@ -64,11 +64,11 @@ export async function deleteDataCli(args: string[]): Promise<void> {
     console.log(dim("[nothing deleted]"));
     return;
   }
-  const google = new GoogleAuth();
+  const accounts = new Accounts();
   const report = await wipeData({
     all,
     disconnectGoogle: async () => {
-      if (google.state()) await google.disconnect();
+      for (const a of accounts.list()) await accounts.disconnect(a.id);
     },
     // The scheduled task is one per Windows user. Remove it only if it belongs to this data
     // folder — not when the folder was pointed elsewhere (tests, a second copy).
@@ -105,7 +105,7 @@ export async function setupCli(): Promise<void> {
     }
     return session;
   };
-  const google = new GoogleAuth();
+  const accounts = new Accounts();
   const env: SetupEnv = {
     node: process.versions.node,
     codex: async () => compareCodex(await codexVersion()),
@@ -128,14 +128,14 @@ export async function setupCli(): Promise<void> {
     },
     google: {
       clientPath: clientPath(),
-      hasClient: () => existsSync(clientPath()),
+      hasClient,
       connected: () => {
-        const s = google.state();
-        return s ? (s.email ?? "") : null;
+        const list = accounts.connected();
+        return list.length ? list.map((a) => a.email ?? "").filter(Boolean).join(", ") : null;
       },
-      missing: () => missingFeatures(google.state()),
+      missing: () => [...new Set(accounts.connected().flatMap((a) => missingFeatures(accounts.state(a))))],
       connect: async () => {
-        const s = await google.connect([...CALENDAR_SCOPES, ...GMAIL_SCOPES], (url) => {
+        const { state: s } = await accounts.connect([...CALENDAR_SCOPES, ...GMAIL_SCOPES], (url) => {
           console.log(`  If your browser doesn't open, visit:\n  ${url}`);
           openBrowser(url);
         });
@@ -162,10 +162,10 @@ export async function uninstallCli(): Promise<void> {
   const dir = appDataDir();
   const own = !envVar("DATA_DIR");
   console.log("Uninstalling Edward from this computer:");
-  const google = new GoogleAuth();
-  if (google.state()) {
-    const { revoked } = await google.disconnect().catch(() => ({ revoked: false }));
-    console.log(dim(revoked ? "  revoked Edward's Google access" : "  removed the local Google token (check myaccount.google.com/connections to confirm access is gone)"));
+  const accounts = new Accounts();
+  for (const a of accounts.list()) {
+    const { revoked } = await accounts.disconnect(a.id).catch(() => ({ revoked: false }));
+    console.log(dim(revoked ? `  revoked Edward's access to ${a.email ?? a.id}` : `  removed the local token for ${a.email ?? a.id} (check myaccount.google.com/connections to confirm access is gone)`));
   }
   if (process.platform === "win32") {
     const task = await taskStatus();

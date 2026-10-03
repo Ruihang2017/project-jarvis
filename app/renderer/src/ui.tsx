@@ -223,3 +223,13 @@ export function Confirm({ title, children, yes, no = "Cancel", danger, onAnswer 
     </div>
   );
 }
+
+/** Which account an email or event is in: a coloured dot and its name. */
+export function AccountChip({ label, color }: { label: string; color?: string }) {
+  return (
+    <span className="row muted" style={{ gap: 6, fontSize: 12.5 }}>
+      <span aria-hidden style={{ width: 8, height: 8, borderRadius: "50%", background: color ?? "var(--ink3)", flexShrink: 0 }} />
+      <span className="ellipsis">{label}</span>
+    </span>
+  );
+}
