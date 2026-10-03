@@ -76,6 +76,19 @@ Just type. Slash commands cover the rest — `/help` lists them in three groups:
 |---|---|---|
 | `/new` `/resume` `/image` `/model` `/effort` `/usage` `/mode` | `/brief` `/calendar` `/mail` `/bills` `/remind` `/memory` `/images` | `/start` `/connect` `/google` `/disconnect` `/background` `/region` `/web` `/data` `/doctor` |
 
+### The desktop app
+
+The same Edward in a window: Today, Chat, Calendar, Mail, Bills, Reminders, Memory and Pictures pages,
+cards for everything that needs your OK, the permission mode always at the top right, and a tray icon
+that keeps reminders coming when the window is closed. It shares the data folder with the terminal
+version. To run it from a checkout:
+
+```
+cd app
+npm install
+npm start
+```
+
 ### Permission modes
 
 `chat` (the default) keeps Codex's own shell and file access switched off, so everything the model sees

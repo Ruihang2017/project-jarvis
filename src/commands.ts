@@ -1,3 +1,4 @@
+import { acceptBill, editBill, ignoreBill, markPaid } from "./bills/actions.js";
 import { existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, extname, join, resolve } from "node:path";
@@ -595,41 +596,31 @@ const COMMANDS: Record<string, Command> = {
               continue;
             }
             if (sub === "ignore") {
-              bills.update(b.id, { status: "dismissed" });
+              ignoreBill(bills, b.id);
               console.log(dim(`[ignored ${billLine(b)}]`));
               continue;
             }
             // Bills with warnings are never accepted in bulk: each needs its own /bills ok <id>.
-            if (all && (b.flags.length || b.needsCheck)) {
+            const r = acceptBill(bills, b.id, all);
+            if (!r.ok) {
               console.log(styleText("yellow", `  #${b.id} has warnings — check it, then /bills ok ${b.id}`));
               continue;
             }
-            const done = bills.update(b.id, { status: b.kind === "autopay" ? "autopay" : "tracked", needsCheck: false })!;
-            bills.confirmPayee(b.payee, b.senderDomain);
-            console.log(dim(`[tracking ${billLine(done)}]`));
+            console.log(dim(`[tracking ${billLine(r.bill)}]`));
           }
           return;
         }
         case "edit": {
           const b = pick(a1);
           const value = rest.join(" ");
-          const dropFlag = (word: string) => b.flags.filter((f) => !f.includes(word));
-          if (a2 === "amount") {
-            const n = Number(value.replace(/[$,]/g, ""));
-            if (!value || !Number.isFinite(n) || n <= 0) return console.log(dim("[usage: /bills edit <id> amount 245.30]"));
-            bills.update(b.id, { amountCents: Math.round(n * 100), flags: dropFlag("the amount"), needsCheck: b.flags.some((f) => f.includes("the due date")) });
-          } else if (a2 === "due") {
-            if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(dayStart(value).getTime())) return console.log(dim("[usage: /bills edit <id> due 2026-10-18]"));
-            bills.update(b.id, { dueDate: value, flags: dropFlag("the due date"), needsCheck: b.flags.some((f) => f.includes("the amount")) });
-          } else if (a2 === "payee") {
-            if (!value) return console.log(dim("[usage: /bills edit <id> payee Name]"));
-            bills.update(b.id, { payee: value });
-          } else return console.log(dim("[usage: /bills edit <id> amount|due|payee <value>]"));
-          return console.log(dim(`[updated ${billLine(bills.get(b.id)!)}]`));
+          if (a2 !== "amount" && a2 !== "due" && a2 !== "payee") return console.log(dim("[usage: /bills edit <id> amount|due|payee <value>]"));
+          const r = editBill(bills, b.id, a2, value);
+          if (!r.ok) return console.log(dim(`[usage: /bills edit <id> ${a2 === "amount" ? "amount 245.30" : a2 === "due" ? "due 2026-10-18" : "payee Name"}]`));
+          return console.log(dim(`[updated ${billLine(r.bill)}]`));
         }
         case "paid": {
           const b = pick(a1);
-          bills.update(b.id, { status: "paid" });
+          markPaid(bills, b.id);
           return console.log(dim(`[paid ${b.payee} ${formatAmount(b)}]`));
         }
         case "scan": {

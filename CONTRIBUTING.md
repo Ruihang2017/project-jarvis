@@ -28,7 +28,7 @@ npm test
 npm run dev
 ```
 
-- TypeScript, Node 24, no runtime dependencies. Please keep it that way.
+- TypeScript, Node 24. The core (`src/`) has no runtime dependencies; please keep it that way. The desktop app (`app/`) adds Electron and React, bundled at build time.
 - Tests are plain scripts in `test/`, one per area, run with `tsx`. They need no network and no Codex.
   Tests must not touch real user data: set `EDWARD_DATA_DIR` to a scratch folder, as the existing ones do.
 - Behaviour that only shows in a real terminal (Shift+Tab, inline image previews) has a simulated-terminal

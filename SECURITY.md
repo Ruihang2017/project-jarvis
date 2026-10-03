@@ -99,9 +99,30 @@ You register your own Google Cloud project, so the OAuth client is yours. Edward
 writing calendar events, reading the calendar list, reading Gmail, and creating and sending drafts. It
 cannot delete, archive or label mail. Sign-in uses the loopback redirect with PKCE on `127.0.0.1`.
 
+## The desktop app
+
+The desktop app (in `app/`, built with Electron) runs the same core in its main process, so everything
+above applies unchanged: the one path to Codex, the guard, what is stored and what needs approval.
+On top of that:
+
+- **The window has no Node and no Codex.** It runs sandboxed with context isolation, and can only call
+  the methods listed in `app/shared/api.ts` through the preload bridge. The main process checks every
+  call's method name against that list and that it comes from Edward's own page.
+- **No remote content.** The page, its fonts and its pictures are packaged with the app. A Content
+  Security Policy allows only those; links open in your browser, and only `https://` links. The window
+  can't navigate away or open other windows, and Chromium permissions (camera, location, …) are refused.
+- **Text is text.** Mail, calendar entries and replies are shown as plain text or as Markdown built
+  into elements, never inserted as HTML, so they can't carry script or markup.
+- **Pictures by allow-list.** Generated pictures and attachments are served to the window only if
+  the main process put them on its list; the window can't ask for any other file.
+- **What you typed is shown as it was sent:** if the guard removed a number from your message, the
+  conversation shows "card number removed" in its place, not the number.
+- Closing the window keeps Edward in the tray so reminders still appear; Quit is in the tray menu.
+
 ## Dependencies
 
-Edward has no runtime dependencies beyond Node.js and the Codex CLI.
+The core and the terminal version have no runtime dependencies beyond Node.js and the Codex CLI. The
+desktop app adds Electron and, in the window, React; they are bundled into the app at build time.
 
 ## Reporting a problem
 

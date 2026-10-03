@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { appDataDir } from "../settings.js";
+import { runtime } from "../runtime.js";
 
 export const TASK_NAME = "Edward\\Tick";
 /** The task registered before the rename (D33); data/rename.ts replaces it. */
@@ -69,12 +70,15 @@ function taskXml(launcher: string): string {
 /** Writes the hidden launcher and registers (or replaces) the task. */
 export async function installTask(): Promise<{ ok: boolean; message: string }> {
   if (process.platform !== "win32") return { ok: false, message: "background reminders are Windows-only for now" };
-  const entry = cliEntry();
-  if (!existsSync(entry)) return { ok: false, message: `${entry} not found — run npm run build first` };
+  // The desktop app runs its own executable as plain Node (runtime.tick); the terminal version, node + dist/index.js.
+  const tick = runtime.tick ?? { exe: process.execPath, args: [cliEntry(), "tick"] };
+  const script = tick.args.find((a) => /\.[cm]?js$/i.test(a));
+  if (script && !existsSync(script)) return { ok: false, message: `${script} not found — run npm run build first` };
   const launcher = launcherPath();
   // Window style 0 = hidden; False = don't wait. Quotes doubled for VBScript string literals.
-  const cmdline = `"${process.execPath}" "${entry}" tick`.replace(/"/g, '""');
-  writeFileSync(launcher, `CreateObject("WScript.Shell").Run "${cmdline}", 0, False\r\n`, "latin1");
+  const cmdline = [tick.exe, ...tick.args].map((a) => (a === "tick" ? a : `"${a}"`)).join(" ").replace(/"/g, '""');
+  const env = Object.entries(tick.env ?? {}).map(([k, v]) => `sh.Environment("Process")("${k}") = "${v.replace(/"/g, '""')}"\r\n`).join("");
+  writeFileSync(launcher, `Set sh = CreateObject("WScript.Shell")\r\n${env}sh.Run "${cmdline}", 0, False\r\n`, "latin1");
   const xmlFile = join(tmpdir(), `edward-task-${process.pid}.xml`);
   writeFileSync(xmlFile, "﻿" + taskXml(launcher), "utf16le"); // schtasks wants UTF-16 with BOM
   const res = await run("schtasks", ["/Create", "/TN", TASK_NAME, "/XML", xmlFile, "/F"]);

@@ -1,4 +1,3 @@
-import { existsSync } from "node:fs";
 import { createInterface, type Interface } from "node:readline/promises";
 import { styleText } from "node:util";
 import { MODE_CYCLE, MODES, type Mode, type Session } from "./session.js";
@@ -6,31 +5,20 @@ import { runCommand, runningCommand, UNGUARDED_WARNING } from "./commands.js";
 import { describeRemoved, type Category } from "./privacy/guard.js";
 import type { Source } from "./privacy/outgoing.js";
 import { MarkdownStream } from "./markdown.js";
-import { describeChange, terminalInteractions } from "./prompts.js";
-import type { RateLimitWindow, ThreadItem, ThreadTokenUsage, TurnStatus } from "./protocol/v2/index.js";
-import { saveGeneratedImage } from "./images.js";
+import { terminalInteractions } from "./prompts.js";
+import { activityLabel, activityNotes } from "./activity.js";
+import { backgroundSuggestion, claimDueNow, handleGeneratedImage, startBackgroundWork, turnInputs } from "./assistant.js";
+import type { RateLimitWindow, ThreadTokenUsage, TurnStatus } from "./protocol/v2/index.js";
 import { envVar, loadSettings, updateSettings } from "./settings.js";
 import { showToast } from "./background/notify.js";
 import { reminderToast } from "./background/tick.js";
-import { briefDue, briefGoogle, composeBrief, markBriefShown } from "./background/brief.js";
 import { missingFeatures } from "./google/instructions.js";
-import { hasGmailAccess } from "./google/gmail.js";
-import { scanDue } from "./bills/scan.js";
-import { runScan, scanSummary } from "./bills/view.js";
-import { claimDueNotices, noticeLine, noticeToast } from "./bills/remind.js";
-import { codexVersion, compareCodex } from "./doctor.js";
+import { noticeLine, noticeToast } from "./bills/remind.js";
 import { GETTING_STARTED } from "./setup.js";
 import { detectSixel, preview, renderPreview } from "./sixel.js";
-import { openWithDefaultApp } from "./system.js";
-import { describeToolCall } from "./tools.js";
-import { RELATED_CHECK } from "./memory/tools.js";
-import { MemoryLearner } from "./memory/learn.js";
-import { recallFor } from "./memory/recall.js";
-import { MemoryTidier } from "./memory/tidy.js";
-import { nowNote } from "./reminders/prompt.js";
 import { formatDue, lateness } from "./reminders/schedule.js";
 import type { Fired } from "./reminders/store.js";
-import { displayCommand, stripControl, tildify, truncate } from "./util.js";
+import { stripControl } from "./util.js";
 
 const dim = (s: string) => styleText("dim", s);
 const USER_PROMPT = styleText("cyan", "you › ");
@@ -278,51 +266,28 @@ export async function repl(session: Session): Promise<void> {
     atPrompt = true;
   };
 
-  // Memory learning runs in the background: on leaving a conversation, and at startup for any missed.
-  const learner = new MemoryLearner(session);
+  // Memory learning, the daily tidy, the Codex version note and the daily bill scan (assistant.ts).
   const learnFailed = (e: unknown) => {
     if (envVar("DEBUG")) console.error(dim(`[memory learning failed] ${e instanceof Error ? e.message : String(e)}`));
   };
-  session.onLeaveThread = (id) => {
-    learner.learnFromThread(id).then((r) => notify(r?.lines ?? []), learnFailed);
-  };
-  // Catch up on unlearned conversations first, then the daily tidy (so it sees what was just learned).
-  void (async () => {
-    notify((await learner.catchUp()).flatMap((r) => r.lines));
-    // Codex moved to a release Edward hasn't been verified with: say so once, don't block.
-    const codex = compareCodex(await codexVersion());
-    if (codex.status !== "ok") notify([`Codex ${codex.detail} · /doctor checks everything`]);
-    if (learner.enabled()) notify(await new MemoryTidier(session).runIfDue());
-    // Bills (N5): look through recent Gmail once a day, while the user is here (billsScan = "daily").
-    const g = session.google.state();
-    if (g && !g.invalidAt && hasGmailAccess(g.scopes) && scanDue(session.bills)) notify(scanSummary(await runScan(session)));
-  })().catch(learnFailed);
+  startBackgroundWork(session, notify, learnFailed);
 
-  // Reminders due while Edward is open (the background task handles the rest). Claiming is
-  // atomic, so a reminder shows here or as a background notification, never both.
+  // Reminders, bill notices and the daily brief due while Edward is open (the background task
+  // handles the rest). Claiming is atomic, so each shows here or as a background notification.
   const checkReminders = () => {
     try {
-      const fired = session.reminders.claimDue();
-      if (fired.length) {
+      const due = claimDueNow(session);
+      if (due.reminders.length) {
         if (tty) process.stdout.write("\x07"); // bell: flashes the tab/taskbar if Edward isn't focused
-        notify(fired.map(reminderNotice));
+        notify(due.reminders.map(reminderNotice));
         // Also a desktop notification, in case the terminal isn't the window in front.
-        for (const f of fired) void showToast(reminderToast(f));
+        for (const f of due.reminders) void showToast(reminderToast(f));
       }
-      // Bills coming due (N5b); claimed like reminders, so the background tick doesn't repeat them.
-      const dueBills = claimDueNotices(session.bills);
-      if (dueBills.length) {
-        notify(dueBills.map(noticeLine));
-        for (const n of dueBills) void showToast(noticeToast(n));
+      if (due.bills.length) {
+        notify(due.bills.map(noticeLine));
+        for (const n of due.bills) void showToast(noticeToast(n));
       }
-      // Daily brief: first time Edward is open after the brief time on a brief day.
-      if (briefDue(session.memory, "repl")) {
-        markBriefShown(session.memory, "repl");
-        void briefGoogle(session.google).then((google) => {
-          const brief = composeBrief(session.memory, session.reminders, new Date(), google, session.bills);
-          notify([brief.title, ...brief.lines.map((l) => `  ${l}`)]);
-        });
-      }
+      void due.brief?.then((brief) => notify([brief.title, ...brief.lines.map((l) => `  ${l}`)]));
     } catch (e) {
       if (envVar("DEBUG")) console.error(dim(`[reminder check failed] ${e instanceof Error ? e.message : String(e)}`));
     }
@@ -437,17 +402,7 @@ export async function runTurn(session: Session, text: string, opts: TurnOptions 
   showIndicator("thinking…");
   let result: TurnStatus | "error";
   try {
-    const images = session.pendingImages.splice(0);
-    const notes: string[] = [];
-    // Carry the last generated image forward unless the user attached their own.
-    if (session.lastGeneratedImage && !images.length && existsSync(session.lastGeneratedImage)) {
-      images.push(session.lastGeneratedImage);
-      notes.push("[Edward] The attached image is the one you generated in your previous reply. If I ask for changes, edit this image.");
-    }
-    session.lastGeneratedImage = null;
-    notes.push(nowNote());
-    const recalled = recallFor(text, session.memory, session.recalledIds);
-    if (recalled) notes.push(recalled.note);
+    const { images, notes } = turnInputs(session, text);
     const turn = await session.send(text, {
       onDelta: (t) => (paused ? held.push(t) : writeDelta(t)),
       onItemStarted: (item) => {
@@ -460,12 +415,9 @@ export async function runTurn(session: Session, text: string, opts: TurnOptions 
         }
       },
       onItemCompleted: (item) => {
-        const lines = item.type === "imageGeneration" ? imageNotes(item, session, text) : activityNotes(item);
-        // After the first reminder, suggest background reminders once.
-        if (item.type === "dynamicToolCall" && item.tool === "reminder_create" && item.success !== false && !loadSettings().backgroundSuggested) {
-          updateSettings({ backgroundSuggested: true });
-          lines.push("🔔 Reminders only pop up while Edward is open. /background on makes them work when it's closed too.");
-        }
+        const lines = item.type === "imageGeneration" ? handleGeneratedImage(item, session, text).lines : activityNotes(item);
+        const suggestion = backgroundSuggestion(item);
+        if (suggestion) lines.push(suggestion);
         for (const line of lines) note(stripControl(line));
         if (item.type === "imageGeneration" && session.lastGeneratedImage && preview.enabled) {
           out(renderPreview(session.lastGeneratedImage));
@@ -492,100 +444,6 @@ export async function runTurn(session: Session, text: string, opts: TurnOptions 
   if (status) out(dim(statusLine(session, usage, Date.now() - t0)) + "\n");
   if (prefix) out("\n");
   return result;
-}
-
-/** Saves a finished generation, opens it if configured, and returns the lines to show. */
-function imageNotes(item: Extract<ThreadItem, { type: "imageGeneration" }>, session: Session, prompt: string): string[] {
-  if (item.failure) {
-    const reset = item.failure.resetsAt ? `; resets in ${Math.max(1, Math.round((item.failure.resetsAt - Date.now() / 1000) / 60))}m` : "";
-    return [`🖼 image generation unavailable: usage limit reached${reset}`];
-  }
-  if (item.status !== "completed") return [`🖼 image generation ${item.status}`];
-  try {
-    const rec = saveGeneratedImage(item, { threadId: session.threadId ?? "", prompt });
-    session.lastGeneratedImage = rec.path;
-    if (loadSettings().autoOpenImages !== false) openWithDefaultApp(rec.path);
-    const size = rec.width ? ` · ${rec.width}×${rec.height}` : "";
-    const lines = [`🖼 ${tildify(rec.path)}${size}`];
-    if (rec.revisedPrompt) lines.push(`   "${truncate(rec.revisedPrompt, 110)}"`);
-    return lines;
-  } catch (e) {
-    return [`🖼 couldn't save image: ${e instanceof Error ? e.message : String(e)}`];
-  }
-}
-
-/** Indicator text while a tool item runs; null for items that aren't tool activity. */
-function activityLabel(item: ThreadItem): string | null {
-  switch (item.type) {
-    case "imageGeneration":
-      return "🎨 generating image…";
-    case "webSearch":
-      return "searching the web…";
-    case "commandExecution":
-      return "running command…";
-    case "fileChange":
-      return "editing files…";
-    case "mcpToolCall":
-      return `calling ${item.server}.${item.tool}…`;
-    case "dynamicToolCall":
-      return `${item.tool}…`;
-    default:
-      return null;
-  }
-}
-
-/** Persistent lines summarising a finished tool item. */
-function activityNotes(item: ThreadItem): string[] {
-  switch (item.type) {
-    case "webSearch":
-      return [`⌕ ${describeSearch(item)}`];
-    case "commandExecution": {
-      const cmd = `$ ${truncate(displayCommand(item.command), 100)}`;
-      if (item.status === "declined") return [`${cmd} · declined`];
-      const meta = [item.exitCode != null && `exit ${item.exitCode}`, item.durationMs != null && secs(item.durationMs)];
-      const tail = (item.aggregatedOutput ?? "")
-        .split(/\r?\n/)
-        .filter((l) => l.trim())
-        .slice(-3)
-        .map((l) => `  │ ${truncate(l, 110)}`);
-      return [`${cmd} · ${meta.filter(Boolean).join(" · ") || item.status}`, ...tail];
-    }
-    case "fileChange":
-      if (item.status === "declined") return item.changes.map((c) => `✎ ${describeChange(c)} · declined`);
-      return item.changes.map((c) => `✎ ${describeChange(c)}${item.status === "failed" ? " · failed" : ""}`);
-    case "mcpToolCall":
-      return [`⚙ ${item.server}.${item.tool} · ${item.status === "failed" ? "failed" : "ok"}${item.durationMs != null ? " · " + secs(item.durationMs) : ""}`];
-    case "dynamicToolCall": {
-      // Edward's own tools report declines/errors as failed calls; surface the reason.
-      const failed = item.success === false || item.status === "failed";
-      const reason = item.contentItems?.find((c) => c.type === "inputText");
-      if (failed && reason?.type === "inputText" && reason.text.includes(RELATED_CHECK)) {
-        return ["🧠 checking related memories before saving…"];
-      }
-      const suffix = failed ? ` · ${reason && reason.type === "inputText" ? truncate(reason.text, 80) : "failed"}` : "";
-      return [`${describeToolCall(item.tool, item.arguments, !failed)}${suffix}`];
-    }
-    default:
-      return [];
-  }
-}
-
-const secs = (ms: number) => `${(ms / 1000).toFixed(1)}s`;
-
-function describeSearch(item: Extract<ThreadItem, { type: "webSearch" }>): string {
-  const a = item.action;
-  if (a?.type === "openPage" && a.url) return `opened ${hostOf(a.url)}`;
-  if (a?.type === "findInPage") return `searched page for "${a.pattern ?? ""}"`;
-  const queries = a?.type === "search" ? (a.queries ?? (a.query ? [a.query] : [])) : [];
-  return queries.length ? queries.map((q) => `"${q}"`).join(", ") : item.query || "web search";
-}
-
-function hostOf(url: string): string {
-  try {
-    return new URL(url).host;
-  } catch {
-    return url;
-  }
 }
 
 function statusLine(session: Session, usage: ThreadTokenUsage | null, ms: number): string {

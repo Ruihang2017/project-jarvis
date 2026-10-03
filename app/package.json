@@ -1,0 +1,27 @@
+{
+  "name": "edward-app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Edward desktop app (Electron). The assistant itself is the core in ../src.",
+  "type": "module",
+  "main": "build/main/main.js",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "start": "node scripts/build.mjs && electron .",
+    "typecheck": "tsc -p tsconfig.json",
+    "seed": "tsx scripts/seed.ts"
+  },
+  "devDependencies": {
+    "@fontsource-variable/bricolage-grotesque": "^5.3.0",
+    "@fontsource/hanken-grotesk": "^5.3.0",
+    "@fontsource/jetbrains-mono": "^5.3.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "electron": "^44.5.1",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "typescript": "^5.9.3",
+    "vite": "^8.3.2"
+  }
+}

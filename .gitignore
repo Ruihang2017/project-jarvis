@@ -2,3 +2,8 @@ node_modules/
 dist/
 # Private list of personal details for scripts/scrub.mjs — never commit it.
 scripts/scrub-map.local.mjs
+
+# Desktop app: build output and copies made by app/scripts/build.mjs
+app/build/
+app/dist/
+app/renderer/public/
