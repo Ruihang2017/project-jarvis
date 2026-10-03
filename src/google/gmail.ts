@@ -99,12 +99,59 @@ function decodeData(part: Part): string {
   }
 }
 
-const ENTITIES: Record<string, string> = { nbsp: " ", amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", "#39": "'" };
+const ENTITIES: Record<string, string> = {
+  nbsp: " ", amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", "#39": "'",
+  ensp: " ", emsp: " ", thinsp: " ", hellip: "…", mdash: "—", ndash: "–", bull: "•", middot: "·",
+  lsquo: "‘", rsquo: "’", ldquo: "“", rdquo: "”", laquo: "«", raquo: "»", copy: "©", reg: "®", trade: "™",
+  rarr: "→", larr: "←", uarr: "↑", darr: "↓", times: "×", divide: "÷", deg: "°", plusmn: "±",
+  euro: "€", pound: "£", yen: "¥", cent: "¢", sect: "§", para: "¶", frac12: "½", frac14: "¼", frac34: "¾",
+  zwnj: "", zwj: "", shy: "", lrm: "", rlm: "",
+};
+
+function decodeEntities(s: string): string {
+  return s.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+|#39);/gi, (m, e: string) => {
+    if (e[0] === "#") {
+      const code = e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
+      return Number.isFinite(code) && code <= 0x10ffff ? String.fromCodePoint(code) : m;
+    }
+    return ENTITIES[e.toLowerCase()] ?? m;
+  }).replace(/&nbsp(?![\w;])/gi, " "); // browsers accept it without the semicolon, and so does mail
+}
+
+// Zero-width and other invisible characters; marketing mail pads its preview line with them.
+const INVISIBLE = /[­͏ᅟᅠ឴឵᠎​-‏⁠-⁤﻿ㅤﾠ]/g;
+
+/** Drops invisible padding, trims each line and keeps at most one blank line in a row. */
+function tidy(text: string): string {
+  return text
+    .replace(/\r\n?/g, "\n")
+    .replace(INVISIBLE, "")
+    .replace(/[ \t ]+/g, " ")
+    .replace(/ *\n */g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/** A text/plain part that is really HTML (some senders put the same markup in both parts). */
+const isMarkup = (plain: string) => /<(?:!doctype|html|body)\b/i.test(plain.slice(0, 3000));
+
+/**
+ * A text/plain part some mailing tools generate from their HTML: it starts with the CSS rules, still
+ * has HTML entities or schema.org data in it, or is the HTML itself. The HTML part reads better then.
+ */
+export function looksGenerated(plain: string): boolean {
+  return (
+    /^\s*[^{}\n]{1,200}\{[^{}]*:[^{}]*\}/.test(plain) ||
+    /&(?:nbsp|zwnj|amp|quot|#\d+);/i.test(plain) ||
+    /"@context"\s*:\s*"https?:\/\/schema\.org/.test(plain) ||
+    isMarkup(plain)
+  );
+}
 
 /** Readable text from an HTML email: drops styles/scripts, keeps line structure and link targets. */
 export function htmlToText(html: string): string {
-  return html
-    .replace(/<(head|style|script|title)[^>]*>[\s\S]*?<\/\1>/gi, "")
+  const text = html
+    .replace(/<(head|style|script|title)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, "")
     .replace(/<!--[\s\S]*?-->/g, "")
     .replace(/<a\b[^>]*href="(https?:[^"]+)"[^>]*>([\s\S]*?)<\/a>/gi, (_, href: string, text: string) => {
       const t = text.replace(/<[^>]+>/g, "").trim();
@@ -113,21 +160,11 @@ export function htmlToText(html: string): string {
     .replace(/<br\s*\/?>/gi, "\n")
     .replace(/<\/(p|div|li|tr|h[1-6]|table|blockquote)>/gi, "\n")
     .replace(/<li[^>]*>/gi, "• ")
-    .replace(/<[^>]+>/g, "")
-    .replace(/&(#x[0-9a-f]+|#\d+|[a-z]+|#39);/gi, (m, e: string) => {
-      if (e[0] === "#") {
-        const code = e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
-        return Number.isFinite(code) ? String.fromCodePoint(code) : m;
-      }
-      return ENTITIES[e.toLowerCase()] ?? m;
-    })
-    .replace(/[ \t ]+/g, " ")
-    .replace(/ *\n */g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+    .replace(/<[^>]+>/g, "");
+  return tidy(decodeEntities(text));
 }
 
-/** Body text (prefers text/plain, falls back to HTML) and attachment list from a MIME tree. */
+/** Body text (prefers text/plain unless it looks generated, falls back to HTML) and attachments from a MIME tree. */
 export function extractContent(payload: Part | undefined): { body: string; attachments: Attachment[] } {
   const plain: string[] = [];
   const html: string[] = [];
@@ -143,7 +180,9 @@ export function extractContent(payload: Part | undefined): { body: string; attac
     for (const c of p.parts ?? []) walk(c);
   };
   if (payload) walk(payload);
-  const body = plain.join("\n").trim() ? plain.join("\n").replace(/\r\n/g, "\n").trim() : htmlToText(html.join("\n"));
+  const text = plain.join("\n");
+  const useHtml = html.length > 0 && (!text.trim() || looksGenerated(text));
+  const body = useHtml ? htmlToText(html.join("\n")) : isMarkup(text) ? htmlToText(text) : tidy(looksGenerated(text) ? decodeEntities(text) : text);
   return { body: stripControl(body), attachments };
 }
 

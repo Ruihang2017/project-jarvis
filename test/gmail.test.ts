@@ -50,6 +50,24 @@ eq("html to text", g.htmlToText(html), "Hi Alex,\nSee the doc (https://x.com/doc
 const alt: Part = { mimeType: "multipart/alternative", parts: [part("text/plain", "Plain version\r\nline 2"), part("text/html", "<p>HTML version</p>")] };
 eq("prefers text/plain", g.extractContent(alt).body, "Plain version\nline 2");
 eq("falls back to html", g.extractContent({ mimeType: "multipart/alternative", parts: [part("text/html", "<p>Only HTML</p>")] }).body, "Only HTML");
+// Marketing mail whose text/plain was generated from the HTML: CSS first, entities left in, hundreds
+// of blank lines (seen 2026-10-03; the page showed only the CSS).
+const generated = ` td, p, a, span { font-family: Helvetica, sans-serif !important; } a {text-decoration: none;}\n${"\n".repeat(300)}See the latest&nbsp;&zwnj;&nbsp;&zwnj; results`;
+const marketing: Part = {
+  mimeType: "multipart/alternative",
+  parts: [
+    part("text/plain", generated),
+    part("text/html", `<!--[if mso]><style>td, p { font-family: Helvetica; }</style><![endif]--><style type="text/css">a{x:y}</style ><div>See the latest&nbsp;&zwnj;&nbsp;&zwnj;&#8203; results</div><p>Springfield&nbsp;&mdash; 3 sold</p>`),
+  ],
+};
+ok("generated plain part detected", g.looksGenerated(generated));
+ok("…or one holding schema.org data", g.looksGenerated('carsales\n\n[{\n"@context": "http://schema.org/",\n"@type": "Organization"}]'));
+eq("&nbsp without a semicolon, LRM/RLM padding", g.htmlToText("<p>Area.&nbsp</p><p>Trending ‎‏ ‎‏ posts</p><p>Saved cars &rarr; &euro;5</p>"), "Area.\nTrending posts\nSaved cars → €5");
+eq("plain part that is HTML, no HTML part: converted", g.extractContent(part("text/plain", "\r\n\r\n<!DOCTYPE html><html><head><style>a{color:#999}</style></head><body><p>Hi Ruby,</p><p>Inspection Saturday</p></body></html>")).body, "Hi Ruby,\nInspection Saturday");
+ok("an ordinary plain part isn't", !g.looksGenerated("Hi Sam,\nThe meeting {room 4} is at 3pm.\nThanks"));
+eq("generated plain part: the HTML is used instead", g.extractContent(marketing).body, "See the latest results\nSpringfield — 3 sold");
+eq("blank lines in plain text collapse", g.extractContent(part("text/plain", "Hi\n\n\n\n\nBye")).body, "Hi\n\nBye");
+eq("generated plain part without HTML: entities decoded", g.extractContent(part("text/plain", "Total&nbsp;$5 &amp; tax")).body, "Total $5 & tax");
 const gbk = Buffer.from([0xc4, 0xe3, 0xba, 0xc3]); // 你好 in GBK
 eq("charset from Content-Type (GBK)", g.extractContent(part("text/plain", gbk, { "Content-Type": 'text/plain; charset="gbk"' })).body, "你好");
 const mixed: Part = { mimeType: "multipart/mixed", parts: [alt, part("application/pdf", "PDFDATA", {}, "contract.pdf")] };
