@@ -30,7 +30,7 @@ export interface DataCheck {
   /** Where the pre-upgrade backup went, when steps ran. */
   backup?: string;
   applied: string[];
-  /** The data was written by a newer Jarvis than this one: left untouched. */
+  /** The data was written by a newer Edward than this one: left untouched. */
   newer: boolean;
 }
 

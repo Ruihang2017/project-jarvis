@@ -236,5 +236,5 @@ export class SensitiveDataError extends Error {}
 /** Storage-side guard: throws instead of writing an account/card/ID number or secret to disk. */
 export function refuseSensitive(text: string): void {
   const reason = sensitiveReason(text);
-  if (reason) throw new SensitiveDataError(`not saved: it contains a ${reason}, and Jarvis never stores those`);
+  if (reason) throw new SensitiveDataError(`not saved: it contains a ${reason}, and Edward never stores those`);
 }

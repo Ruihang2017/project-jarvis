@@ -1,5 +1,5 @@
 /**
- * The privacy guard at the process boundary (S1): every message Jarvis writes to `codex app-server`
+ * The privacy guard at the process boundary (S1): every message Edward writes to `codex app-server`
  * passes through here, so nothing — user text, instructions, memory, tool results, answers — can
  * reach Codex without being redacted, whichever code path produced it.
  *
@@ -17,7 +17,7 @@ import { redact, redactDeep, type Category } from "./guard.js";
 export type Source = "message" | "instructions" | "tool" | "answer" | "background";
 
 /**
- * Fields that carry identifiers, paths or Jarvis's own fixed definitions rather than user or
+ * Fields that carry identifiers, paths or Edward's own fixed definitions rather than user or
  * third-party text. Redacting them would break requests (a thread id or a file path can contain
  * digit runs) and they can't hold anything the user typed or an email said.
  */

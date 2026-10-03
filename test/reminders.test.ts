@@ -35,7 +35,7 @@ eq("lateness on time", lateness("2026-10-01T09:00", new Date(2026, 9, 1, 9, 1)),
 eq("parseDuration", [parseDuration("10m"), parseDuration("1h"), parseDuration("90"), parseDuration(undefined), parseDuration("soon")], [10, 60, 90, 10, null]);
 
 // --- store ---
-const path = join(tmpdir(), `jarvis-rem-test-${Date.now()}.db`);
+const path = join(tmpdir(), `edward-rem-test-${Date.now()}.db`);
 const a = new ReminderStore(path);
 const b = new ReminderStore(path); // a second process (e.g. background tick)
 const now = new Date(2026, 9, 1, 9, 0); // Thu 2026-10-01 09:00

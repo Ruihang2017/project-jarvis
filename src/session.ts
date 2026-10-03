@@ -42,7 +42,7 @@ import { relative, isAbsolute, resolve } from "node:path";
 import { stripControlDeep } from "./util.js";
 import { loadSettings } from "./settings.js";
 
-/** Whether a path (absolute or workspace-relative) lies inside the Jarvis workspace. */
+/** Whether a path (absolute or workspace-relative) lies inside the Edward workspace. */
 function insideWorkspace(p: string): boolean {
   const rel = relative(config.workspace, resolve(config.workspace, p));
   return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
@@ -60,7 +60,7 @@ export interface TurnCallbacks {
 /**
  * Permission modes (S1, like Claude Code's). Only chat is "guarded": Codex's own channels (shell,
  * file reading, local image viewing, browser) are switched off, so everything the model sees came
- * through Jarvis and its privacy guard. The others let Codex run commands, whose output goes
+ * through Edward and its privacy guard. The others let Codex run commands, whose output goes
  * straight to the model.
  */
 export type Mode = "chat" | "manual" | "semi-auto" | "auto";
@@ -73,7 +73,7 @@ interface ModeSpec {
   approvalPolicy: AskForApproval;
   sandboxPolicy: SandboxPolicy;
   guarded: boolean;
-  /** Accept file edits inside the Jarvis workspace without asking. */
+  /** Accept file edits inside the Edward workspace without asking. */
   autoApproveEdits: boolean;
 }
 
@@ -88,9 +88,9 @@ export const MODES: Record<Mode, ModeSpec> = {
 };
 
 /**
- * Codex features that read data without going through Jarvis. Off in guarded threads; per-thread
+ * Codex features that read data without going through Edward. Off in guarded threads; per-thread
  * `config` works (verified 2026-10-02, codex 0.156.1; the nested form — dotted keys did not).
- * Browser and computer use stay off everywhere: Jarvis has no UI for them.
+ * Browser and computer use stay off everywhere: Edward has no UI for them.
  */
 export function codexChannels(guarded: boolean) {
   return {
@@ -231,8 +231,8 @@ export class Session {
 
   async init(): Promise<GetAccountResponse> {
     await this.client.request<InitializeResponse>("initialize", {
-      clientInfo: { name: "jarvis", title: "Jarvis", version: "0.1.0" },
-      // Needed for dynamicTools (Jarvis tools); experimental fields may change across codex versions.
+      clientInfo: { name: "edward", title: "Edward", version: "0.1.0" },
+      // Needed for dynamicTools (Edward tools); experimental fields may change across codex versions.
       capabilities: { experimentalApi: true, requestAttestation: false },
     });
     this.client.notify("initialized");
@@ -259,7 +259,7 @@ export class Session {
     if (!result.success) throw new Error(`login failed: ${result.error ?? "unknown error"}`);
   }
 
-  /** Settings shared by thread/start and thread/resume so resumed threads get Jarvis's mode and persona. */
+  /** Settings shared by thread/start and thread/resume so resumed threads get Edward's mode and persona. */
   private threadSettings() {
     mkdirSync(config.workspace, { recursive: true });
     return {
@@ -276,7 +276,7 @@ export class Session {
   /**
    * Switches permission mode. Codex fixes a thread's features when it is loaded (a resume of a
    * loaded thread ignores new config), so crossing the guarded boundary unloads the thread and
-   * resumes it with the new channel switches: same thread id, history and Jarvis tools (verified
+   * resumes it with the new channel switches: same thread id, history and Edward tools (verified
    * 2026-10-02). A chat turn therefore never runs with the shell still on.
    */
   /** Reloads the current thread so changed thread-level settings (web search on/off) take effect. */

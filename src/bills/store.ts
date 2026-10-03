@@ -1,7 +1,7 @@
 /**
- * Bills (N5, D25): what Jarvis tracks is payee, category, amount, due date and status — never an
+ * Bills (N5, D25): what Edward tracks is payee, category, amount, due date and status — never an
  * account, card or reference number (no such column exists, and text fields pass the privacy guard).
- * Jarvis reminds; paying is the user's business.
+ * Edward reminds; paying is the user's business.
  */
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";

@@ -1,5 +1,5 @@
 /**
- * The background runner: one per-user Windows scheduled task that runs `jarvis tick` every minute
+ * The background runner: one per-user Windows scheduled task that runs `edward tick` every minute
  * (and at logon) through a hidden-window VBS launcher. No resident process, survives reboots.
  */
 import { execFile } from "node:child_process";
@@ -9,7 +9,9 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { appDataDir } from "../settings.js";
 
-export const TASK_NAME = "Jarvis\\Tick";
+export const TASK_NAME = "Edward\\Tick";
+/** The task registered before the rename (D33); data/rename.ts replaces it. */
+export const LEGACY_TASK_NAME = "Jarvis\\Tick";
 const launcherPath = () => join(appDataDir(), "tick.vbs");
 export const heartbeatPath = () => join(appDataDir(), "tick-heartbeat.txt");
 
@@ -38,7 +40,7 @@ function taskXml(launcher: string): string {
   // Battery settings matter: the defaults skip runs on battery, which would silence reminders on a laptop.
   return `<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
-  <RegistrationInfo><Description>Jarvis: fires due reminders and the daily brief. Remove with /background off.</Description></RegistrationInfo>
+  <RegistrationInfo><Description>Edward: fires due reminders and the daily brief. Remove with /background off.</Description></RegistrationInfo>
   <Triggers>
     <TimeTrigger><StartBoundary>${start}</StartBoundary><Enabled>true</Enabled><Repetition><Interval>PT1M</Interval><StopAtDurationEnd>false</StopAtDurationEnd></Repetition></TimeTrigger>
     <LogonTrigger><Enabled>true</Enabled><UserId>${user}</UserId></LogonTrigger>
@@ -73,16 +75,33 @@ export async function installTask(): Promise<{ ok: boolean; message: string }> {
   // Window style 0 = hidden; False = don't wait. Quotes doubled for VBScript string literals.
   const cmdline = `"${process.execPath}" "${entry}" tick`.replace(/"/g, '""');
   writeFileSync(launcher, `CreateObject("WScript.Shell").Run "${cmdline}", 0, False\r\n`, "latin1");
-  const xmlFile = join(tmpdir(), `jarvis-task-${process.pid}.xml`);
+  const xmlFile = join(tmpdir(), `edward-task-${process.pid}.xml`);
   writeFileSync(xmlFile, "﻿" + taskXml(launcher), "utf16le"); // schtasks wants UTF-16 with BOM
   const res = await run("schtasks", ["/Create", "/TN", TASK_NAME, "/XML", xmlFile, "/F"]);
   return { ok: res.ok, message: res.ok ? "registered" : res.out };
 }
 
-export async function removeTask(): Promise<{ ok: boolean; message: string }> {
-  const res = await run("schtasks", ["/Delete", "/TN", TASK_NAME, "/F"]);
+export async function removeTask(name?: string): Promise<{ ok: boolean; message: string }> {
+  // Without a name: Edward's task, and the old Jarvis one too if the data hasn't been moved yet.
+  if (!name && (await run("schtasks", ["/Query", "/TN", LEGACY_TASK_NAME])).ok) await run("schtasks", ["/Delete", "/TN", LEGACY_TASK_NAME, "/F"]);
+  const res = await run("schtasks", ["/Delete", "/TN", name ?? TASK_NAME, "/F"]);
   const gone = res.ok || /cannot find|does not exist/i.test(res.out);
   return { ok: gone, message: res.ok ? "removed" : gone ? "wasn't installed" : res.out };
+}
+
+/** The registered task's definition as XML, or null if there is no such task (used to put it back if a move fails). */
+export async function exportTask(name: string): Promise<string | null> {
+  if (process.platform !== "win32") return null;
+  const res = await run("schtasks", ["/Query", "/TN", name, "/XML", "ONE"]);
+  return res.ok && res.out.includes("<Task") ? res.out : null;
+}
+
+/** Registers a task from XML that exportTask returned. */
+export async function importTask(name: string, xml: string): Promise<boolean> {
+  const xmlFile = join(tmpdir(), `edward-task-restore-${process.pid}.xml`);
+  const body = xml.replace(/^<\?xml[^>]*\?>\s*/, '<?xml version="1.0" encoding="UTF-16"?>\n');
+  writeFileSync(xmlFile, "﻿" + body, "utf16le"); // schtasks wants UTF-16 with BOM
+  return (await run("schtasks", ["/Create", "/TN", name, "/XML", xmlFile, "/F"])).ok;
 }
 
 export interface TaskStatus {
@@ -93,14 +112,16 @@ export interface TaskStatus {
   nextRun?: string;
   /** Last time a tick actually ran (from its heartbeat file). */
   heartbeat?: Date;
-  /** The launcher script the installed task runs; it lives in the data folder of the Jarvis that installed it. */
+  /** The launcher script the installed task runs; it lives in the data folder of the Edward that installed it. */
   launcher?: string;
   /** Problems that would stop ticks from working (moved Node, missing build). */
   problems: string[];
 }
 
 export async function taskStatus(): Promise<TaskStatus> {
-  const q = await run("schtasks", ["/Query", "/TN", TASK_NAME, "/V", "/FO", "LIST"]);
+  let q = await run("schtasks", ["/Query", "/TN", TASK_NAME, "/V", "/FO", "LIST"]);
+  // Before the data is moved (data/rename.ts) the task still has its old name.
+  if (!q.ok) q = await run("schtasks", ["/Query", "/TN", LEGACY_TASK_NAME, "/V", "/FO", "LIST"]);
   const problems: string[] = [];
   if (!q.ok) return { installed: false, problems };
   const field = (name: string) => new RegExp(`^${name}:\\s*(.+)$`, "mi").exec(q.out)?.[1]?.trim();

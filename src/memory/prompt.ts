@@ -38,7 +38,7 @@ export function memoryInstructions(store: MemoryStore): string {
     : "- (nothing yet)";
   return `
 ## Memory
-Jarvis keeps a memory about the user. Today is ${today()}.
+Edward keeps a memory about the user. Today is ${today()}.
 
 What you know about the user (treat as true unless they say otherwise):
 ${known}

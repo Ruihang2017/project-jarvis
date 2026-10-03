@@ -1,5 +1,5 @@
 /**
- * Self-check (P1): `/doctor` in the REPL and `jarvis doctor` on the command line. Each line says
+ * Self-check (P1): `/doctor` in the REPL and `edward doctor` on the command line. Each line says
  * what was checked, whether it is fine, and what to do if it isn't.
  */
 import { execFile } from "node:child_process";
@@ -37,7 +37,7 @@ export function compareCodex(found: string | null, tested = config.testedCodex):
   if (!found) return { name: "Codex", status: "fail", detail: "not found — install it (npm i -g @openai/codex) and make sure `codex` is on your PATH" };
   const minor = (v: string) => v.split(".").slice(0, 2).join(".");
   if (minor(found) === minor(tested)) return { name: "Codex", status: "ok", detail: found };
-  return { name: "Codex", status: "warn", detail: `${found} — Jarvis was verified with ${tested}; if something misbehaves, that is the first thing to suspect` };
+  return { name: "Codex", status: "warn", detail: `${found} — Edward was verified with ${tested}; if something misbehaves, that is the first thing to suspect` };
 }
 
 /** Proves the privacy guard is in the path by sending a made-up card number through it. */
@@ -45,7 +45,7 @@ export function guardSelfTest(): Check {
   const out = JSON.stringify(guardOutgoing().request("turn/start", { threadId: "self-test", input: [{ type: "text", text: "card 4111 1111 1111 1111, ending 4409" }] }));
   const leaked = out.includes("4111") || out.includes("4409");
   return leaked
-    ? { name: "Privacy guard", status: "fail", detail: "a test card number passed through unredacted — do not use Jarvis until this is fixed" }
+    ? { name: "Privacy guard", status: "fail", detail: "a test card number passed through unredacted — do not use Edward until this is fixed" }
     : { name: "Privacy guard", status: "ok", detail: "a test card number was removed before sending" };
 }
 
@@ -65,14 +65,14 @@ function dataDirCheck(): Check {
 function dataVersionCheck(): Check {
   const v = readDataVersion();
   if (v === null) return { name: "Data version", status: "ok", detail: `new (will be v${DATA_VERSION})` };
-  if (v > DATA_VERSION) return { name: "Data version", status: "warn", detail: `v${v}, newer than this Jarvis (v${DATA_VERSION}) — update Jarvis` };
+  if (v > DATA_VERSION) return { name: "Data version", status: "warn", detail: `v${v}, newer than this Edward (v${DATA_VERSION}) — update Edward` };
   return { name: "Data version", status: "ok", detail: `v${v}` };
 }
 
 async function backgroundCheck(): Promise<Check> {
   if (process.platform !== "win32") return { name: "Background", status: "warn", detail: "background reminders are only available on Windows" };
   const s = await taskStatus();
-  if (!s.installed) return { name: "Background", status: "warn", detail: "off — reminders only appear while Jarvis is open; /background on" };
+  if (!s.installed) return { name: "Background", status: "warn", detail: "off — reminders only appear while Edward is open; /background on" };
   if (s.problems.length) return { name: "Background", status: "fail", detail: s.problems.join("; ") };
   const age = s.heartbeat ? Math.round((Date.now() - s.heartbeat.getTime()) / 1000) : null;
   if (age === null || age > 300) return { name: "Background", status: "warn", detail: `task installed but last ran ${age === null ? "never" : `${Math.round(age / 60)} min ago`} — /background on again` };
@@ -96,13 +96,13 @@ async function googleCheck(session: Session): Promise<Check> {
 export async function runDoctor(session?: Session): Promise<Check[]> {
   const node = Number(process.versions.node.split(".")[0]);
   const checks: Check[] = [
-    node >= 24 ? { name: "Node.js", status: "ok", detail: process.versions.node } : { name: "Node.js", status: "fail", detail: `${process.versions.node} — Jarvis needs Node 24 or newer` },
+    node >= 24 ? { name: "Node.js", status: "ok", detail: process.versions.node } : { name: "Node.js", status: "fail", detail: `${process.versions.node} — Edward needs Node 24 or newer` },
     compareCodex(await codexVersion()),
   ];
   if (session) {
     try {
       const { account } = await session.client.request<{ account: { type: string; email?: string } | null }>("account/read", { refreshToken: false });
-      checks.push(account?.type === "chatgpt" ? { name: "ChatGPT", status: "ok", detail: `signed in${account.email ? ` as ${account.email}` : ""}` } : { name: "ChatGPT", status: "fail", detail: "not signed in — restart Jarvis to sign in" });
+      checks.push(account?.type === "chatgpt" ? { name: "ChatGPT", status: "ok", detail: `signed in${account.email ? ` as ${account.email}` : ""}` } : { name: "ChatGPT", status: "fail", detail: "not signed in — restart Edward to sign in" });
     } catch (e) {
       checks.push({ name: "ChatGPT", status: "fail", detail: `couldn't ask Codex: ${e instanceof Error ? e.message : String(e)}` });
     }

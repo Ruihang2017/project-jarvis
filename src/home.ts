@@ -3,8 +3,8 @@ import { join } from "node:path";
 import { config } from "./config.js";
 
 // Written once; afterwards the file is the user's to edit.
-const DEFAULT_CONFIG = `# Codex config for Jarvis only (isolated from ~/.codex).
-# Per-turn model/effort come from Jarvis; these are fallbacks.
+const DEFAULT_CONFIG = `# Codex config for Edward only (isolated from ~/.codex).
+# Per-turn model/effort come from Edward; these are fallbacks.
 model = "${config.model}"
 model_reasoning_effort = "${config.effort}"
 

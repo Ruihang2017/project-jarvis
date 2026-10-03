@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 export { openWithDefaultApp as openBrowser } from "./system.js";
 
 /**
- * Removes terminal control characters from text Jarvis didn't write (email, calendar, model
+ * Removes terminal control characters from text Edward didn't write (email, calendar, model
  * output): ESC and the other C0/C1 codes can clear the screen, rewrite what is already shown
  * (a fake approval prompt), or write to the clipboard; bidi overrides can make a name or address
  * read differently from what it is. Newlines and tabs stay.

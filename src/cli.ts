@@ -1,4 +1,5 @@
-/** Command-line entry points that aren't the REPL: `jarvis doctor`, `jarvis delete-data`. */
+/** Command-line entry points that aren't the REPL: `edward doctor`, `edward delete-data`. */
+import { moveFromJarvis, renameMessage } from "./data/rename.js";
 import { createInterface } from "node:readline/promises";
 import { styleText } from "node:util";
 import { existsSync } from "node:fs";
@@ -16,7 +17,7 @@ import { wipeData } from "./data/wipe.js";
 import { formatChecks, runDoctor } from "./doctor.js";
 import { GoogleAuth } from "./google/auth.js";
 import { Session } from "./session.js";
-import { appDataDir } from "./settings.js";
+import { appDataDir, envVar } from "./settings.js";
 import { tildify } from "./util.js";
 
 const dim = (s: string) => styleText("dim", s);
@@ -40,21 +41,21 @@ export async function doctorCli(): Promise<void> {
   }
 }
 
-/** Deletes what Jarvis stored. Asks the user to type DELETE; `--all` removes the whole data folder. */
+/** Deletes what Edward stored. Asks the user to type DELETE; `--all` removes the whole data folder. */
 export async function deleteDataCli(args: string[]): Promise<void> {
   const all = args.includes("--all");
   const unknown = args.filter((a) => a !== "--all");
   if (unknown.length) {
-    console.log("usage: jarvis delete-data [--all]");
+    console.log("usage: edward delete-data [--all]");
     process.exitCode = 1;
     return;
   }
   const dir = appDataDir();
-  console.log(`This deletes what Jarvis has stored in ${tildify(dir)}:`);
+  console.log(`This deletes what Edward has stored in ${tildify(dir)}:`);
   console.log("  memories, reminders, bills, settings, backups, exports, logs, generated images and conversations;");
-  console.log("  Jarvis's Google access is revoked and the background task is removed.");
+  console.log("  Edward's Google access is revoked and the background task is removed.");
   console.log(all ? styleText("yellow", "  --all: also your ChatGPT sign-in, google-client.json and the workspace folder (the whole data folder).") : "  Kept: your ChatGPT sign-in, google-client.json and files in the workspace folder (use --all to remove those too).");
-  console.log("  Your emails, calendar and Google account are not touched. Close Jarvis first if it is open.");
+  console.log("  Your emails, calendar and Google account are not touched. Close Edward first if it is open.");
 
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   const answer = await rl.question("Type DELETE to go ahead: ").catch(() => "");
@@ -84,8 +85,9 @@ export async function deleteDataCli(args: string[]): Promise<void> {
   if (report.problems.length) process.exitCode = 1;
 }
 
-/** `jarvis setup`: the first-run wizard (src/setup.ts) wired to the real Codex, scheduler and Google. */
+/** `edward setup`: the first-run wizard (src/setup.ts) wired to the real Codex, scheduler and Google. */
 export async function setupCli(): Promise<void> {
+  for (const line of renameMessage(await moveFromJarvis())) console.log(line);
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   let closed = false;
   rl.once("close", () => (closed = true));
@@ -152,18 +154,18 @@ export async function setupCli(): Promise<void> {
 }
 
 /**
- * `jarvis uninstall`: undoes what Jarvis set up on this computer, then offers to delete the data.
+ * `edward uninstall`: undoes what Edward set up on this computer, then offers to delete the data.
  * Machine-wide pieces (scheduled task, notification registration) are only removed when they
  * belong to this data folder — never from a copy pointed somewhere else by JARVIS_DATA_DIR.
  */
 export async function uninstallCli(): Promise<void> {
   const dir = appDataDir();
-  const own = !process.env.JARVIS_DATA_DIR;
-  console.log("Uninstalling Jarvis from this computer:");
+  const own = !envVar("DATA_DIR");
+  console.log("Uninstalling Edward from this computer:");
   const google = new GoogleAuth();
   if (google.state()) {
     const { revoked } = await google.disconnect().catch(() => ({ revoked: false }));
-    console.log(dim(revoked ? "  revoked Jarvis's Google access" : "  removed the local Google token (check myaccount.google.com/connections to confirm access is gone)"));
+    console.log(dim(revoked ? "  revoked Edward's Google access" : "  removed the local Google token (check myaccount.google.com/connections to confirm access is gone)"));
   }
   if (process.platform === "win32") {
     const task = await taskStatus();
@@ -182,5 +184,5 @@ export async function uninstallCli(): Promise<void> {
     for (const p of report.problems) console.log(styleText("yellow", `  problem — ${p}`));
     console.log(dim(report.problems.length ? "  data not fully removed" : "  data deleted"));
   } else console.log(dim("  data kept"));
-  console.log("Last step, to remove the program itself:  npm uninstall -g jarvis-assistant");
+  console.log("Last step, to remove the program itself:  npm uninstall -g edward-assistant");
 }

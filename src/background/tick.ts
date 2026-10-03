@@ -1,5 +1,5 @@
 /**
- * `jarvis tick`: run every minute by the scheduled task. Fires due reminders as notifications and
+ * `edward tick`: run every minute by the scheduled task. Fires due reminders as notifications and
  * exits. Deliberately light: no Codex, no model calls; the only network call is a Google token
  * refresh every few hours when Google is connected.
  */
@@ -24,7 +24,7 @@ const logPath = () => join(appDataDir(), "logs", "tick.log");
 export async function runTick(now = new Date()): Promise<Fired[]> {
   mkdirSync(appDataDir(), { recursive: true });
   writeFileSync(heartbeatPath(), now.toISOString());
-  // Data written by a newer Jarvis, or not yet upgraded by this one: leave it alone until the REPL has dealt with it.
+  // Data written by a newer Edward, or not yet upgraded by this one: leave it alone until the REPL has dealt with it.
   const version = readDataVersion();
   if (version !== null && version !== DATA_VERSION) {
     log(`skipped: data is v${version}, this build expects v${DATA_VERSION}`);

@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for looking. Jarvis is a small project with a few rules that are not negotiable, because they are
+Thanks for looking. Edward is a small project with a few rules that are not negotiable, because they are
 what make it safe to point at someone's mailbox.
 
 ## Rules that every change must keep
@@ -16,7 +16,7 @@ what make it safe to point at someone's mailbox.
 4. **Text from outside is cleaned.** Email, calendar and model text passes through `stripControl()` before
    it is shown or stored.
 5. **No tools that pay, sign in to banks, or act on instructions found in content.** Tools that change
-   something outside Jarvis ask the user first, with a preview of exactly what will happen.
+   something outside Edward ask the user first, with a preview of exactly what will happen.
 6. **`SECURITY.md` is updated in the same change** whenever any of the above behaviour changes.
 
 ## Working on it
@@ -30,7 +30,7 @@ npm run dev
 
 - TypeScript, Node 24, no runtime dependencies. Please keep it that way.
 - Tests are plain scripts in `test/`, one per area, run with `tsx`. They need no network and no Codex.
-  Tests must not touch real user data: set `JARVIS_DATA_DIR` to a scratch folder, as the existing ones do.
+  Tests must not touch real user data: set `EDWARD_DATA_DIR` to a scratch folder, as the existing ones do.
 - Behaviour that only shows in a real terminal (Shift+Tab, inline image previews) has a simulated-terminal
   test where possible; say in the pull request what you checked by hand.
 - `src/protocol/` is generated (`npm run gen:protocol`) from the installed Codex; don't edit it.
@@ -38,5 +38,5 @@ npm run dev
 
 ## Reporting bugs
 
-`jarvis doctor` output and the Codex version help a lot. Leave out anything private: Jarvis's own output
+`edward doctor` output and the Codex version help a lot. Leave out anything private: Edward's own output
 already has account numbers removed, but subjects and names are yours to trim.

@@ -1,6 +1,6 @@
 /**
  * Automatic learning (R2): after a conversation, a background turn reads what's new in it and
- * proposes memory operations plus a short summary. Jarvis validates and applies them.
+ * proposes memory operations plus a short summary. Edward validates and applies them.
  */
 import type { Session } from "../session.js";
 import type { Thread, Turn } from "../protocol/v2/index.js";
@@ -68,10 +68,10 @@ const SCHEMA = {
   },
 };
 
-const instructions = () => `You maintain the long-term memory of a personal assistant (Jarvis) about its user.
+const instructions = () => `You maintain the long-term memory of a personal assistant (Edward) about its user.
 You get the new part of a conversation and the current memories. Output JSON operations. Today is ${today()}.
 
-What to remember: durable, useful things about the user — who they are, preferences (incl. how they want Jarvis to answer), people in their life, plans and commitments, ongoing situations.
+What to remember: durable, useful things about the user — who they are, preferences (incl. how they want Edward to answer), people in their life, plans and commitments, ongoing situations.
 Skip: small talk, general-knowledge questions, one-off tasks with no future relevance, anything only the assistant said, anything already saved during the conversation (it is in the current memories).
 
 Operations:
@@ -225,14 +225,14 @@ function noticeFor(m: Memory, replaced?: Memory): string {
   return `🧠 learned (${tier}${replaced ? `, replaces #${replaced.id}` : ""}): ${truncate(m.text, 80)}`;
 }
 
-/** User/assistant text only; drops Jarvis's injected notes and tool noise. */
+/** User/assistant text only; drops Edward's injected notes and tool noise. */
 function renderTranscript(turns: Turn[]): string {
   const parts: string[] = [];
   for (const t of turns) {
     for (const item of t.items) {
       if (item.type === "userMessage") {
         const text = item.content
-          .filter((c) => c.type === "text" && !c.text.startsWith("[Jarvis]"))
+          .filter((c) => c.type === "text" && !/^\[(Edward|Jarvis)\]/.test(c.text)) // older conversations carry the old name
           .map((c) => (c.type === "text" ? c.text : ""))
           .join(" ")
           .trim();

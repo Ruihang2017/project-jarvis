@@ -1,5 +1,5 @@
 /**
- * Region (P2): the two regional habits that change what Jarvis concludes — whether "10/12" is
+ * Region (P2): the two regional habits that change what Edward concludes — whether "10/12" is
  * 10 December or October 12, and which currency a bare amount is in. Detected from the system
  * locale; the user can override both (/region).
  */

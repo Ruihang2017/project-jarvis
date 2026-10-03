@@ -3,10 +3,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
-const dir = mkdtempSync(join(tmpdir(), "jarvis-data-test-"));
+const dir = mkdtempSync(join(tmpdir(), "edward-data-test-"));
 process.env.JARVIS_DATA_DIR = dir;
 // A CODEX_HOME outside the data folder, as in every other test: delete-data must never touch it.
-const outsideCodex = mkdtempSync(join(tmpdir(), "jarvis-outside-codex-"));
+const outsideCodex = mkdtempSync(join(tmpdir(), "edward-outside-codex-"));
 process.env.JARVIS_CODEX_HOME = outsideCodex;
 mkdirSync(join(outsideCodex, "sessions"), { recursive: true });
 writeFileSync(join(outsideCodex, "sessions", "real-conversation.jsonl"), "{}");
@@ -115,7 +115,7 @@ ok("a CODEX_HOME outside the data folder is never touched", existsSync(join(outs
 eq("no problems", report.problems, []);
 
 // Codex home inside the data folder: conversations go, sign-in stays.
-const inner = mkdtempSync(join(tmpdir(), "jarvis-data-inner-"));
+const inner = mkdtempSync(join(tmpdir(), "edward-data-inner-"));
 process.env.JARVIS_DATA_DIR = inner;
 mkdirSync(join(inner, "codex-home", "sessions"), { recursive: true });
 writeFileSync(join(inner, "codex-home", "sessions", "c.jsonl"), "{}");
@@ -132,7 +132,7 @@ delete (env as Record<string, string | undefined>).JARVIS_CODEX_HOME;
 const r1 = JSON.parse(execFileSync(process.execPath, [tsx, script], { env, encoding: "utf8" }));
 ok("own codex-home: conversations deleted, sign-in kept", !existsSync(join(inner, "codex-home", "sessions")) && !existsSync(join(inner, "codex-home", "state_5.sqlite")) && existsSync(join(inner, "codex-home", "auth.json")) && r1.kept.includes("codex-home/auth.json"), JSON.stringify(r1));
 
-ok("--all refuses a folder that isn't Jarvis's", !looksLikeDataDir(tmpdir()) && !looksLikeDataDir("C:\\") && !looksLikeDataDir(join(tmpdir(), "does-not-exist")));
+ok("--all refuses a folder that isn't Edward's", !looksLikeDataDir(tmpdir()) && !looksLikeDataDir("C:\\") && !looksLikeDataDir(join(tmpdir(), "does-not-exist")));
 ok("--all accepts the data folder", looksLikeDataDir(inner));
 const r2 = JSON.parse(execFileSync(process.execPath, [tsx, script, "all"], { env, encoding: "utf8", cwd: tmpdir() }));
 ok("--all removes the whole data folder", !existsSync(inner) && r2.problems.length === 0, JSON.stringify(r2));

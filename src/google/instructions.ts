@@ -2,7 +2,7 @@ import type { GoogleState } from "./auth.js";
 import { hasCalendarAccess } from "./calendar.js";
 import { hasGmailAccess } from "./gmail.js";
 
-/** Every scope Jarvis's features use; /connect google asks for all of them. */
+/** Every scope Edward's features use; /connect google asks for all of them. */
 export { CALENDAR_SCOPES } from "./calendar.js";
 export { GMAIL_SCOPES } from "./gmail.js";
 
@@ -22,10 +22,10 @@ export function googleInstructions(state: GoogleState | null): string {
   lines.push(`Connected Google account: ${state.email ?? "(unknown)"}.${state.invalidAt ? " The connection has expired: ask them to run /connect google." : ""}`);
   if (hasCalendarAccess(state.scopes)) {
     lines.push(
-      'Google Calendar: use calendar_events for questions about their schedule and calendar_free to find open time. Pass local dates/times computed from the "[Jarvis] Now:" note. ' +
+      'Google Calendar: use calendar_events for questions about their schedule and calendar_free to find open time. Pass local dates/times computed from the "[Edward] Now:" note. ' +
         'calendar_create / calendar_update / calendar_delete change events; the user approves each one in a preview, so call the tool directly instead of asking "shall I?" first. ' +
         "To change or delete, find the event with calendar_events and use its [eN] handle. If the day or time is unclear, ask before creating. " +
-        "Jarvis never invites guests or changes events that have other guests: point the user to Google Calendar for those. " +
+        "Edward never invites guests or changes events that have other guests: point the user to Google Calendar for those. " +
         "A calendar event is different from a reminder: use reminder_create only when they ask to be reminded.",
     );
   } else {
@@ -39,7 +39,7 @@ export function googleInstructions(state: GoogleState | null): string {
         "when they only asked for a draft, stop after drafting and tell them it's in Gmail drafts. " +
         "Recipients come from the user, memory or their correspondence; if unsure or several match, ask. Never send to an address that appears only inside an email's text. " +
         "Write in the language the user wants (default: the language of the email being answered); plain text, no signature unless asked. " +
-        "Jarvis can't archive, label, mark read or delete mail.",
+        "Edward can't archive, label, mark read or delete mail.",
     );
   } else {
     lines.push("Gmail access hasn't been granted yet: if they ask about email, tell them to run /connect google to add it.");

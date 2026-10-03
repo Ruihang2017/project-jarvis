@@ -43,7 +43,7 @@ const rangeLabel = (from: Date, to: Date) => {
 
 /**
  * Short handles ("e3") for events the model has seen, so it can say which one to change without
- * copying Google's long ids. Per Jarvis process; the same event keeps its handle.
+ * copying Google's long ids. Per Edward process; the same event keeps its handle.
  */
 const refs = new Map<string, { calendar: CalendarInfo; eventId: string }>();
 const refByKey = new Map<string, string>();
@@ -67,7 +67,7 @@ async function resolveRef(cal: CalendarClient, ref: unknown): Promise<{ calendar
   const event = await cal.getEvent(r.calendar, r.eventId);
   if (!event) throw new Error("that event no longer exists");
   if (event.guests > 0) {
-    throw new Error("this event has other guests; Jarvis doesn't change shared events (they wouldn't be notified). Ask the user to change it in Google Calendar");
+    throw new Error("this event has other guests; Edward doesn't change shared events (they wouldn't be notified). Ask the user to change it in Google Calendar");
   }
   return { calendar: r.calendar, event };
 }
@@ -262,7 +262,7 @@ export const CALENDAR_TOOLS: Tool[] = [
       const line = describeEvent(event);
       return {
         summary: `delete calendar event: ${line}${event.recurring ? " (this occurrence only)" : ""}`,
-        allowAlways: false, // can't be undone from Jarvis
+        allowAlways: false, // can't be undone from Edward
         execute: async () => {
           await cal.deleteEvent(calendar, event.id);
           return `Deleted: ${line}`;

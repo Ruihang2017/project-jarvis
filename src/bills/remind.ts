@@ -52,7 +52,7 @@ export const noticeLine = ({ bill, daysLeft }: DueNotice) => `💳 ${bill.payee}
 export function noticeToast({ bill, daysLeft }: DueNotice): Toast {
   return {
     title: `💳 ${bill.payee} ${formatAmount(bill)} — ${when(daysLeft)}`,
-    // Jarvis reminds; it never pays or passes on payment details (D24).
+    // Edward reminds; it never pays or passes on payment details (D24).
     body: `${dayLabel(bill.dueDate!)} · pay in your bank or ${bill.payee}'s own site or app`,
     tag: `bill-${bill.id}`,
     kind: "reminder",

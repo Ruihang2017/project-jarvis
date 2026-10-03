@@ -9,7 +9,7 @@ export const REMINDER_TOOLS: Tool[] = [
   {
     name: "reminder_create",
     description:
-      "Set a reminder that pops up at a local date and time (even when Jarvis isn't open, once background reminders are on). " +
+      "Set a reminder that pops up at a local date and time (even when Edward isn't open, once background reminders are on). " +
       "Use when the user asks to be reminded. Convert relative times ('明天早上', 'in 20 minutes') to an absolute local time using the current time you were given; " +
       "if only a day is given, use 09:00 and say so.",
     inputSchema: {

@@ -31,7 +31,7 @@ export interface Fired {
 
 /**
  * Reminders live in memory.db next to memories, on their own connection: the REPL and the
- * background `jarvis tick` may both open it, so every write is a compare-and-set.
+ * background `edward tick` may both open it, so every write is a compare-and-set.
  */
 export class ReminderStore {
   private db: DatabaseSync;

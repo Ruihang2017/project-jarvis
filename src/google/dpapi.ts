@@ -4,7 +4,7 @@
  */
 import { execFile } from "node:child_process";
 
-// "Jarvis.Google" as extra entropy, so other apps under the same account can't decrypt by accident.
+// "Edward.Google" as extra entropy, so other apps under the same account can't decrypt by accident.
 const SCRIPT = (op: "Protect" | "Unprotect") => `
 Add-Type -AssemblyName System.Security
 $in = [Convert]::FromBase64String([Console]::In.ReadToEnd().Trim())

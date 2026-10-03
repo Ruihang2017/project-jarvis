@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const dir = mkdtempSync(join(tmpdir(), "jarvis-security-test-"));
+const dir = mkdtempSync(join(tmpdir(), "edward-security-test-"));
 process.env.JARVIS_DATA_DIR = dir;
 
 const { guardOutgoing } = await import("../src/privacy/outgoing.js");
@@ -38,12 +38,12 @@ eq("identifiers and paths are left intact", [unknown.threadId, unknown.path], ["
 ok("notifications are filtered too", !JSON.stringify(f.notify("some/notice", { text: "password: hunter2" })).includes("hunter2"));
 eq("a bare string parameter is redacted", f.request("x/y", "my TFN 123 456 782"), "my TFN [removed: tax file number]");
 eq("removals are reported", reports, ["message:2", "message:1", "message:1"]);
-// Jarvis's own fixed text must survive the guard untouched, or it would be silently rewritten on every start.
+// Edward's own fixed text must survive the guard untouched, or it would be silently rewritten on every start.
 const own = [PERSONA, REMINDER_INSTRUCTIONS, BILL_INSTRUCTIONS, googleInstructions(null), googleInstructions({ email: "someone2024@example.com", scopes: [], connectedAt: "x" })];
-eq("Jarvis's own instructions contain nothing the guard would remove", own.map((t) => redact(t).removed.length), [0, 0, 0, 0, 0]);
+eq("Edward's own instructions contain nothing the guard would remove", own.map((t) => redact(t).removed.length), [0, 0, 0, 0, 0]);
 eq("…nor do the tool descriptions", redact(JSON.stringify(TOOL_SPECS)).removed, []);
 
-const fake = mkdtempSync(join(tmpdir(), "jarvis-fake-codex-"));
+const fake = mkdtempSync(join(tmpdir(), "edward-fake-codex-"));
 const log = join(fake, "received.log");
 writeFileSync(
   join(fake, "app-server"),

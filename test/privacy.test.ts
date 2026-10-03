@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { stripVTControlCharacters } from "node:util";
 
-const dir = mkdtempSync(join(tmpdir(), "jarvis-privacy-test-"));
+const dir = mkdtempSync(join(tmpdir(), "edward-privacy-test-"));
 process.env.JARVIS_DATA_DIR = dir;
 
 const { guardOutgoing } = await import("../src/privacy/outgoing.js");
@@ -40,7 +40,7 @@ g2.request("turn/start", { threadId: "bg-1", input: [{ type: "text", text: "PIN 
 eq("the listener learns which thread a redaction was for (background labelling)", seen, ["bg-1"]);
 
 // --- end to end through CodexClient: what actually reaches the process ---
-const fake = mkdtempSync(join(tmpdir(), "jarvis-fake-codex-"));
+const fake = mkdtempSync(join(tmpdir(), "edward-fake-codex-"));
 const log = join(fake, "received.log");
 writeFileSync(
   join(fake, "app-server"),

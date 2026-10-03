@@ -1,12 +1,12 @@
-# Jarvis
+# Edward
 
 A personal assistant for your terminal that does things: keeps your calendar, reads and drafts email,
 tracks bills, reminds you — and removes account numbers, card numbers and passwords before anything
 reaches the AI.
 
-Jarvis runs on your own Windows computer. It uses your own ChatGPT account through the
+Edward runs on your own Windows computer. It uses your own ChatGPT account through the
 [Codex CLI](https://github.com/openai/codex) and, if you connect them, your own Google Calendar and Gmail.
-There is no Jarvis server.
+There is no Edward server.
 
 > **Status: developer preview.** Windows only. You bring your own ChatGPT account, Codex CLI and (for
 > calendar and mail) Google Cloud project. Expect rough edges.
@@ -15,7 +15,7 @@ There is no Jarvis server.
 you › what's on tomorrow, and is anything due this week?
   📅 checked calendar 2026-10-03 → 2026-10-03
   💳 checked bills
-jarvis › Tomorrow: dentist at 15:00. Your electricity bill ($245.30) is due Sunday.
+edward › Tomorrow: dentist at 15:00. Your electricity bill ($245.30) is due Sunday.
 
 you › reply to Sam's update and ask whether the energy account is set up
   ✉ searched mail "Weekly update"
@@ -31,7 +31,7 @@ you › reply to Sam's update and ask whether the energy account is set up
 | | |
 |---|---|
 | **Chat** | Answers, web search, image generation, with memory of what you tell it |
-| **Reminders** | "Remind me at 5pm to call the dentist" — a Windows notification, even when Jarvis is closed |
+| **Reminders** | "Remind me at 5pm to call the dentist" — a Windows notification, even when Edward is closed |
 | **Calendar** | What's on, when you're free, add / move / delete events (each one confirmed) |
 | **Gmail** | Search, read, summarise; draft replies; send only after you approve the draft |
 | **Bills** | Finds bills in your email, checks them for signs of fraud, reminds you before they are due |
@@ -39,15 +39,15 @@ you › reply to Sam's update and ask whether the energy account is set up
 
 ## Privacy guard
 
-Before anything is sent to the model, Jarvis's own code removes card numbers, bank and account numbers,
+Before anything is sent to the model, Edward's own code removes card numbers, bank and account numbers,
 passwords, PINs, one-time codes and ID numbers — partial ones too ("card ending 1234"). They are never
 stored. This is a filter at the process boundary, not an instruction to the model.
 
-Jarvis cannot pay anything or sign in to a bank. Sending an email, changing your calendar and marking a
+Edward cannot pay anything or sign in to a bank. Sending an email, changing your calendar and marking a
 bill paid all need your approval.
 
 What it does not catch, and the rest of the security model, is in [SECURITY.md](SECURITY.md). Read it
-before you rely on Jarvis.
+before you rely on Edward.
 
 ## Requirements
 
@@ -61,18 +61,18 @@ before you rely on Jarvis.
 
 ```
 npm install -g github:Ruihang2017/project-jarvis
-jarvis setup
-jarvis
+edward setup
+edward
 ```
 
-`jarvis setup` walks through signing in to ChatGPT, background reminders, Google and your region. Every
-step can be skipped and it can be run again. `jarvis doctor` checks that everything works.
+`edward setup` walks through signing in to ChatGPT, background reminders, Google and your region. Every
+step can be skipped and it can be run again. `edward doctor` checks that everything works.
 
 ## Using it
 
 Just type. Slash commands cover the rest — `/help` lists them in three groups:
 
-| Conversation | What Jarvis looks after | Setup and care |
+| Conversation | What Edward looks after | Setup and care |
 |---|---|---|
 | `/new` `/resume` `/image` `/model` `/effort` `/usage` `/mode` | `/brief` `/calendar` `/mail` `/bills` `/remind` `/memory` `/images` | `/start` `/connect` `/google` `/disconnect` `/background` `/region` `/web` `/data` `/doctor` |
 
@@ -84,8 +84,8 @@ it reads that way is outside the guard. Shift+Tab switches, and the prompt alway
 
 ## Your data
 
-Everything is in `%LOCALAPPDATA%\Jarvis`. `/data` shows what is there, `/data backup` copies it,
-`/data export` writes it out as readable files, `jarvis delete-data` deletes it, and `jarvis uninstall`
+Everything is in `%LOCALAPPDATA%\Edward`. `/data` shows what is there, `/data backup` copies it,
+`/data export` writes it out as readable files, `edward delete-data` deletes it, and `edward uninstall`
 removes the background task, revokes Google access and offers to delete the data.
 
 ## Known limitations
@@ -95,9 +95,9 @@ removes the background task, revokes Google access and offers to delete the data
 - Bills are read from the email text; an amount that is only in a PDF attachment is left for you to fill in.
 - The privacy guard recognises numbers by context and knows Australian ID formats only — see
   [SECURITY.md](SECURITY.md).
-- No phone app: reminders appear on the computer Jarvis runs on.
+- No phone app: reminders appear on the computer Edward runs on.
 - Built on Codex's `app-server` interface, including its experimental dynamic-tool support. A Codex
-  update can change it; `jarvis doctor` reports the Codex version Jarvis was verified with.
+  update can change it; `edward doctor` reports the Codex version Edward was verified with.
 
 ## Development
 
@@ -115,4 +115,4 @@ TypeScript, Node 24, no runtime dependencies. See [CONTRIBUTING.md](CONTRIBUTING
 
 MIT — see [LICENSE](LICENSE).
 
-Jarvis is an independent project. It is not affiliated with OpenAI, Google, or Marvel.
+Edward is an independent project. It is not affiliated with OpenAI, Google, or Marvel.

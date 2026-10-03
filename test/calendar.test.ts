@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const dir = mkdtempSync(join(tmpdir(), "jarvis-cal-test-"));
+const dir = mkdtempSync(join(tmpdir(), "edward-cal-test-"));
 process.env.JARVIS_DATA_DIR = dir;
 
 const cal = await import("../src/google/calendar.js");

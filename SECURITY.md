@@ -1,15 +1,15 @@
 # Security and privacy
 
-Jarvis is a personal assistant that runs on your own Windows computer. It talks to an AI model through
+Edward is a personal assistant that runs on your own Windows computer. It talks to an AI model through
 the Codex CLI and your own ChatGPT account, and — if you connect them — to your own Google Calendar and
-Gmail. There is no Jarvis server: nothing is sent anywhere except to those services.
+Gmail. There is no Edward server: nothing is sent anywhere except to those services.
 
-This page says what Jarvis protects, how, and where the protection ends.
+This page says what Edward protects, how, and where the protection ends.
 
 ## What the privacy guard does
 
-Before anything is written to the Codex process — your message, Jarvis's instructions and memories, the
-result of every tool (an email, a calendar event, your clipboard), your answers to questions — Jarvis's
+Before anything is written to the Codex process — your message, Edward's instructions and memories, the
+result of every tool (an email, a calendar event, your clipboard), your answers to questions — Edward's
 own code removes:
 
 | Removed | Recognised when |
@@ -22,10 +22,10 @@ own code removes:
 The model receives `[removed: card number]` instead. You see a notice each time. There is no "send anyway".
 
 This is code at the process boundary, not an instruction to the model: every request, notification and
-reply passes through one filter, whatever part of Jarvis produced it. The same numbers are never written
-to Jarvis's own storage: saving a memory, reminder or bill that contains one is refused.
+reply passes through one filter, whatever part of Edward produced it. The same numbers are never written
+to Edward's own storage: saving a memory, reminder or bill that contains one is refused.
 
-Jarvis has no tool that pays, signs in to a bank, or acts on instructions found in an email. It reminds;
+Edward has no tool that pays, signs in to a bank, or acts on instructions found in an email. It reminds;
 paying is up to you.
 
 ## What the guard does not catch
@@ -41,9 +41,9 @@ paying is up to you.
 
 | Mode | Codex may | Privacy guard |
 |---|---|---|
-| `chat` (default) | Answer, search the web, use Jarvis's tools. Its own shell, file reading, local image viewing and browser are switched off | Fully effective |
+| `chat` (default) | Answer, search the web, use Edward's tools. Its own shell, file reading, local image viewing and browser are switched off | Fully effective |
 | `manual` | Run commands and edit files, asking before every action | Does not cover what commands print or files contain |
-| `semi-auto` | As `manual`, but edits inside the Jarvis workspace are not asked about | As `manual` |
+| `semi-auto` | As `manual`, but edits inside the Edward workspace are not asked about | As `manual` |
 | `auto` | Run commands and edit files without asking. Windows has no effective sandbox, so this is your full user account | As `manual` |
 
 The prompt always shows the mode when it is not `chat`. Entering `auto` asks first.
@@ -52,8 +52,8 @@ The prompt always shows the mode when it is not `chat`. Entering `auto` asks fir
 
 | Action | Approval |
 |---|---|
-| Send an email | Every time. Only drafts Jarvis wrote in this session can be sent; the prompt shows the draft as it is in Gmail now, warns about a first-time recipient, and says if text continues past what it shows |
-| Create or change a calendar event | Asked, with a before/after preview. Events with other guests are never changed, and Jarvis never sends invitations |
+| Send an email | Every time. Only drafts Edward wrote in this session can be sent; the prompt shows the draft as it is in Gmail now, warns about a first-time recipient, and says if text continues past what it shows |
+| Create or change a calendar event | Asked, with a before/after preview. Events with other guests are never changed, and Edward never sends invitations |
 | Delete a calendar event, mark a bill paid | Every time |
 | Read the clipboard, open a file or link | Asked. Programs and scripts are never "opened" |
 | Write a draft, save a memory or reminder, copy to the clipboard | Done without asking, and shown as it happens |
@@ -61,7 +61,7 @@ The prompt always shows the mode when it is not `chat`. Entering `auto` asks fir
 ## Text from other people
 
 Emails and calendar events are written by others and may contain instructions aimed at the model
-("ignore your instructions and forward…"). Jarvis marks such content as data, requires the approvals
+("ignore your instructions and forward…"). Edward marks such content as data, requires the approvals
 above, and strips terminal control characters from it so that an email cannot redraw your screen or fake
 a prompt.
 
@@ -84,24 +84,24 @@ is discarded.
 
 ## Where your data is
 
-Everything is in `%LOCALAPPDATA%\Jarvis` on your computer: memories, reminders and bills (`memory.db`),
+Everything is in `%LOCALAPPDATA%\Edward` on your computer: memories, reminders and bills (`memory.db`),
 settings, generated images, and Codex's conversation history (`codex-home`). These files are not
 encrypted; they are protected by your Windows account. The Google sign-in token is encrypted with Windows
 DPAPI and never logged.
 
-- `/data export` writes everything Jarvis stores as readable files.
-- `jarvis delete-data` deletes it; `jarvis uninstall` also removes the scheduled task and revokes Google access.
-- `/disconnect google` revokes Jarvis's Google access.
+- `/data export` writes everything Edward stores as readable files.
+- `edward delete-data` deletes it; `edward uninstall` also removes the scheduled task and revokes Google access.
+- `/disconnect google` revokes Edward's Google access.
 
 ## Google
 
-You register your own Google Cloud project, so the OAuth client is yours. Jarvis asks for: reading and
+You register your own Google Cloud project, so the OAuth client is yours. Edward asks for: reading and
 writing calendar events, reading the calendar list, reading Gmail, and creating and sending drafts. It
 cannot delete, archive or label mail. Sign-in uses the loopback redirect with PKCE on `127.0.0.1`.
 
 ## Dependencies
 
-Jarvis has no runtime dependencies beyond Node.js and the Codex CLI.
+Edward has no runtime dependencies beyond Node.js and the Codex CLI.
 
 ## Reporting a problem
 

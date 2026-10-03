@@ -2,13 +2,14 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { createInterface } from "node:readline";
 import type { ClientRequest, ServerNotification, ServerRequest, RequestId } from "./protocol/index.js";
+import { envVar } from "./settings.js";
 
 type Method = ClientRequest["method"];
 type ParamsOf<M extends Method> = Extract<ClientRequest, { method: M }>["params"];
 
 export type NotificationHandler = (n: ServerNotification) => void;
 
-/** Rewrites what Jarvis sends to Codex (the privacy guard, S1). */
+/** Rewrites what Edward sends to Codex (the privacy guard, S1). */
 export interface OutgoingFilter {
   request(method: string, params: unknown): unknown;
   /** Client→server notifications go through the guard as well. */
@@ -64,7 +65,7 @@ export class CodexClient extends EventEmitter<{
     createInterface({ input: this.proc.stdout }).on("line", (line) => this.onLine(line));
     // app-server logs to stderr; surface it only when debugging.
     this.proc.stderr.on("data", (d) => {
-      if (process.env.JARVIS_DEBUG) process.stderr.write(d);
+      if (envVar("DEBUG")) process.stderr.write(d);
     });
     this.proc.on("exit", (code) => {
       for (const p of this.pending.values()) p.reject(new Error(`codex app-server exited (${code}) during ${p.method}`));
@@ -95,13 +96,13 @@ export class CodexClient extends EventEmitter<{
   }
 
   private send(msg: object) {
-    if (process.env.JARVIS_DEBUG) process.stderr.write(`>> ${JSON.stringify(msg)}\n`);
+    if (envVar("DEBUG")) process.stderr.write(`>> ${JSON.stringify(msg)}\n`);
     this.proc.stdin.write(JSON.stringify(msg) + "\n");
   }
 
   private onLine(line: string) {
     if (!line.trim()) return;
-    if (process.env.JARVIS_DEBUG) process.stderr.write(`<< ${line}\n`);
+    if (envVar("DEBUG")) process.stderr.write(`<< ${line}\n`);
     let msg: any;
     try {
       msg = JSON.parse(line);

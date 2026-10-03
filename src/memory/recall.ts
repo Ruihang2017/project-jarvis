@@ -22,7 +22,7 @@ export function recallFor(text: string, store: MemoryStore, seen: Set<number>): 
   for (const m of picked) seen.add(m.id);
   store.touch(picked.map((m) => m.id));
   return {
-    note: `[Jarvis] Possibly relevant memories about the user (from Jarvis's memory; use if helpful, don't mention this note):\n${lines.join("\n")}`,
+    note: `[Edward] Possibly relevant memories about the user (from Edward's memory; use if helpful, don't mention this note):\n${lines.join("\n")}`,
     ids: picked.map((m) => m.id),
   };
 }

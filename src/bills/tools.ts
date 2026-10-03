@@ -7,7 +7,7 @@ export const BILL_TOOLS: Tool[] = [
   {
     name: "bills_list",
     description:
-      "The user's bills that Jarvis tracks (found in their Gmail and confirmed by them): what is to pay and when, automatic payments, bills paid this month, and how many new ones wait for review. " +
+      "The user's bills that Edward tracks (found in their Gmail and confirmed by them): what is to pay and when, automatic payments, bills paid this month, and how many new ones wait for review. " +
       "Use for 'what do I owe', 'what's due this week', 'did I pay the electricity bill'. Holds payee, amount, due date and status only — never account or payment details.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     approval: "auto",
@@ -72,4 +72,4 @@ export function describeBillCall(tool: string, a: Record<string, unknown>, ok: b
 
 export const BILL_INSTRUCTIONS = `
 ## Bills
-Jarvis tracks the user's bills (payee, amount, due date, status) from their Gmail; it never holds account or payment details. Use bills_list for what is owed or due, and bill_mark_paid when they say they paid one. New bills are found by /bills scan (it also runs once a day) and accepted with /bills review: when they ask to scan or find bills, tell them to run /bills scan rather than searching Gmail yourself. Jarvis never pays anything and never passes on payment details or links from emails: they pay in their bank or the payee's own site or app.`;
+Edward tracks the user's bills (payee, amount, due date, status) from their Gmail; it never holds account or payment details. Use bills_list for what is owed or due, and bill_mark_paid when they say they paid one. New bills are found by /bills scan (it also runs once a day) and accepted with /bills review: when they ask to scan or find bills, tell them to run /bills scan rather than searching Gmail yourself. Edward never pays anything and never passes on payment details or links from emails: they pay in their bank or the payee's own site or app.`;

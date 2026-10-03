@@ -1,5 +1,5 @@
 /**
- * "Export everything" (P1): what Jarvis has stored about the user, as files they can read. Nothing
+ * "Export everything" (P1): what Edward has stored about the user, as files they can read. Nothing
  * here holds account, card or ID numbers — the stores never accept them (S1).
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
@@ -46,9 +46,9 @@ export function exportAll(dir: string, now = new Date()): ExportResult {
   write(
     "README.txt",
     [
-      `Jarvis export — ${now.toISOString().slice(0, 10)}`,
+      `Edward export — ${now.toISOString().slice(0, 10)}`,
       "",
-      "memories.md / memories.json   what Jarvis remembers about you",
+      "memories.md / memories.json   what Edward remembers about you",
       "summaries.json                summaries of past conversations",
       "reminders.json                reminders, including finished ones",
       "bills.json, payees.json       bills found in your email and the payees you confirmed",
@@ -58,7 +58,7 @@ export function exportAll(dir: string, now = new Date()): ExportResult {
       `  conversations      ${join(config.codexHome, "sessions")}`,
       `  generated images   ${imagesDir()}`,
       "",
-      "Account, card and ID numbers and passwords are never stored by Jarvis, so none are in these files.",
+      "Account, card and ID numbers and passwords are never stored by Edward, so none are in these files.",
       "",
     ].join("\n"),
   );

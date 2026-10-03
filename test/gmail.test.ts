@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const dir = mkdtempSync(join(tmpdir(), "jarvis-gmail-test-"));
+const dir = mkdtempSync(join(tmpdir(), "edward-gmail-test-"));
 process.env.JARVIS_DATA_DIR = dir;
 
 const g = await import("../src/google/gmail.js");
@@ -222,7 +222,7 @@ eq("revise summary", revise.summary, "revise draft d1: Re: Contract");
 await revise.execute();
 eq("revise updates the same Gmail draft", [gDrafts.size, parseRaw([...gDrafts.values()][0]!.raw).body], [1, "Friday 3pm works for me."]);
 
-await throws("send: only Jarvis drafts", () => tool("gmail_send").prepare({ draft: "d9" }, ctx), "only drafts Jarvis wrote");
+await throws("send: only Edward drafts", () => tool("gmail_send").prepare({ draft: "d9" }, ctx), "only drafts Edward wrote");
 const send1 = await tool("gmail_send").prepare({ draft: "d1" }, ctx);
 eq("send preview", [send1.summary, send1.preview, send1.allowAlways], [
   "send email to Alice: Re: Contract",
@@ -236,7 +236,7 @@ const newRef = newMail.match(/\[(d\d+)\]/)![1]!;
 const [newId, newDraft] = [...gDrafts.entries()].find(([, d]) => parseRaw(d.raw).body === "Hi there")!;
 gDrafts.set(newId, { ...newDraft, raw: g.buildRaw({ to: ["New Person <new@x.com>"], cc: [], subject: "Hello", body: "Hi there — edited by me" }) });
 const send2 = await tool("gmail_send").prepare({ draft: newRef }, ctx);
-ok("send preview shows the Gmail version + edit note + first-time warning", send2.preview!.includes("(edited in Gmail since Jarvis drafted it)") && send2.preview!.includes("Hi there — edited by me") && send2.preview!.includes("⚠ first email to new@x.com"), send2.preview);
+ok("send preview shows the Gmail version + edit note + first-time warning", send2.preview!.includes("(edited in Gmail since Edward drafted it)") && send2.preview!.includes("Hi there — edited by me") && send2.preview!.includes("⚠ first email to new@x.com"), send2.preview);
 
 // A long draft can not hide text past the preview: the prompt says how much is not shown (P3).
 const longDraft = await (await tool("gmail_draft").prepare({ to: "alice@x.com", subject: "Long", body: "A".repeat(1500) + "SECRET-TAIL" }, ctx)).execute();

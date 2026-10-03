@@ -1,6 +1,6 @@
 /**
  * Daily brief (N1c): what's on today, from local data only (no model call). Shown as a notification
- * by the background tick at the brief time, and as a block the first time Jarvis opens that day.
+ * by the background tick at the brief time, and as a block the first time Edward opens that day.
  * Today's calendar events (N3) and unread Primary mail (N4) come from Google when access is granted.
  */
 import type { MemoryStore } from "../memory/store.js";

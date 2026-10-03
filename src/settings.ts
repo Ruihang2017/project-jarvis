@@ -2,19 +2,39 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+/** EDWARD_<name>, or the JARVIS_<name> it was called before the rename (still honoured). */
+export function envVar(name: string): string | undefined {
+  return process.env[`EDWARD_${name}`] || process.env[`JARVIS_${name}`] || undefined;
+}
+
+/** Where the data lived before the rename; moved to {@link defaultDataDir} on the first interactive start. */
+export function legacyDataDir(): string | undefined {
+  if (process.platform !== "win32") return undefined;
+  return join(process.env.LOCALAPPDATA ?? join(homedir(), "AppData", "Local"), "Jarvis");
+}
+
 /**
  * Per-user app data directory (machine-local, not synced):
- * Windows %LOCALAPPDATA%\Jarvis, macOS ~/Library/Application Support/Jarvis, Linux $XDG_DATA_HOME/jarvis.
+ * Windows %LOCALAPPDATA%\Edward, macOS ~/Library/Application Support/Edward, Linux $XDG_DATA_HOME/edward.
+ * Until the data has been moved (data/rename.ts), an existing %LOCALAPPDATA%\Jarvis is used instead.
  */
 export function appDataDir(): string {
-  if (process.env.JARVIS_DATA_DIR) return process.env.JARVIS_DATA_DIR;
+  const chosen = envVar("DATA_DIR");
+  if (chosen) return chosen;
+  const dir = defaultDataDir();
+  const legacy = legacyDataDir();
+  return !existsSync(dir) && legacy && existsSync(legacy) ? legacy : dir;
+}
+
+/** The data directory when no environment variable chooses one. */
+export function defaultDataDir(): string {
   switch (process.platform) {
     case "win32":
-      return join(process.env.LOCALAPPDATA ?? join(homedir(), "AppData", "Local"), "Jarvis");
+      return join(process.env.LOCALAPPDATA ?? join(homedir(), "AppData", "Local"), "Edward");
     case "darwin":
-      return join(homedir(), "Library", "Application Support", "Jarvis");
+      return join(homedir(), "Library", "Application Support", "Edward");
     default:
-      return join(process.env.XDG_DATA_HOME ?? join(homedir(), ".local", "share"), "jarvis");
+      return join(process.env.XDG_DATA_HOME ?? join(homedir(), ".local", "share"), "edward");
   }
 }
 
@@ -27,7 +47,7 @@ export interface Settings {
   inlinePreview?: "auto" | "on" | "off";
   /** Automatic memory extraction after conversations; default true. Explicit "remember" always works. */
   memoryLearning?: boolean;
-  /** Whether Jarvis already suggested /background on after the first reminder. */
+  /** Whether Edward already suggested /background on after the first reminder. */
   backgroundSuggested?: boolean;
   /** Daily brief time "HH:MM" (default 08:30) and days (default weekdays). */
   briefTime?: string;
@@ -67,7 +87,7 @@ export function updateSettings(patch: Partial<Settings>): Settings {
 
 /** Resolved images directory (env > settings > default), created on demand. */
 export function imagesDir(): string {
-  const dir = process.env.JARVIS_IMAGES_DIR ?? loadSettings().imagesDir ?? join(appDataDir(), "images");
+  const dir = envVar("IMAGES_DIR") ?? loadSettings().imagesDir ?? join(appDataDir(), "images");
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   return dir;
 }

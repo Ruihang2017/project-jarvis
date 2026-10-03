@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const dir = mkdtempSync(join(tmpdir(), "jarvis-google-test-"));
+const dir = mkdtempSync(join(tmpdir(), "edward-google-test-"));
 process.env.JARVIS_DATA_DIR = dir; // google-client.json, google.json and the token live here
 
 const { authUrl, emailFromIdToken, loadClient, parseCallback, pkcePair, TOKEN_URL, REVOKE_URL, GoogleAuthError } = await import("../src/google/oauth.js");

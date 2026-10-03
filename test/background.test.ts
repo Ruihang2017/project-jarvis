@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const dir = mkdtempSync(join(tmpdir(), "jarvis-bg-test-"));
+const dir = mkdtempSync(join(tmpdir(), "edward-bg-test-"));
 process.env.JARVIS_DATA_DIR = dir; // settings.json for the brief schedule lives here
 
 const { MemoryStore, addDays, today } = await import("../src/memory/store.js");

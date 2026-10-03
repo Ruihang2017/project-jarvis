@@ -34,7 +34,7 @@ import { GETTING_STARTED } from "./setup.js";
 const MODE_HELP: Record<Mode, string> = {
   chat: "Codex can't run commands or read files; everything it sees passes the privacy guard",
   manual: "Codex may run commands and edit files, asking before every action",
-  "semi-auto": "like manual, but edits inside the Jarvis workspace go ahead without asking",
+  "semi-auto": "like manual, but edits inside the Edward workspace go ahead without asking",
   auto: "Codex runs commands and edits files without asking (no sandbox on Windows)",
 };
 
@@ -61,15 +61,15 @@ export const HELP_GROUPS: [string, [string, string][]][] = [
     ],
   ],
   [
-    "What Jarvis looks after",
+    "What Edward looks after",
     [
       ["/brief", "today at a glance: events, reminders, bills, mail"],
       ["/calendar", "your Google Calendar, today and tomorrow or the week"],
       ["/mail", "unread mail from the last day"],
       ["/bills", "bills found in your email: review, pay status, monthly summary"],
       ["/remind", "reminders: list, done, snooze, cancel"],
-      ["/memory", "what Jarvis remembers about you"],
-      ["/images", "pictures Jarvis generated"],
+      ["/memory", "what Edward remembers about you"],
+      ["/images", "pictures Edward generated"],
     ],
   ],
   [
@@ -78,8 +78,8 @@ export const HELP_GROUPS: [string, [string, string][]][] = [
       ["/start", "getting-started tips"],
       ["/connect", "connect your Google account"],
       ["/google", "Google connection status"],
-      ["/disconnect", "revoke Jarvis's Google access"],
-      ["/background", "reminders even when Jarvis is closed"],
+      ["/disconnect", "revoke Edward's Google access"],
+      ["/background", "reminders even when Edward is closed"],
       ["/region", "date order and currency"],
       ["/web", "let the model search the web, or not"],
       ["/data", "where your data is; back up; export everything"],
@@ -143,7 +143,7 @@ const COMMANDS: Record<string, Command> = {
 
   "/region": {
     usage: "/region [date dmy|mdy | currency CODE]",
-    help: "How Jarvis reads numeric dates (10/12 = 10 December or October 12) and which currency bare amounts are in",
+    help: "How Edward reads numeric dates (10/12 = 10 December or October 12) and which currency bare amounts are in",
     run: async (args) => {
       const [sub, value] = args.split(/\s+/).filter(Boolean);
       if (sub === "date" && (value === "dmy" || value === "mdy")) updateSettings({ dateOrder: value });
@@ -375,7 +375,7 @@ const COMMANDS: Record<string, Command> = {
 
   "/memory": {
     usage: "/memory [cmd]",
-    help: "What Jarvis remembers: search <q>, add <text>, edit <id> <text>, forget <id>, undo, review, approve|reject <id|all>, tidy, profile, export, pause|resume",
+    help: "What Edward remembers: search <q>, add <text>, edit <id> <text>, forget <id>, undo, review, approve|reject <id|all>, tidy, profile, export, pause|resume",
     run: async (args, session) => {
       const mem = session.memory;
       const [sub = "", ...rest] = args.split(/\s+/).filter(Boolean);
@@ -430,7 +430,7 @@ const COMMANDS: Record<string, Command> = {
         }
         case "profile": {
           const core = mem.core();
-          console.log(bold("Always shared with Jarvis at the start of a conversation:"));
+          console.log(bold("Always shared with Edward at the start of a conversation:"));
           if (!core.length) console.log(dim("  (nothing yet)"));
           for (const m of core) console.log(`  ${describeMemory(m)}`);
           return;
@@ -576,7 +576,7 @@ const COMMANDS: Record<string, Command> = {
           if (autopay.length) console.log(bold(`Automatic payments (${autopay.length})`));
           show(autopay);
           if (pending.length) console.log(dim(`  ${pending.length} new bill${pending.length === 1 ? "" : "s"} waiting for your OK — /bills review`));
-          return console.log(dim("  /bills paid <id> · Jarvis only reminds: pay in your bank or the payee's own site or app"));
+          return console.log(dim("  /bills paid <id> · Edward only reminds: pay in your bank or the payee's own site or app"));
         }
         case "review": {
           const pending = bills.list("pending");
@@ -662,7 +662,7 @@ const COMMANDS: Record<string, Command> = {
         }
         case "settings": {
           const s = billSettings();
-          console.log(`scan:    ${bold(s.scan)} ${dim(s.scan === "daily" ? "— first time Jarvis opens each day" : "— only when you run /bills scan")}`);
+          console.log(`scan:    ${bold(s.scan)} ${dim(s.scan === "daily" ? "— first time Edward opens each day" : "— only when you run /bills scan")}`);
           console.log(`confirm: ${bold(s.confirm)} ${dim(s.confirm === "always" ? "— every new bill needs your OK" : "— bills from payees you've confirmed are tracked automatically")}`);
           console.log(`remind:  ${bold(s.remind === "off" ? "off" : s.remind.join(","))} ${dim(s.remind === "off" ? "— no notifications" : "— days before the due date (0 = on the day)")}`);
           return console.log(dim("  /bills set scan daily|manual · /bills set confirm always|known · /bills set remind 3,0|off"));
@@ -677,7 +677,7 @@ const COMMANDS: Record<string, Command> = {
         }
         case "forget": {
           if (a1 !== "all") return console.log(dim("[usage: /bills forget all]"));
-          const ok = await session.interactions.approveTool("forget all bills", "Delete every bill, confirmed payee and scan record Jarvis has stored.", "Your emails are not touched.", false);
+          const ok = await session.interactions.approveTool("forget all bills", "Delete every bill, confirmed payee and scan record Edward has stored.", "Your emails are not touched.", false);
           if (ok === "decline") return console.log(dim("[kept]"));
           return console.log(dim(`[deleted ${bills.forgetAll()} bills and all payee and scan records]`));
         }
@@ -689,13 +689,13 @@ const COMMANDS: Record<string, Command> = {
 
   "/background": {
     usage: "/background [on|off]",
-    help: "Background reminders (a scheduled task that runs every minute, even when Jarvis is closed)",
+    help: "Background reminders (a scheduled task that runs every minute, even when Edward is closed)",
     run: async (args) => {
       if (args === "on") {
         const r = await installTask();
         updateSettings({ backgroundSuggested: true });
         if (!r.ok) return console.log(dim(`[couldn't turn on background reminders: ${r.message}]`));
-        console.log(dim(`[background reminders on — task ${TASK_NAME} checks every minute, even when Jarvis is closed]`));
+        console.log(dim(`[background reminders on — task ${TASK_NAME} checks every minute, even when Edward is closed]`));
         return console.log(dim("  /background off removes it · notifications may be muted by Windows Focus / Do Not Disturb"));
       }
       if (args === "off") {
@@ -704,7 +704,7 @@ const COMMANDS: Record<string, Command> = {
       }
       if (args) return console.log(dim("[usage: /background on|off]"));
       const s = await taskStatus();
-      if (!s.installed) return console.log(`background: ${bold("off")} ${dim("— reminders only fire while Jarvis is open; /background on")}`);
+      if (!s.installed) return console.log(`background: ${bold("off")} ${dim("— reminders only fire while Edward is open; /background on")}`);
       console.log(`background: ${bold(s.enabled ? "on" : "disabled")} ${dim(`(${TASK_NAME})`)}`);
       const beat = s.heartbeat && !Number.isNaN(s.heartbeat.getTime()) ? `${Math.round((Date.now() - s.heartbeat.getTime()) / 1000)}s ago` : "never";
       console.log(dim(`  last tick: ${beat} · last run: ${s.lastRun ?? "?"} (result ${s.lastResult ?? "?"}) · next: ${s.nextRun ?? "?"}`));
@@ -756,7 +756,7 @@ const COMMANDS: Record<string, Command> = {
       if (!unread.length) return console.log(dim("[no unread mail in Primary from the last 24 hours]"));
       const now = new Date();
       for (const m of unread) console.log(`  ${summaryLine(m, now)}`);
-      console.log(dim(`  ${unread.length === 20 ? "20+" : unread.length} unread · ask Jarvis to summarise or read one`));
+      console.log(dim(`  ${unread.length === 20 ? "20+" : unread.length} unread · ask Edward to summarise or read one`));
     },
   },
 
@@ -780,7 +780,7 @@ const COMMANDS: Record<string, Command> = {
 
   "/disconnect": {
     usage: "/disconnect google",
-    help: "Revoke Jarvis's Google access and delete the local token",
+    help: "Revoke Edward's Google access and delete the local token",
     run: async (args, session) => {
       if (args !== "google") return console.log(dim("[usage: /disconnect google]"));
       if (!session.google.state()) return console.log(dim("[Google isn't connected]"));
@@ -793,7 +793,7 @@ const COMMANDS: Record<string, Command> = {
 
   "/doctor": {
     usage: "/doctor",
-    help: "Check that everything Jarvis needs is working (also: jarvis doctor)",
+    help: "Check that everything Edward needs is working (also: edward doctor)",
     run: async (_, session) => {
       for (const l of formatChecks(await runDoctor(session))) console.log(l);
     },
@@ -808,7 +808,7 @@ const COMMANDS: Record<string, Command> = {
       if (sub === "backup") return console.log(dim(`[backed up to ${tildify(backupData("manual"))} — database, settings and Google connection state]`));
       if (sub === "export") {
         const arg = rest.join(" ");
-        const target = arg ? resolve(process.cwd(), arg.replace(/^(["'])(.*)\1$/, "$2").replace(/^~(?=$|[\\/])/, homedir())) : join(dir, "exports", `jarvis-export-${new Date().toLocaleDateString("sv")}`);
+        const target = arg ? resolve(process.cwd(), arg.replace(/^(["'])(.*)\1$/, "$2").replace(/^~(?=$|[\\/])/, homedir())) : join(dir, "exports", `edward-export-${new Date().toLocaleDateString("sv")}`);
         // OneDrive folders sync to the cloud — on a work computer that is the employer's account.
         if (/onedrive/i.test(target)) {
           const ok = await session.interactions.approveTool("export to OneDrive", `Export everything to ${tildify(target)}?`, "OneDrive syncs these files to the cloud; on a work computer that is your employer's account.", false);
@@ -820,7 +820,7 @@ const COMMANDS: Record<string, Command> = {
       if (sub) return console.log(dim("[usage: /data · /data backup · /data export [path]]"));
       const mb = (n: number) => (n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`);
       const row = (label: string, path: string) => console.log(`  ${label.padEnd(26)} ${mb(sizeOf(path)).padStart(9)}  ${dim(tildify(path))}`);
-      console.log(bold(`Jarvis data · v${readDataVersion() ?? DATA_VERSION}`));
+      console.log(bold(`Edward data · v${readDataVersion() ?? DATA_VERSION}`));
       row("memories, reminders, bills", join(dir, "memory.db"));
       row("conversations", config.codexHome);
       row("generated images", imagesDir());
@@ -828,7 +828,7 @@ const COMMANDS: Record<string, Command> = {
       row("exports", join(dir, "exports"));
       const last = listBackups()[0];
       console.log(dim(`  last backup: ${last ? last.name : "none"} · /data backup · /data export`));
-      console.log(dim("  to delete everything: exit Jarvis and run  jarvis delete-data"));
+      console.log(dim("  to delete everything: exit Edward and run  edward delete-data"));
     },
   },
 
@@ -875,7 +875,7 @@ const MAX_IMAGES = 5;
 const IMAGE_LIST_LIMIT = 15;
 const IMAGE_EXTS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp"]);
 
-/** Accepts "Copy as path" quoting, ~ and paths relative to where jarvis was started. */
+/** Accepts "Copy as path" quoting, ~ and paths relative to where edward was started. */
 function resolveImagePath(arg: string): string {
   const raw = arg.trim().replace(/^(["'])(.*)\1$/, "$2");
   const path = resolve(process.cwd(), raw.replace(/^~(?=$|[\\/])/, homedir()));
@@ -906,7 +906,7 @@ function printLastExchange(t: Thread) {
   const agent = items.findLast((i): i is Extract<ThreadItem, { type: "agentMessage" }> => i.type === "agentMessage");
   const userText = user?.content.map((c) => (c.type === "text" ? c.text : `[${c.type}]`)).join(" ");
   if (userText) console.log(dim(`  you › ${truncate(stripControl(userText), 200)}`));
-  if (agent) console.log(dim(`  jarvis › ${truncate(stripControl(agent.text), 200)}`));
+  if (agent) console.log(dim(`  edward › ${truncate(stripControl(agent.text), 200)}`));
 }
 
 function formatWindow(w: RateLimitWindow): string {

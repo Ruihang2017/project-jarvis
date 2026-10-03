@@ -1,5 +1,5 @@
 /**
- * Deterministic checks on bill emails, done by Jarvis's own code (not the model): which amounts and
+ * Deterministic checks on bill emails, done by Edward's own code (not the model): which amounts and
  * dates really appear in the text, who sent it, phishing wording, and — in memory only — whether
  * the payment details differ from the payee's previous bill (D25, O5-A).
  */

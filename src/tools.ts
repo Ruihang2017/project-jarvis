@@ -1,6 +1,6 @@
 /**
- * Jarvis's own tools, registered with Codex as dynamic tools (experimental API) and executed
- * here in Node. Approval is Jarvis-side: "ask" tools prompt the user before running.
+ * Edward's own tools, registered with Codex as dynamic tools (experimental API) and executed
+ * here in Node. Approval is Edward-side: "ask" tools prompt the user before running.
  */
 import type { Interactions } from "./interactions.js";
 import type {
@@ -150,7 +150,7 @@ export function describeToolCall(tool: string, args: unknown, ok = true): string
 export type ToolDecision = "accept" | "acceptForSession" | "decline";
 
 export class ToolRunner {
-  // Tools the user chose "always" for, in this Jarvis session.
+  // Tools the user chose "always" for, in this Edward session.
   private alwaysAllowed = new Set<string>();
 
   constructor(

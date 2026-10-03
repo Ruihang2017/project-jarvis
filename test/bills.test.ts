@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const dir = mkdtempSync(join(tmpdir(), "jarvis-bills-test-"));
+const dir = mkdtempSync(join(tmpdir(), "edward-bills-test-"));
 process.env.JARVIS_DATA_DIR = dir;
 
 const { amountsIn, datesIn, senderDomain, phishingSigns, paymentDetailsChanged } = await import("../src/bills/parse.js");

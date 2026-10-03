@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const dir = mkdtempSync(join(tmpdir(), "jarvis-setup-test-"));
+const dir = mkdtempSync(join(tmpdir(), "edward-setup-test-"));
 process.env.JARVIS_DATA_DIR = dir;
 
 const { detectRegion, region, money } = await import("../src/region.js");
@@ -40,7 +40,7 @@ const grouped = HELP_GROUPS.flatMap(([, entries]) => entries.map(([name]) => nam
 eq("every command is in a /help group", commandNames().filter((n) => !grouped.includes(n)), []);
 eq("no /help entry for a command that doesn't exist", grouped.filter((n) => !commandNames().includes(n)), []);
 eq("no command listed twice", grouped.length, new Set(grouped).size);
-ok("getting-started tips mention privacy and setup", GETTING_STARTED.some((l) => l.includes("removed before anything reaches the AI")) && GETTING_STARTED.some((l) => l.includes("jarvis setup")));
+ok("getting-started tips mention privacy and setup", GETTING_STARTED.some((l) => l.includes("removed before anything reaches the AI")) && GETTING_STARTED.some((l) => l.includes("edward setup")));
 
 // --- setup wizard ---
 function scenario(o: { answers?: (string | null)[]; node?: string; codex?: "ok" | "warn" | "fail"; account?: string | null; signInWorks?: boolean; taskInstalled?: boolean; hasClient?: boolean; connected?: string | null; missing?: string[]; supported?: boolean }) {
@@ -76,7 +76,7 @@ function scenario(o: { answers?: (string | null)[]; node?: string; codex?: "ok" 
 
 let s = scenario({ taskInstalled: true, hasClient: true, connected: "me@gmail.com", answers: [""] });
 eq("everything already done: nothing is changed, only the region is confirmed", [await s.run(), s.did, s.asked], [true, [], ["Is that right? [Y/n]"]]);
-ok("…and it says so", s.said.some((l) => l.includes("Signed in as me@example.com")) && s.said.some((l) => l.includes("Already on")) && s.said.some((l) => l.includes("Connected as me@gmail.com")) && s.said.at(-1)!.includes("jarvis"));
+ok("…and it says so", s.said.some((l) => l.includes("Signed in as me@example.com")) && s.said.some((l) => l.includes("Already on")) && s.said.some((l) => l.includes("Connected as me@gmail.com")) && s.said.at(-1)!.includes("edward"));
 
 s = scenario({ account: null, answers: ["", "", "", ""], hasClient: true });
 eq("fresh install, Enter at every step: sign in, background on, connect Google, keep region", [await s.run(), s.did], [true, ["signIn", "installTask", "connectGoogle"]]);

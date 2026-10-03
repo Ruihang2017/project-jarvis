@@ -5,7 +5,7 @@ import { MemoryStore, addDays, describe } from "../src/memory/store.js";
 import { secretReason } from "../src/memory/guard.js";
 import { tokenize } from "../src/memory/search.js";
 
-const path = join(tmpdir(), `jarvis-mem-test-${Date.now()}.db`);
+const path = join(tmpdir(), `edward-mem-test-${Date.now()}.db`);
 const s = new MemoryStore(path);
 const results: [string, boolean, string?][] = [];
 const check = (name: string, ok: boolean, info = "") => results.push([name, ok, info]);

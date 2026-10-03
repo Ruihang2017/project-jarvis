@@ -21,7 +21,7 @@ export interface Interactions {
   approvePermissions(req: PermissionsRequestApprovalParams): Promise<PermissionsRequestApprovalResponse>;
   askUser(req: ToolRequestUserInputParams): Promise<ToolRequestUserInputResponse>;
   elicit(req: McpServerElicitationRequestParams): Promise<McpServerElicitationRequestResponse>;
-  /** Jarvis-side approval for its own dynamic tools; `preview` shows what would be shared. */
+  /** Edward-side approval for its own dynamic tools; `preview` shows what would be shared. */
   approveTool(tool: string, summary: string, preview?: string, allowAlways?: boolean): Promise<ToolDecision>;
   /** The server withdrew its request (e.g. a tool call timed out): close any open prompt. */
   cancelPending?(): void;

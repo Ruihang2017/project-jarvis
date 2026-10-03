@@ -19,7 +19,7 @@ export interface CalendarInfo {
   id: string;
   name: string;
   primary: boolean;
-  /** owner or writer: Jarvis may add events here. */
+  /** owner or writer: Edward may add events here. */
   writable: boolean;
 }
 
@@ -43,7 +43,7 @@ export interface CalendarEvent {
   busy: boolean;
   declined: boolean;
   recurring: boolean;
-  /** Attendees other than the user. Jarvis doesn't change events with guests (D22). */
+  /** Attendees other than the user. Edward doesn't change events with guests (D22). */
   guests: number;
 }
 
@@ -60,7 +60,7 @@ interface ApiEvent {
   attendees?: { self?: boolean; responseStatus?: string; resource?: boolean }[];
 }
 
-/** What Jarvis writes: local times, or dates for all-day events (end date inclusive). */
+/** What Edward writes: local times, or dates for all-day events (end date inclusive). */
 export interface EventInput {
   title?: string;
   /** "YYYY-MM-DDTHH:MM", or "YYYY-MM-DD" for all-day. */
@@ -164,7 +164,7 @@ export class CalendarClient {
     return toEvent(await this.auth.api<ApiEvent>(this.eventUrl(cal.id, eventId)), cal);
   }
 
-  /** sendUpdates=none everywhere: Jarvis never emails anyone (D21). */
+  /** sendUpdates=none everywhere: Edward never emails anyone (D21). */
   async createEvent(cal: CalendarInfo, input: EventInput): Promise<CalendarEvent> {
     this.ensureAccess();
     const created = await this.auth.api<ApiEvent>(this.eventUrl(cal.id), { method: "POST", body: JSON.stringify(eventBody(input)) });

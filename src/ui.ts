@@ -9,7 +9,7 @@ import { MarkdownStream } from "./markdown.js";
 import { describeChange, terminalInteractions } from "./prompts.js";
 import type { RateLimitWindow, ThreadItem, ThreadTokenUsage, TurnStatus } from "./protocol/v2/index.js";
 import { saveGeneratedImage } from "./images.js";
-import { loadSettings, updateSettings } from "./settings.js";
+import { envVar, loadSettings, updateSettings } from "./settings.js";
 import { showToast } from "./background/notify.js";
 import { reminderToast } from "./background/tick.js";
 import { briefDue, briefGoogle, composeBrief, markBriefShown } from "./background/brief.js";
@@ -72,17 +72,17 @@ export function onShiftTab(rl: object, handler: () => void): boolean {
 const REDACTION_SOURCE: Record<Source, string> = {
   message: "from your message",
   tool: "from a tool result",
-  instructions: "from Jarvis's notes",
+  instructions: "from Edward's notes",
   answer: "from your answer",
   background: "from a background task (memory learning)",
 };
 
 export const redactionNotice = (source: Source, removed: Category[]) =>
   `⛔ removed ${describeRemoved(removed)} ${REDACTION_SOURCE[source]} before sending — the model didn't see it`;
-const BOT_PREFIX = styleText("magenta", "jarvis › ");
+const BOT_PREFIX = styleText("magenta", "edward › ");
 const tty = Boolean(process.stdout.isTTY);
 const color = tty && !process.env.NO_COLOR;
-const REMINDER_POLL_MS = Number(process.env.JARVIS_REMINDER_POLL_MS ?? 20_000);
+const REMINDER_POLL_MS = Number(envVar("REMINDER_POLL_MS") ?? 20_000);
 
 /** "⏰ 09:00 交报销 · 2h 5m late · next Fri 10-02 09:00" */
 function reminderNotice({ reminder: r, occurrence }: Fired): string {
@@ -219,7 +219,7 @@ export async function repl(session: Session): Promise<void> {
   });
 
   session.rateLimits().catch(() => {}); // seed the status line; failures just hide limits
-  console.log(dim(`Jarvis · ${session.model} · effort ${session.effort} · ${session.mode} mode (Shift+Tab to switch) · /help for commands`));
+  console.log(dim(`Edward · ${session.model} · effort ${session.effort} · ${session.mode} mode (Shift+Tab to switch) · /help for commands`));
 
   // Privacy guard notices: printed above whatever is on screen (reply in progress or prompt).
   session.onRedacted = (source, removed) => printAbove(styleText("yellow", `  ${redactionNotice(source, removed)}`));
@@ -281,7 +281,7 @@ export async function repl(session: Session): Promise<void> {
   // Memory learning runs in the background: on leaving a conversation, and at startup for any missed.
   const learner = new MemoryLearner(session);
   const learnFailed = (e: unknown) => {
-    if (process.env.JARVIS_DEBUG) console.error(dim(`[memory learning failed] ${e instanceof Error ? e.message : String(e)}`));
+    if (envVar("DEBUG")) console.error(dim(`[memory learning failed] ${e instanceof Error ? e.message : String(e)}`));
   };
   session.onLeaveThread = (id) => {
     learner.learnFromThread(id).then((r) => notify(r?.lines ?? []), learnFailed);
@@ -289,7 +289,7 @@ export async function repl(session: Session): Promise<void> {
   // Catch up on unlearned conversations first, then the daily tidy (so it sees what was just learned).
   void (async () => {
     notify((await learner.catchUp()).flatMap((r) => r.lines));
-    // Codex moved to a release Jarvis hasn't been verified with: say so once, don't block.
+    // Codex moved to a release Edward hasn't been verified with: say so once, don't block.
     const codex = compareCodex(await codexVersion());
     if (codex.status !== "ok") notify([`Codex ${codex.detail} · /doctor checks everything`]);
     if (learner.enabled()) notify(await new MemoryTidier(session).runIfDue());
@@ -298,13 +298,13 @@ export async function repl(session: Session): Promise<void> {
     if (g && !g.invalidAt && hasGmailAccess(g.scopes) && scanDue(session.bills)) notify(scanSummary(await runScan(session)));
   })().catch(learnFailed);
 
-  // Reminders due while Jarvis is open (the background task handles the rest). Claiming is
+  // Reminders due while Edward is open (the background task handles the rest). Claiming is
   // atomic, so a reminder shows here or as a background notification, never both.
   const checkReminders = () => {
     try {
       const fired = session.reminders.claimDue();
       if (fired.length) {
-        if (tty) process.stdout.write("\x07"); // bell: flashes the tab/taskbar if Jarvis isn't focused
+        if (tty) process.stdout.write("\x07"); // bell: flashes the tab/taskbar if Edward isn't focused
         notify(fired.map(reminderNotice));
         // Also a desktop notification, in case the terminal isn't the window in front.
         for (const f of fired) void showToast(reminderToast(f));
@@ -315,7 +315,7 @@ export async function repl(session: Session): Promise<void> {
         notify(dueBills.map(noticeLine));
         for (const n of dueBills) void showToast(noticeToast(n));
       }
-      // Daily brief: first time Jarvis is open after the brief time on a brief day.
+      // Daily brief: first time Edward is open after the brief time on a brief day.
       if (briefDue(session.memory, "repl")) {
         markBriefShown(session.memory, "repl");
         void briefGoogle(session.google).then((google) => {
@@ -324,7 +324,7 @@ export async function repl(session: Session): Promise<void> {
         });
       }
     } catch (e) {
-      if (process.env.JARVIS_DEBUG) console.error(dim(`[reminder check failed] ${e instanceof Error ? e.message : String(e)}`));
+      if (envVar("DEBUG")) console.error(dim(`[reminder check failed] ${e instanceof Error ? e.message : String(e)}`));
     }
   };
   const reminderTimer = setInterval(checkReminders, REMINDER_POLL_MS);
@@ -340,7 +340,7 @@ export async function repl(session: Session): Promise<void> {
   if (google?.invalidAt) queued.push("Google connection expired — /connect google to reconnect");
   else if (missingFeatures(google).length) queued.push(`${missingFeatures(google).join(" and ")} need${missingFeatures(google).length === 1 ? "s" : ""} one more Google permission — /connect google to add it`);
   showPrompt();
-  checkReminders(); // anything that came due while Jarvis was closed
+  checkReminders(); // anything that came due while Edward was closed
   for (let raw = await input.next(); raw !== null; raw = await input.next()) {
     atPrompt = false;
     const line = raw.trim();
@@ -358,7 +358,7 @@ export async function repl(session: Session): Promise<void> {
 }
 
 export interface TurnOptions {
-  /** Print the `jarvis ›` prefix (REPL) or not (one-shot output). */
+  /** Print the `edward ›` prefix (REPL) or not (one-shot output). */
   prefix?: boolean;
   /** Print the model/context/limits line after the reply. */
   status?: boolean;
@@ -442,7 +442,7 @@ export async function runTurn(session: Session, text: string, opts: TurnOptions 
     // Carry the last generated image forward unless the user attached their own.
     if (session.lastGeneratedImage && !images.length && existsSync(session.lastGeneratedImage)) {
       images.push(session.lastGeneratedImage);
-      notes.push("[Jarvis] The attached image is the one you generated in your previous reply. If I ask for changes, edit this image.");
+      notes.push("[Edward] The attached image is the one you generated in your previous reply. If I ask for changes, edit this image.");
     }
     session.lastGeneratedImage = null;
     notes.push(nowNote());
@@ -464,7 +464,7 @@ export async function runTurn(session: Session, text: string, opts: TurnOptions 
         // After the first reminder, suggest background reminders once.
         if (item.type === "dynamicToolCall" && item.tool === "reminder_create" && item.success !== false && !loadSettings().backgroundSuggested) {
           updateSettings({ backgroundSuggested: true });
-          lines.push("🔔 Reminders only pop up while Jarvis is open. /background on makes them work when it's closed too.");
+          lines.push("🔔 Reminders only pop up while Edward is open. /background on makes them work when it's closed too.");
         }
         for (const line of lines) note(stripControl(line));
         if (item.type === "imageGeneration" && session.lastGeneratedImage && preview.enabled) {
@@ -556,7 +556,7 @@ function activityNotes(item: ThreadItem): string[] {
     case "mcpToolCall":
       return [`⚙ ${item.server}.${item.tool} · ${item.status === "failed" ? "failed" : "ok"}${item.durationMs != null ? " · " + secs(item.durationMs) : ""}`];
     case "dynamicToolCall": {
-      // Jarvis's own tools report declines/errors as failed calls; surface the reason.
+      // Edward's own tools report declines/errors as failed calls; surface the reason.
       const failed = item.success === false || item.status === "failed";
       const reason = item.contentItems?.find((c) => c.type === "inputText");
       if (failed && reason?.type === "inputText" && reason.text.includes(RELATED_CHECK)) {

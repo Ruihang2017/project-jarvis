@@ -90,7 +90,7 @@ export function resolveOpenTarget(target: string, baseDir: string): OpenTarget {
   const expanded = t.replace(/^~(?=$|[\\/])/, homedir());
   const path = resolve(baseDir, expanded); // absolute paths pass through; also normalizes separators
   if (!existsSync(path)) throw new Error(`no such file or folder: ${path}`);
-  // "Opening" a program or script runs it. Jarvis opens documents and folders only.
+  // "Opening" a program or script runs it. Edward opens documents and folders only.
   if (RUNNABLE.test(path)) throw new Error(`refusing to open a program or script: ${path}`);
   return { kind: "path", value: path };
 }

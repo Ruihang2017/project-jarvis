@@ -3,8 +3,10 @@ import { existsSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { iconPath } from "./icon.js";
 
-/** App identity for Windows notifications, registered per user (HKCU, no admin) so toasts say "Jarvis". */
-export const AUMID = "Jarvis.Assistant";
+/** App identity for Windows notifications, registered per user (HKCU, no admin) so toasts say "Edward". */
+export const AUMID = "Edward.Assistant";
+/** The registration made before the rename (D33); removed when the data is moved. */
+export const LEGACY_AUMID = "Jarvis.Assistant";
 
 export interface Toast {
   title: string;
@@ -13,7 +15,7 @@ export interface Toast {
   tag?: string;
   /**
    * reminder: stays on screen until handled, with Windows' own Snooze (5/10/30/60 min) and Dismiss
-   * buttons — handled by the OS, no callback into Jarvis. info: an ordinary toast (daily brief).
+   * buttons — handled by the OS, no callback into Edward. info: an ordinary toast (daily brief).
    */
   kind?: "reminder" | "info";
 }
@@ -43,7 +45,7 @@ const PS_SHOW = `
 $t = [Console]::In.ReadToEnd() | ConvertFrom-Json
 $key = 'HKCU:\\Software\\Classes\\AppUserModelId\\${AUMID}'
 if (-not (Test-Path $key)) { New-Item -Path $key -Force | Out-Null }
-New-ItemProperty -Path $key -Name DisplayName -Value 'Jarvis' -PropertyType String -Force | Out-Null
+New-ItemProperty -Path $key -Name DisplayName -Value 'Edward' -PropertyType String -Force | Out-Null
 if ($t.icon) { New-ItemProperty -Path $key -Name IconUri -Value $t.icon -PropertyType String -Force | Out-Null }
 [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null
 [Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null
@@ -54,11 +56,11 @@ if ($t.tag) { $toast.Tag = [string]$t.tag }
 [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('${AUMID}').Show($toast)
 `;
 
-/** Removes the per-user registration that names Jarvis's notifications (uninstall). Resolves false if it wasn't there. */
-export function unregisterNotifications(): Promise<boolean> {
+/** Removes the per-user registration that names Edward's notifications (uninstall). Resolves false if it wasn't there. */
+export function unregisterNotifications(aumid = AUMID): Promise<boolean> {
   return new Promise((resolve) => {
     if (process.platform !== "win32") return resolve(false);
-    execFile("reg", ["delete", `HKCU\\Software\\Classes\\AppUserModelId\\${AUMID}`, "/f"], { windowsHide: true, timeout: 15_000 }, (err) => resolve(!err));
+    execFile("reg", ["delete", `HKCU\\Software\\Classes\\AppUserModelId\\${aumid}`, "/f"], { windowsHide: true, timeout: 15_000 }, (err) => resolve(!err));
   });
 }
 

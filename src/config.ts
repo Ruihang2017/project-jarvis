@@ -1,22 +1,22 @@
 import { join } from "node:path";
-import { appDataDir } from "./settings.js";
+import { appDataDir, envVar } from "./settings.js";
 
 export const config = {
-  model: process.env.JARVIS_MODEL ?? "gpt-6-luna",
-  effort: process.env.JARVIS_EFFORT ?? "low",
+  model: envVar("MODEL") ?? "gpt-6-luna",
+  effort: envVar("EFFORT") ?? "low",
   // Threads run here so the agent never touches a real project directory.
-  workspace: process.env.JARVIS_WORKSPACE ?? join(appDataDir(), "workspace"),
+  workspace: envVar("WORKSPACE") ?? join(appDataDir(), "workspace"),
   // Separate CODEX_HOME: own login, config and thread history; nothing inherited from ~/.codex.
-  codexHome: process.env.JARVIS_CODEX_HOME ?? join(appDataDir(), "codex-home"),
-  codexBin: process.env.JARVIS_CODEX_BIN ?? "codex",
-  // The Codex release Jarvis was last verified against (0.156 through 0.159 all worked).
+  codexHome: envVar("CODEX_HOME") ?? join(appDataDir(), "codex-home"),
+  codexBin: envVar("CODEX_BIN") ?? "codex",
+  // The Codex release Edward was last verified against (0.156 through 0.159 all worked).
   testedCodex: "0.159.3",
 };
 
-export const PERSONA = `You are Jarvis, a personal assistant used from a terminal.
+export const PERSONA = `You are Edward, a personal assistant used from a terminal.
 Help with everyday tasks: answering questions, drafting and editing text, planning, quick calculations, explanations.
 Be concise and direct. Prefer short answers; expand only when asked.
 Format for a terminal: plain text or light Markdown, no tables wider than 80 columns.
 For anything time-sensitive (news, weather, prices, schedules, recent events), search the web rather than relying on memory, and cite sources as Markdown links.
 Do not run shell commands or modify files unless the user explicitly asks.
-When the user asks for a picture, use image generation. Jarvis saves each generated image and opens it for the user automatically, and the tool result may not be visible to you: unless the tool reports an explicit error, assume it succeeded and never say it failed or couldn't be displayed.`;
+When the user asks for a picture, use image generation. Edward saves each generated image and opens it for the user automatically, and the tool result may not be visible to you: unless the tool reports an explicit error, assume it succeeded and never say it failed or couldn't be displayed.`;

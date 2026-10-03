@@ -40,7 +40,7 @@ export function loadClient(path = clientPath()): OAuthClient {
     const missing = (e as NodeJS.ErrnoException).code === "ENOENT";
     throw new GoogleAuthError("no_client", missing ? `missing ${path} — create a Desktop app client in Google Cloud and save its JSON there` : `can't read ${path}: ${(e as Error).message}`);
   }
-  if (json.web) throw new GoogleAuthError("no_client", `${path} is a "Web application" client; Jarvis needs a "Desktop app" client`);
+  if (json.web) throw new GoogleAuthError("no_client", `${path} is a "Web application" client; Edward needs a "Desktop app" client`);
   const c = json.installed;
   if (!c?.client_id || !c.client_secret) throw new GoogleAuthError("no_client", `${path} has no client_id/client_secret`);
   return { clientId: c.client_id, clientSecret: c.client_secret };
@@ -82,7 +82,7 @@ export function parseCallback(url: string, state: string): { code: string } | { 
 }
 
 const PAGE = (title: string, text: string) =>
-  `<!doctype html><meta charset="utf-8"><title>Jarvis</title>` +
+  `<!doctype html><meta charset="utf-8"><title>Edward</title>` +
   `<body style="font:16px system-ui,sans-serif;max-width:32rem;margin:15vh auto;padding:0 16px">` +
   `<h1 style="font-size:1.4rem">${title}</h1><p>${text}</p></body>`;
 
@@ -118,10 +118,10 @@ export async function listenForCode(state: string, o: { timeoutMs: number; signa
       const r = parseCallback(url, state);
       res.writeHead(200, { "content-type": "text/html; charset=utf-8", connection: "close" });
       if ("code" in r) {
-        res.end(PAGE("Jarvis is connected to Google", "You can close this tab and go back to the terminal."));
+        res.end(PAGE("Edward is connected to Google", "You can close this tab and go back to the terminal."));
         done(undefined, r.code);
       } else {
-        res.end(PAGE("Jarvis couldn't connect", `${r.error.replace(/[<>&]/g, "")}. Go back to the terminal and try <code>/connect google</code> again.`));
+        res.end(PAGE("Edward couldn't connect", `${r.error.replace(/[<>&]/g, "")}. Go back to the terminal and try <code>/connect google</code> again.`));
         done(new GoogleAuthError("denied", r.error));
       }
     });

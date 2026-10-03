@@ -3,7 +3,7 @@ import { stripControl } from "../util.js";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { appDataDir } from "../settings.js";
+import { appDataDir, envVar } from "../settings.js";
 import { rank } from "./search.js";
 
 export const KINDS = ["profile", "preference", "fact", "event", "note"] as const;
@@ -61,7 +61,7 @@ export interface Summary {
 }
 
 /** memory.db location (also holds reminders); JARVIS_MEMORY_DB overrides. */
-export const memoryDbPath = () => process.env.JARVIS_MEMORY_DB ?? join(appDataDir(), "memory.db");
+export const memoryDbPath = () => envVar("MEMORY_DB") ?? join(appDataDir(), "memory.db");
 
 /** Short-term items without an explicit date expire after this many days. */
 export const SHORT_TERM_DAYS = 30;
@@ -74,7 +74,7 @@ export const addDays = (days: number, from = new Date()) => localDate(new Date(f
 
 export class MemoryStore {
   private db: DatabaseSync;
-  /** Ids saved during this Jarvis process, newest last, for /memory undo. */
+  /** Ids saved during this Edward process, newest last, for /memory undo. */
   private createdThisSession: number[] = [];
 
   constructor(path = memoryDbPath()) {
@@ -320,7 +320,7 @@ export class MemoryStore {
     const section = (title: string, items: Memory[]) =>
       items.length ? `## ${title}\n\n${items.map((m) => `- ${describe(m)}`).join("\n")}\n\n` : "";
     return (
-      `# Jarvis memory — exported ${new Date().toLocaleString("sv")}\n\n` +
+      `# Edward memory — exported ${new Date().toLocaleString("sv")}\n\n` +
       section("Long-term", all.filter((m) => m.status === "active" && m.tier === "long")) +
       section("Short-term", all.filter((m) => m.status === "active" && m.tier === "short")) +
       section("Archived", all.filter((m) => m.status === "archived")) +

@@ -1,5 +1,5 @@
 /**
- * Background check of the Google connection, run from `jarvis tick`. A refresh every few hours
+ * Background check of the Google connection, run from `edward tick`. A refresh every few hours
  * keeps the grant in use (Google drops refresh tokens unused for 6 months) and spots an expired
  * or revoked connection early: one notification per expiry, not one per minute.
  */
@@ -11,7 +11,7 @@ export const CHECK_EVERY_MS = 6 * 3_600_000;
 
 export const EXPIRED_TOAST: Toast = {
   title: "Google connection expired",
-  body: "Open Jarvis and run /connect google to reconnect.",
+  body: "Open Edward and run /connect google to reconnect.",
   tag: "google",
   kind: "info",
 };

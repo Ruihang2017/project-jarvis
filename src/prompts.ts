@@ -184,7 +184,7 @@ export function terminalInteractions(asker: Asker, onCancel: () => void): Intera
         // Experimental verification challenge; there's no way to complete it from a terminal.
         if (req.mode === "openai/userVerification") {
           console.log(`${warn("?")} ${bold(req.serverName)} · ${req.title}: ${req.description}`);
-          console.log(dim("  (user verification isn't supported in Jarvis; declined)"));
+          console.log(dim("  (user verification isn't supported in Edward; declined)"));
           return decline;
         }
         console.log(`${warn("?")} ${bold(req.serverName)} · ${req.message}`);
