@@ -21,6 +21,7 @@ import { preview, renderPreview } from "./sixel.js";
 import { copyImageToClipboard, openWithDefaultApp } from "./system.js";
 import { GoogleAuthError, shortScope } from "./google/auth.js";
 import { stripControl, tildify, truncate } from "./util.js";
+import { withoutNotes } from "./assistant.js";
 import { formatAmount, type Bill } from "./bills/store.js";
 import { billLine, billLines, billSettings, runScan, scanSummary } from "./bills/view.js";
 import { monthCsv, monthSummary } from "./bills/summary.js";
@@ -887,7 +888,7 @@ function formatBytes(n: number): string {
 const shortId = (id: string) => id.slice(-8);
 
 function threadTitle(t: Thread): string {
-  const text = stripControl(t.name ?? t.preview).split("\n")[0]?.trim() || "(untitled)";
+  const text = stripControl(t.name ?? withoutNotes(t.preview)).split("\n")[0]?.trim() || "(untitled)";
   return truncate(text, 60);
 }
 

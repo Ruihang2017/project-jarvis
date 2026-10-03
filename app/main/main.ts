@@ -25,7 +25,11 @@ runtime.tick = { exe: process.execPath, args: [unpacked(join(here, "tick.js"))],
 
 /** Test hook: EDWARD_SHOT="page=file.png;page2=file2.png" renders those pages hidden and saves pictures, then quits. */
 const SHOTS = (process.env.EDWARD_SHOT ?? "").split(";").filter(Boolean).map((s) => s.split("=") as [string, string]);
-if (SHOTS.length) runtime.silent = true;
+if (SHOTS.length) {
+  runtime.silent = true;
+  // Its own browser profile, so a check can run while the installed Edward is open.
+  app.setPath("userData", join(app.getPath("temp"), "edward-shot"));
+}
 
 let win: BrowserWindow | null = null;
 let tray: Tray | null = null;

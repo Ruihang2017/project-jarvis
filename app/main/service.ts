@@ -11,7 +11,7 @@ import { Session, type Mode } from "../../src/session.js";
 import { config } from "../../src/config.js";
 import { appDataDir, imagesDir, loadSettings, updateSettings } from "../../src/settings.js";
 import { activityLabel, activityNotes } from "../../src/activity.js";
-import { backgroundSuggestion, claimDueNow, handleGeneratedImage, startBackgroundWork, turnInputs } from "../../src/assistant.js";
+import { backgroundSuggestion, claimDueNow, handleGeneratedImage, startBackgroundWork, turnInputs, withoutNotes } from "../../src/assistant.js";
 import { moveFromJarvis, renameMessage } from "../../src/data/rename.js";
 import { ensureDataVersion, readDataVersion, DATA_VERSION } from "../../src/data/version.js";
 import { backupData, listBackups } from "../../src/data/backup.js";
@@ -287,8 +287,9 @@ export class EdwardService implements A.EdwardApi {
   async conversations(): Promise<A.ThreadInfo[]> {
     const threads = await this.session.listThreads(30);
     return threads.map((t) => {
-      const text = clean(t.name ?? t.preview).split("\n")[0]?.trim() || "Untitled";
-      return { id: t.id, title: truncate(text, 70), preview: truncate(clean(t.preview).replace(/\s+/g, " "), 140), updatedAt: t.updatedAt * 1000 };
+      const said = withoutNotes(t.preview);
+      const text = clean(t.name ?? said).split("\n")[0]?.trim() || "Untitled";
+      return { id: t.id, title: truncate(text, 70), preview: truncate(clean(said).replace(/\s+/g, " "), 140), updatedAt: t.updatedAt * 1000 };
     });
   }
 

@@ -8,7 +8,9 @@ export function Pictures() {
   const { toast, chat, go } = useApp();
   const { data, reload } = useData(() => call("pictures"));
   const [picked, setPicked] = useState<PictureInfo | null>(null);
-  useEffect(() => setPicked((p) => p ?? data?.pictures[0] ?? null), [data]);
+  useEffect(() => {
+    setPicked((p) => p ?? data?.pictures[0] ?? null);
+  }, [data]);
   const act = async (action: "open" | "copy" | "folder", path = picked?.path ?? "") => toast(await call("pictureAction", path, action));
   return (
     <Shell

@@ -19,13 +19,17 @@ export function Composer({ onSent, placeholder = "Ask Edward, or type / for comm
   const [attached, setAttached] = useState<Attachment[]>(state.attachments);
   const [sel, setSel] = useState(0);
   const box = useRef<HTMLTextAreaElement>(null);
-  useEffect(() => setAttached(state.attachments), [state.attachments]);
+  useEffect(() => {
+    setAttached(state.attachments);
+  }, [state.attachments]);
   useEffect(() => {
     if (forcePalette) box.current?.focus();
   }, [forcePalette]);
   const showPalette = text.startsWith("/") && !text.includes(" ");
   const matches = useMemo(() => GROUPS.flatMap(([, items]) => items).filter(([c]) => c.startsWith(text.trim() || "/")), [text]);
-  useEffect(() => setSel(0), [text]);
+  useEffect(() => {
+    setSel(0);
+  }, [text]);
   const grow = () => {
     const t = box.current;
     if (!t) return;
@@ -149,7 +153,11 @@ export function Composer({ onSent, placeholder = "Ask Edward, or type / for comm
 export function Chat({ palette }: { palette?: boolean }) {
   const { chat, go, state } = useApp();
   const end = useRef<HTMLDivElement>(null);
-  useEffect(() => end.current?.scrollIntoView({ block: "end" }), [chat.entries, chat.asks, chat.busy]);
+  // Braces matter: Chromium's scrollIntoView returns a Promise, and React would call an effect's
+  // return value as its cleanup ("destroy_ is not a function").
+  useEffect(() => {
+    void end.current?.scrollIntoView({ block: "end" });
+  }, [chat.entries, chat.asks, chat.busy]);
   const title = useMemo(() => {
     const first = chat.entries.find((e) => e.kind === "user");
     return first && first.kind === "user" ? unmark(first.text.split("\n")[0]!).slice(0, 70) : "New conversation";
@@ -368,7 +376,10 @@ export function History() {
   const [q, setQ] = useState("");
   const [picked, setPicked] = useState<ThreadInfo | null>(null);
   const list = (data ?? []).filter((t) => !q || `${t.title} ${t.preview}`.toLowerCase().includes(q.toLowerCase()));
-  useEffect(() => setPicked((p) => p ?? list[0] ?? null), [data]); // eslint-disable-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    setPicked((p) => p ?? list[0] ?? null);
+  }, [data]);
   const open = async (t: ThreadInfo) => {
     try {
       chat.reset(await call("openConversation", t.id));

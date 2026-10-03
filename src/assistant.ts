@@ -38,6 +38,14 @@ export function turnInputs(session: Session, text: string): { images: string[]; 
   return { images, notes };
 }
 
+/**
+ * A thread's preview joins the user's text with the notes sent after it ("…bills?[Edward] Now: …");
+ * keeps only the user's part, for titles. Older threads carry the old name.
+ */
+export function withoutNotes(preview: string): string {
+  return preview.replace(/\[(?:Edward|Jarvis)\] [\s\S]*$/, "").trim();
+}
+
 export interface GeneratedImage {
   /** Lines to show, as the terminal prints them. */
   lines: string[];

@@ -11,7 +11,9 @@ export function Mail() {
   const [picked, setPicked] = useState<MailSummary | null>(null);
   const [message, setMessage] = useState<MailMessage | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
-  useEffect(() => setPicked((p) => p ?? data?.unread[0] ?? null), [data]);
+  useEffect(() => {
+    setPicked((p) => p ?? data?.unread[0] ?? null);
+  }, [data]);
   useEffect(() => {
     if (!picked) return;
     setMessage(null);

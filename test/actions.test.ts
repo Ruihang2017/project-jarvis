@@ -44,6 +44,11 @@ eq("unknown bill", acceptBill(store, 9999).ok, false);
 eq("activity label for a web search", activityLabel({ type: "webSearch", id: "x", query: "", action: null } as never), "searching the web…");
 eq("no label for a reply", activityLabel({ type: "agentMessage", id: "x", text: "" } as never), null);
 
+const { withoutNotes } = await import("../src/assistant.js");
+eq("title drops the time note", withoutNotes("can you scan the bills?[Edward] Now: Friday 2026-10-02 21:50 (Australia/Sydney)"), "can you scan the bills?");
+eq("…and the old name's", withoutNotes("明天有什么安排？\n[Jarvis] Now: Thursday\n[Jarvis] Remembered: x"), "明天有什么安排？");
+eq("plain text is kept", withoutNotes("hello"), "hello");
+
 store.close();
 rmSync(dir, { recursive: true, force: true });
 console.log(results.map(([n, pass, info]) => `${pass ? "PASS" : "FAIL"}  ${n}${pass ? "" : "  → " + info}`).join("\n"));
