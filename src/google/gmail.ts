@@ -54,6 +54,15 @@ export interface Attachment {
   mimeType: string;
 }
 
+/** A picture the HTML refers to as cid:… (a logo in the email itself, not loaded from the web). */
+export interface InlineImage {
+  cid: string;
+  mimeType: string;
+  /** base64url, when Gmail sent it with the message; otherwise fetch it with attachmentId. */
+  data?: string;
+  attachmentId?: string;
+}
+
 export interface Message extends MessageSummary {
   cc: string;
   replyTo?: string;
@@ -61,6 +70,9 @@ export interface Message extends MessageSummary {
   references?: string;
   body: string;
   attachments: Attachment[];
+  /** The email's own HTML, for the desktop app's original view only; never sent to the model. */
+  html?: string;
+  inline: InlineImage[];
 }
 
 export const header = (headers: Header[] | undefined, name: string) => headers?.find((h) => h.name.toLowerCase() === name.toLowerCase())?.value ?? "";
@@ -165,12 +177,15 @@ export function htmlToText(html: string): string {
 }
 
 /** Body text (prefers text/plain unless it looks generated, falls back to HTML) and attachments from a MIME tree. */
-export function extractContent(payload: Part | undefined): { body: string; attachments: Attachment[] } {
+export function extractContent(payload: Part | undefined): { body: string; attachments: Attachment[]; html?: string; inline: InlineImage[] } {
   const plain: string[] = [];
   const html: string[] = [];
   const attachments: Attachment[] = [];
+  const inline: InlineImage[] = [];
   const walk = (p: Part) => {
     const type = (p.mimeType ?? "").toLowerCase();
+    const cid = header(p.headers, "Content-ID").replace(/^\s*<|>\s*$/g, "").trim();
+    if (cid && type.startsWith("image/")) inline.push({ cid, mimeType: type, data: p.body?.data, attachmentId: p.body?.attachmentId });
     if (p.filename) {
       attachments.push({ filename: stripControl(p.filename), size: p.body?.size ?? 0, mimeType: type });
       return;
@@ -183,7 +198,8 @@ export function extractContent(payload: Part | undefined): { body: string; attac
   const text = plain.join("\n");
   const useHtml = html.length > 0 && (!text.trim() || looksGenerated(text));
   const body = useHtml ? htmlToText(html.join("\n")) : isMarkup(text) ? htmlToText(text) : tidy(looksGenerated(text) ? decodeEntities(text) : text);
-  return { body: stripControl(body), attachments };
+  const markup = html.length ? html.join("\n") : isMarkup(text) ? text : undefined;
+  return { body: stripControl(body), attachments, html: markup, inline };
 }
 
 /** Drops quoted history ("> …" lines and everything after "On … wrote:"), for thread views. */
@@ -212,7 +228,7 @@ export function toSummary(m: ApiMessage): MessageSummary {
 
 export function toMessage(m: ApiMessage): Message {
   const h = m.payload?.headers;
-  const { body, attachments } = extractContent(m.payload);
+  const { body, attachments, html, inline } = extractContent(m.payload);
   return {
     ...toSummary(m),
     cc: decodeWords(header(h, "Cc")),
@@ -221,6 +237,8 @@ export function toMessage(m: ApiMessage): Message {
     references: header(h, "References") || undefined,
     body,
     attachments,
+    html,
+    inline,
   };
 }
 
@@ -274,6 +292,13 @@ export class GmailClient {
   async message(id: string): Promise<Message> {
     this.ensureAccess();
     return toMessage(await this.auth.api<ApiMessage>(`${API}/messages/${encodeURIComponent(id)}?format=full`));
+  }
+
+  /** An attachment's bytes (used for the pictures inside an email's HTML). */
+  async attachment(messageId: string, attachmentId: string): Promise<Buffer> {
+    this.ensureAccess();
+    const a = await this.auth.api<{ data?: string }>(`${API}/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}`);
+    return Buffer.from(a.data ?? "", "base64url");
   }
 
   async thread(threadId: string): Promise<Message[]> {

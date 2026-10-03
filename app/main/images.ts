@@ -3,7 +3,7 @@
  * can't load. They are served through edward-img://, and only files the main process has listed
  * (Edward's own pictures and what the user attached) — never an arbitrary path the page asks for.
  */
-import { net, protocol } from "electron";
+import { net, protocol, type CustomScheme } from "electron";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -17,9 +17,12 @@ export function allowImage(path: string) {
 
 export const imageUrl = (path: string) => `${SCHEME}://file/${encodeURIComponent(resolve(path))}`;
 
-/** Before app ready: the scheme is privileged enough to be an <img> source, nothing more. */
-export function registerScheme() {
-  protocol.registerSchemesAsPrivileged([{ scheme: SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: false, corsEnabled: false } }]);
+/**
+ * Before app ready: the scheme is privileged enough to be an <img> source, nothing more. Electron
+ * takes one list for all custom schemes, so others (the mail view) are passed in.
+ */
+export function registerScheme(others: CustomScheme[] = []) {
+  protocol.registerSchemesAsPrivileged([{ scheme: SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: false, corsEnabled: false } }, ...others]);
 }
 
 /** After app ready. */

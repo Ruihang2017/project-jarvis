@@ -11,6 +11,7 @@ import { Session, type Mode } from "../../src/session.js";
 import { config } from "../../src/config.js";
 import { appDataDir, imagesDir, loadSettings, updateSettings } from "../../src/settings.js";
 import { activityLabel, activityNotes } from "../../src/activity.js";
+import { runtime } from "../../src/runtime.js";
 import { backgroundSuggestion, claimDueNow, handleGeneratedImage, startBackgroundWork, turnInputs, withoutNotes } from "../../src/assistant.js";
 import { moveFromJarvis, renameMessage } from "../../src/data/rename.js";
 import { ensureDataVersion, readDataVersion, DATA_VERSION } from "../../src/data/version.js";
@@ -19,7 +20,7 @@ import { exportAll, sizeOf } from "../../src/data/export.js";
 import { wipeData } from "../../src/data/wipe.js";
 import { describeRemoved, redact } from "../../src/privacy/guard.js";
 import { CALENDAR_SCOPES, CalendarClient, dayLabel, dayStart, freeSlots, hasCalendarAccess, localDate, nextDate, type CalendarEvent } from "../../src/google/calendar.js";
-import { GMAIL_SCOPES, GmailClient, displayName, hasGmailAccess, UNREAD_QUERY, type MessageSummary } from "../../src/google/gmail.js";
+import { GMAIL_SCOPES, GmailClient, displayName, hasGmailAccess, UNREAD_QUERY, type Message, type MessageSummary } from "../../src/google/gmail.js";
 import { missingFeatures } from "../../src/google/instructions.js";
 import { shortScope } from "../../src/google/auth.js";
 import { clientPath, loadClient, GoogleAuthError } from "../../src/google/oauth.js";
@@ -44,6 +45,7 @@ import { stripControl, truncate } from "../../src/util.js";
 import type { ThreadItem } from "../../src/protocol/v2/index.js";
 import { GuiInteractions } from "./interactions.js";
 import { imageUrl, allowImage } from "./images.js";
+import { hasRemoteContent, prepareMail, showMail } from "./mailview.js";
 import type * as A from "../shared/api.js";
 
 const GUIDE_URL = "https://github.com/Ruihang2017/project-jarvis/blob/main/docs/google-cloud-setup.md";
@@ -96,7 +98,7 @@ export class EdwardService implements A.EdwardApi {
 
   private afterSignIn() {
     this.session.rateLimits().then((r) => (this.account.plan = r.rateLimits.planType ?? undefined), () => {});
-    startBackgroundWork(this.session, (lines) => this.notice(lines), () => {});
+    if (!runtime.noBackgroundWork) startBackgroundWork(this.session, (lines) => this.notice(lines), () => {});
     const check = () => {
       try {
         const due = claimDueNow(this.session);
@@ -479,8 +481,44 @@ export class EdwardService implements A.EdwardApi {
 
   async mailMessage(id: string): Promise<A.MailMessage> {
     const m = await new GmailClient(this.session.google).message(id);
+    this.opened.set(id, m);
+    while (this.opened.size > 10) this.opened.delete(this.opened.keys().next().value!);
     const body = clean(m.body);
-    return { id: m.id, from: clean(m.from), to: clean(m.to), subject: clean(m.subject), date: m.date.toLocaleString("en-AU"), body, removed: [...new Set(redact(body).removed)].map((c) => describeRemoved([c])) };
+    return {
+      id: m.id,
+      from: clean(m.from),
+      to: clean(m.to),
+      subject: clean(m.subject),
+      date: m.date.toLocaleString("en-AU"),
+      body,
+      removed: [...new Set(redact(body).removed)].map((c) => describeRemoved([c])),
+      hasHtml: Boolean(m.html),
+    };
+  }
+
+  /** Emails opened recently, and their HTML ready for the frame (pictures inside the email included). */
+  private readonly opened = new Map<string, Message>();
+  private readonly prepared = new Map<string, string>();
+
+  async mailOriginal(id: string, pictures: boolean): Promise<A.MailOriginal | null> {
+    const gmail = new GmailClient(this.session.google);
+    const m = this.opened.get(id) ?? (await gmail.message(id));
+    if (!m.html) return null;
+    let html = this.prepared.get(id);
+    if (html === undefined) {
+      // Pictures that travel inside the email (logos and the like): up to 30 of them, 5 MB in all.
+      const inline = new Map<string, string>();
+      let total = 0;
+      for (const img of m.inline.slice(0, 30)) {
+        const bytes = img.data ? Buffer.from(img.data, "base64url") : img.attachmentId ? await gmail.attachment(m.id, img.attachmentId).catch(() => null) : null;
+        if (!bytes || (total += bytes.length) > 5_000_000) continue;
+        inline.set(img.cid.toLowerCase(), `data:${img.mimeType};base64,${bytes.toString("base64")}`);
+      }
+      html = prepareMail(m.html, inline);
+      this.prepared.set(id, html);
+      while (this.prepared.size > 10) this.prepared.delete(this.prepared.keys().next().value!);
+    }
+    return { url: showMail(html, pictures), remote: hasRemoteContent(html) };
   }
 
   // ---------------------------------------------------------------- bills

@@ -9,6 +9,7 @@ import { join, sep } from "node:path";
 import { AUMID } from "../../src/background/notify.js";
 import { runtime } from "../../src/runtime.js";
 import { handleScheme, registerScheme } from "./images.js";
+import { handleMailScheme, MAIL_PRIVILEGES, MAIL_SCHEME } from "./mailview.js";
 import { EdwardService } from "./service.js";
 import type { EdwardApi, EdwardEvent } from "../shared/api.js";
 
@@ -27,6 +28,7 @@ runtime.tick = { exe: process.execPath, args: [unpacked(join(here, "tick.js"))],
 const SHOTS = (process.env.EDWARD_SHOT ?? "").split(";").filter(Boolean).map((s) => s.split("=") as [string, string]);
 if (SHOTS.length) {
   runtime.silent = true;
+  runtime.noBackgroundWork = true;
   // Its own browser profile, so a check can run while the installed Edward is open.
   app.setPath("userData", join(app.getPath("temp"), "edward-shot"));
 }
@@ -38,7 +40,7 @@ let service: EdwardService;
 
 if (!SHOTS.length && !app.requestSingleInstanceLock()) app.quit();
 app.setAppUserModelId(AUMID);
-registerScheme();
+registerScheme([MAIL_PRIVILEGES]);
 
 const shotListeners: ((e: EdwardEvent) => void)[] = [];
 const emit = (e: EdwardEvent) => {
@@ -67,10 +69,14 @@ function createWindow() {
     },
   });
   win.removeMenu();
-  // Nothing navigates away from Edward's own page; links open in the browser, https only.
+  // Nothing navigates away from Edward's own page, and the email frame stays on the email it was
+  // given (no refresh, no link that replaces it); links open in the browser, web addresses only.
   win.webContents.on("will-navigate", (e) => e.preventDefault());
+  win.webContents.on("will-frame-navigate", (e) => {
+    if (!e.isMainFrame && !e.url.startsWith(`${MAIL_SCHEME}://page/`)) e.preventDefault();
+  });
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith("https://")) void shell.openExternal(url);
+    if (/^https?:\/\//i.test(url)) void shell.openExternal(url);
     return { action: "deny" };
   });
   win.on("close", (e) => {
@@ -104,7 +110,7 @@ function createTray() {
 
 const METHODS = new Set<keyof EdwardApi>([
   "state", "signIn", "send", "interrupt", "newConversation", "conversations", "openConversation", "transcript", "setMode", "answer",
-  "attachFiles", "attachClipboard", "removeAttachment", "today", "calendar", "mail", "mailMessage", "bills", "billHistory", "billAction",
+  "attachFiles", "attachClipboard", "removeAttachment", "today", "calendar", "mail", "mailMessage", "mailOriginal", "bills", "billHistory", "billAction",
   "billEdit", "billScan", "billMonth", "billExport", "forgetBills", "reminders", "reminderAction", "memory", "memoryAdd", "memoryEdit",
   "memoryForget", "memoryReview", "memoryUndo", "memoryExport", "pictures", "pictureAction", "settings", "updateSettings", "chooseImagesFolder",
   "doctor", "data", "backup", "exportAll", "openDataFolder", "deleteEverything", "google", "chooseGoogleClient", "connectGoogle", "checkGoogle",
@@ -123,6 +129,7 @@ app.on("before-quit", () => {
 
 app.whenReady().then(async () => {
   handleScheme();
+  handleMailScheme();
   // The page needs no camera, microphone, location or notifications from Chromium.
   electronSession.defaultSession.setPermissionRequestHandler((_wc, _perm, done) => done(false));
   service = new EdwardService(emit, () => win);
@@ -166,6 +173,11 @@ async function takeShots() {
   for (const [page, file] of SHOTS) {
     emit({ type: "navigate", to: page });
     await new Promise((r) => setTimeout(r, Number(process.env.EDWARD_SHOT_WAIT ?? 2500)));
+    // EDWARD_SHOT_JS: run this in the page before the picture (e.g. click a button), then wait again.
+    if (process.env.EDWARD_SHOT_JS) {
+      await w.webContents.executeJavaScript(process.env.EDWARD_SHOT_JS).catch((e: unknown) => log && appendFileSync(log, `[shot js] ${String(e)}\n`));
+      await new Promise((r) => setTimeout(r, Number(process.env.EDWARD_SHOT_WAIT ?? 2500)));
+    }
     const img = await w.webContents.capturePage();
     writeFileSync(file, img.toPNG());
   }

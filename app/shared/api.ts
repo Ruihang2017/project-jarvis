@@ -123,6 +123,15 @@ export interface MailMessage {
   date: string;
   body: string;
   removed: string[];
+  /** The email has its own HTML, so it can be shown as designed (mailOriginal). */
+  hasHtml: boolean;
+}
+
+/** The email as designed, in a sandboxed frame. */
+export interface MailOriginal {
+  url: string;
+  /** It loads pictures or styles from the web, which are blocked unless `pictures` was asked for. */
+  remote: boolean;
 }
 
 export interface MailView {
@@ -325,6 +334,8 @@ export interface EdwardApi {
   calendar(days: number): Promise<CalendarView>;
   mail(): Promise<MailView>;
   mailMessage(id: string): Promise<MailMessage>;
+  /** Null when the email has no HTML. `pictures` lets it load pictures and styles from the web. */
+  mailOriginal(id: string, pictures: boolean): Promise<MailOriginal | null>;
   bills(): Promise<BillsView>;
   billHistory(id: number): Promise<BillHistory>;
   billAction(id: number, action: "accept" | "ignore" | "paid"): Promise<Result>;

@@ -17,4 +17,6 @@ export const runtime: {
   tick?: TickCommand;
   /** No desktop notifications (automated checks). */
   silent?: boolean;
+  /** No background work at start (memory learning, tidying, bill scan): automated checks only look. */
+  noBackgroundWork?: boolean;
 } = {};

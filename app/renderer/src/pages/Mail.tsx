@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import type { MailMessage, MailSummary } from "../../../shared/api";
+import type { MailMessage, MailOriginal, MailSummary } from "../../../shared/api";
 import { useApp, Shell } from "../App";
 import { call, useData } from "../api";
-import { Button, Card, IconButton, Loading, Note, Spot, Tag } from "../ui";
+import { Button, Card, IconButton, Loading, Note, Segmented, Spot, Tag } from "../ui";
 import { NotConnected } from "./Calendar";
 
 export function Mail() {
@@ -11,6 +11,9 @@ export function Mail() {
   const [picked, setPicked] = useState<MailSummary | null>(null);
   const [message, setMessage] = useState<MailMessage | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
+  const [view, setView] = useState<"original" | "text">("original");
+  const [pictures, setPictures] = useState(false);
+  const [original, setOriginal] = useState<MailOriginal | null>(null);
   useEffect(() => {
     setPicked((p) => p ?? data?.unread[0] ?? null);
   }, [data]);
@@ -18,8 +21,20 @@ export function Mail() {
     if (!picked) return;
     setMessage(null);
     setProblem(null);
+    setPictures(false);
     call("mailMessage", picked.id).then(setMessage, (e: unknown) => setProblem(e instanceof Error ? e.message : String(e)));
   }, [picked]);
+  // The email as designed, in a sandboxed frame; pictures from the web only when asked for.
+  useEffect(() => {
+    setOriginal(null);
+    if (!message?.hasHtml) return;
+    let live = true;
+    call("mailOriginal", message.id, pictures).then((o) => live && setOriginal(o), () => {});
+    return () => {
+      live = false;
+    };
+  }, [message, pictures]);
+  const asSent = view === "original" && Boolean(message?.hasHtml);
   const ask = (text: string) => {
     chat.send(text);
     go("chat");
@@ -85,7 +100,7 @@ export function Mail() {
               <Note icon="eye">Edward can read and search your mail and write drafts. It can't delete, archive or mark anything.</Note>
             </div>
           </Card>
-          <Card className="stack" style={{ padding: 24, gap: 16, overflow: "auto" }}>
+          <Card className="stack" style={{ padding: 24, gap: 16, overflow: asSent ? "hidden" : "auto" }}>
             {!picked ? (
               <p className="muted">Pick an email to read it.</p>
             ) : problem ? (
@@ -96,23 +111,59 @@ export function Mail() {
               <Loading what="Opening" />
             ) : (
               <>
-                <div className="between" style={{ alignItems: "flex-start" }}>
+                <div className="between" style={{ alignItems: "flex-start", gap: 16 }}>
                   <div className="grow">
                     <div style={{ fontFamily: "var(--disp)", fontSize: 24, fontWeight: 600, letterSpacing: "-0.015em" }}>{message.subject}</div>
                     <div className="muted">
                       {message.from} · {message.date}
                     </div>
                   </div>
+                  {message.hasHtml && (
+                    <Segmented
+                      label="How to show this email"
+                      value={view}
+                      onChange={setView}
+                      options={[
+                        { value: "original", label: "As sent" },
+                        { value: "text", label: "Text" },
+                      ]}
+                    />
+                  )}
                 </div>
-                <div className="pretty" style={{ fontSize: 15, whiteSpace: "pre-wrap", maxWidth: 680, overflowWrap: "anywhere" }}>
-                  {message.body.trim() || "(This email has no text.)"}
-                </div>
+                {asSent && original?.remote && !pictures && (
+                  <div className="row" style={{ gap: 12, flexWrap: "wrap" }}>
+                    <span className="muted grow" style={{ minWidth: 240 }}>
+                      Pictures from the web are hidden. Loading them can tell the sender you opened this email.
+                    </span>
+                    <Button small icon="image" onClick={() => setPictures(true)}>
+                      Show pictures
+                    </Button>
+                  </div>
+                )}
+                {asSent ? (
+                  original ? (
+                    <iframe
+                      key={original.url}
+                      title={`Email: ${message.subject}`}
+                      src={original.url}
+                      sandbox="allow-popups allow-popups-to-escape-sandbox"
+                      referrerPolicy="no-referrer"
+                      style={{ flex: 1, minHeight: 240, width: "100%", border: "1px solid var(--line)", borderRadius: 10, background: "#fff" }}
+                    />
+                  ) : (
+                    <Loading what="Opening" />
+                  )
+                ) : (
+                  <div className="pretty" style={{ fontSize: 15, whiteSpace: "pre-wrap", maxWidth: 680, overflowWrap: "anywhere" }}>
+                    {message.body.trim() || "(This email has no text.)"}
+                  </div>
+                )}
                 {message.removed.length > 0 && (
                   <Note tone="sage" icon="shield">
                     This email contains {message.removed.join(" and ")}. If you ask Edward about it, those are removed before the model sees it. The email in Gmail is untouched.
                   </Note>
                 )}
-                <div className="row" style={{ marginTop: "auto", flexWrap: "wrap", paddingTop: 16, borderTop: "1px solid var(--line)" }}>
+                <div className="row" style={{ marginTop: asSent ? 0 : "auto", flexWrap: "wrap", paddingTop: 16, borderTop: "1px solid var(--line)" }}>
                   <Button kind="primary" icon="pencil" onClick={() => ask(`Draft a reply to the email from ${picked.from} about "${picked.subject}".`)}>
                     Draft a reply
                   </Button>

@@ -109,10 +109,17 @@ On top of that:
   the methods listed in `app/shared/api.ts` through the preload bridge. The main process checks every
   call's method name against that list and that it comes from Edward's own page.
 - **No remote content.** The page, its fonts and its pictures are packaged with the app. A Content
-  Security Policy allows only those; links open in your browser, and only `https://` links. The window
+  Security Policy allows only those; links open in your browser (web addresses only). The window
   can't navigate away or open other windows, and Chromium permissions (camera, location, …) are refused.
-- **Text is text.** Mail, calendar entries and replies are shown as plain text or as Markdown built
-  into elements, never inserted as HTML, so they can't carry script or markup.
+- **Text is text.** Calendar entries, replies and the "Text" view of an email are shown as plain text
+  or as Markdown built into elements, never inserted as HTML, so they can't carry script or markup.
+- **Emails "as sent" are fenced off.** To show an email as its sender designed it, its own HTML goes
+  into a sandboxed frame on a separate `edward-mail://` address with its own Content Security Policy:
+  no scripts, forms, plugins or frames, and the frame can't navigate (Edward also strips scripts,
+  refresh and base tags beforehand). Pictures and styles from the web are **blocked** — they can tell the
+  sender you opened the email and from where — until you click "Show pictures" for that email; pictures
+  that travel inside the email are shown. Links open in your browser. The frame has no access to
+  Edward's bridge. This view is for you only: the model still gets the plain text, through the guard.
 - **Pictures by allow-list.** Generated pictures and attachments are served to the window only if
   the main process put them on its list; the window can't ask for any other file.
 - **What you typed is shown as it was sent:** if the guard removed a number from your message, the
