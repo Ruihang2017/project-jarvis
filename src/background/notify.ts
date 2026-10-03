@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { iconPath } from "./icon.js";
+import { runtime } from "../runtime.js";
 
 /** App identity for Windows notifications, registered per user (HKCU, no admin) so toasts say "Edward". */
 export const AUMID = "Edward.Assistant";
@@ -66,6 +67,8 @@ export function unregisterNotifications(aumid = AUMID): Promise<boolean> {
 
 /** Shows a desktop notification. Resolves false (never throws) if it couldn't be shown. */
 export function showToast(t: Toast): Promise<boolean> {
+  // Screenshot checks run the app with made-up data; nothing may pop up on the user's screen.
+  if (runtime.silent) return Promise.resolve(false);
   return new Promise((resolve) => {
     const [cmd, args] =
       process.platform === "win32"

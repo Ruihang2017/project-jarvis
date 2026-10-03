@@ -9,7 +9,9 @@
     "build": "node scripts/build.mjs",
     "start": "node scripts/build.mjs && electron .",
     "typecheck": "tsc -p tsconfig.json",
-    "seed": "tsx scripts/seed.ts"
+    "seed": "tsx scripts/seed.ts",
+    "dist": "node scripts/build.mjs && electron-builder --win nsis",
+    "dist:dir": "node scripts/build.mjs && electron-builder --win --dir"
   },
   "devDependencies": {
     "@fontsource-variable/bricolage-grotesque": "^5.3.0",
@@ -19,9 +21,49 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",
     "electron": "^44.5.1",
+    "electron-builder": "^26.15.3",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "typescript": "^5.9.3",
     "vite": "^8.3.2"
+  },
+  "productName": "Edward",
+  "author": "Ruihang Hou",
+  "build": {
+    "appId": "Edward.Assistant",
+    "productName": "Edward",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "build/**",
+      "package.json"
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "build/main/**",
+      "build/icon.png",
+      "build/icon.ico"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Edward",
+      "uninstallDisplayName": "Edward",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "deleteAppDataOnUninstall": false,
+      "include": "installer.nsh"
+    },
+    "extraMetadata": {
+      "main": "build/main/main.js"
+    }
   }
 }

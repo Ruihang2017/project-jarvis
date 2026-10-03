@@ -15,4 +15,6 @@ export const runtime: {
   iconPath?: string;
   /** What the background task runs every minute. */
   tick?: TickCommand;
+  /** No desktop notifications (automated checks). */
+  silent?: boolean;
 } = {};

@@ -5,7 +5,7 @@
  */
 import { app, BrowserWindow, ipcMain, Menu, nativeImage, session as electronSession, shell, Tray } from "electron";
 import { appendFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { AUMID } from "../../src/background/notify.js";
 import { runtime } from "../../src/runtime.js";
 import { handleScheme, registerScheme } from "./images.js";
@@ -16,13 +16,16 @@ const here = import.meta.dirname; // build/main
 const ICON = join(here, "..", "icon.png");
 const RENDERER = join(here, "..", "renderer", "index.html");
 const PRELOAD = join(here, "..", "preload", "preload.cjs");
+/** Packaged, these live in app.asar.unpacked: Windows (toasts) and plain Node (the tick) need real files. */
+const unpacked = (p: string) => p.replace(`app.asar${sep}`, `app.asar.unpacked${sep}`);
 
 // Background reminders run this same executable as plain Node with the bundled tick script.
-runtime.iconPath = ICON;
-runtime.tick = { exe: process.execPath, args: [join(here, "tick.js")], env: { ELECTRON_RUN_AS_NODE: "1" } };
+runtime.iconPath = unpacked(ICON);
+runtime.tick = { exe: process.execPath, args: [unpacked(join(here, "tick.js"))], env: { ELECTRON_RUN_AS_NODE: "1" } };
 
 /** Test hook: EDWARD_SHOT="page=file.png;page2=file2.png" renders those pages hidden and saves pictures, then quits. */
 const SHOTS = (process.env.EDWARD_SHOT ?? "").split(";").filter(Boolean).map((s) => s.split("=") as [string, string]);
+if (SHOTS.length) runtime.silent = true;
 
 let win: BrowserWindow | null = null;
 let tray: Tray | null = null;

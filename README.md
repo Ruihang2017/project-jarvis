@@ -81,13 +81,18 @@ Just type. Slash commands cover the rest — `/help` lists them in three groups:
 The same Edward in a window: Today, Chat, Calendar, Mail, Bills, Reminders, Memory and Pictures pages,
 cards for everything that needs your OK, the permission mode always at the top right, and a tray icon
 that keeps reminders coming when the window is closed. It shares the data folder with the terminal
-version. To run it from a checkout:
+version. To run it from a checkout, or build the Windows installer (`app/dist/Edward Setup <version>.exe`,
+not code-signed yet, so Windows warns about an unknown publisher):
 
 ```
 cd app
 npm install
-npm start
+npm start         # build and run
+npm run dist      # build the installer
 ```
+
+The installed app runs its background reminders with its own executable, so it needs no separate Node;
+it still needs the Codex CLI.
 
 ### Permission modes
 
