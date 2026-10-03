@@ -14,17 +14,19 @@ const H = 860;
 const GAP = 80;
 const PITCH = H + 420;
 
-const ROWS = ["Today and conversation", "What Jarvis looks after", "Privacy and trust", "First-run setup", "Care, settings and states", "Name, icon and design language"];
+const ROWS = ["Today and conversation", "What Edward looks after", "Privacy and trust", "First-run setup", "Care, settings and states", "Name, icon and design language"];
 
 const boards = [];
 for (const f of readdirSync(here).filter((f) => /^boards-.*\.mjs$/.test(f)).sort()) {
   boards.push(...(await import(pathToFileURL(join(here, f)).href)).default);
 }
 
-// Numbers follow the order boards were added, so adding one never renumbers the others.
+// Board numbers are fixed by this list (the order boards were first shown), so adding one never renumbers the others.
+const NUMBERS = ["Main", "Chat", "ChatPictures", "Commands", "History", "Calendar", "CalendarChanges", "Mail", "MailSend", "Bills", "BillReview", "BillsMonth", "Reminders", "Memory", "Pictures", "Privacy", "Guard", "Modes", "Approval", "Welcome", "SetupGoogle", "SetupDone", "Settings", "Google", "Doctor", "Data", "Notifications", "States", "Style", "MainEvening", "NameIcon", "EchoIcons", "EdwardIcons", "EdwardIdentity"];
 boards.forEach((b, i) => {
   b.pos ??= i;
-  b.num = i + 1;
+  b.num = NUMBERS.indexOf(b.file.replace(".dc.html", "")) + 1;
+  if (!b.num) throw new Error(b.file + " has no number; add it to NUMBERS");
 });
 boards.sort((a, b) => a.row - b.row || a.pos - b.pos);
 // Main.dc.html must stay the entry and it already sorts first (row 0, pos 0).
@@ -42,7 +44,7 @@ const local = (name) => {
     const p = join(art, `${name}.${ext}`);
     if (existsSync(p)) return pathToFileURL(p).href;
   }
-  if (name === "icon") return pathToFileURL(join(root, "..", "assets", "icon.png")).href;
+  if (name === "icon") return local("ed-navy-e");
   return null;
 };
 
@@ -53,7 +55,7 @@ const index = {
   v: 3,
   attachments: {},
   createdOnFiles: { v: 1, at: "2026-10-02T08:30:00Z" },
-  title: "Jarvis Frontend",
+  title: "Edward Frontend",
   launch: { view: "canvas" },
   pages: [],
   boards: {},
@@ -71,13 +73,13 @@ for (const b of boards) {
   const n = String(b.num).padStart(2, "0");
   index.boards[b.file] = { x, y: b.row * PITCH, w, h, title: `${n} · ${b.title}`, ...(b.fixed ? {} : { expand: "fill" }) };
   index.order.push(b.file);
-  const html = page(`Jarvis · ${b.title}`, b.markup, w, h);
+  const html = page(`Edward · ${b.title}`, b.markup, w, h);
   writeFileSync(join(out, "project", b.file), fill(html, (n) => assets[n]));
   const pv = fill(html, local).replace('<script src="./support.js"></script>', "").replace(/<\/?x-dc>|<\/?helmet>/g, "");
   writeFileSync(join(out, "preview", b.file.replace(".dc.html", ".html")), pv);
 }
 ROWS.forEach((text, r) => {
-  if (boards.filter((b) => b.row === r).length > 1) index.notes[`row${r}`] = { x: 0, y: r * PITCH - 300, text, kind: "title1", maxW: col[r] - GAP };
+  if (boards.filter((b) => b.row === r).length > 1) index.notes[`row${r}`] = { x: 0, y: r * PITCH - 300, text, kind: "title1", maxW: Math.min(col[r] - GAP, 8000), w: 240 };
 });
 writeFileSync(join(out, "project", "canvas.json"), JSON.stringify(index, null, 2) + "\n");
 

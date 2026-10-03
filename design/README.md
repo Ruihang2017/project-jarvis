@@ -1,6 +1,6 @@
 # Design
 
-Design boards for a Jarvis desktop app. There is no frontend code yet; this folder holds the source of the
+Design boards for the Edward desktop app (formerly Jarvis). There is no frontend code yet; this folder holds the source of the
 boards and the illustrations they use.
 
 - `gen/` builds the boards. `lib.mjs` has the colours, type and shared parts; `boards-*.mjs` have one screen

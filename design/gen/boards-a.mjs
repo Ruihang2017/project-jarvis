@@ -60,13 +60,13 @@ ${card(
 ${timeRow("12:30", "Call the dentist to confirm")}
 ${timeRow("17:00", "Submit expenses", "Every month on the 2nd")}
 </div>
-<div style="margin-top: auto; display: flex; align-items: center; gap: 10px; padding-top: 12px; border-top: 1px solid ${C.line}">${ic("moon", 16, C.ink3)}${muted("Reminders also arrive when Jarvis is closed")}</div>`,
+<div style="margin-top: auto; display: flex; align-items: center; gap: 10px; padding-top: 12px; border-top: 1px solid ${C.line}">${ic("moon", 16, C.ink3)}${muted("Reminders also arrive when Edward is closed")}</div>`,
   "padding: 18px; display: flex; flex-direction: column; gap: 14px",
 )}
 </div>
 
 <div style="display: flex; flex-direction: column; gap: 10px; flex-shrink: 0">
-${composer({ placeholder: "Ask Jarvis anything, or tell it what to do" })}
+${composer({ placeholder: "Ask Edward anything, or tell it what to do" })}
 <div style="display: flex; gap: 8px; flex-wrap: wrap">
 ${chipBtn("What&#39;s on tomorrow?")}${chipBtn("Any important mail today?")}${chipBtn("Remind me at 5pm to call the dentist")}${chipBtn("What bills are still unpaid this month?")}
 </div>
@@ -97,7 +97,7 @@ ${step("pencil", "Wrote a draft and saved it in Gmail drafts")}
 </div>
 ${reply("Sam&#39;s update from this morning says the kitchen install moved to Monday 12 October. Nothing in the thread mentions the plumber, so the draft asks about that. I left your account number out.")}
 <section aria-label="Send this email?" style="margin-left: 40px; max-width: 640px; display: flex; flex-direction: column; gap: 14px; padding: 18px; border: 1px solid #C9D6F5; border-radius: 18px; background: ${C.surface}; box-shadow: ${SHADOW}">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 12px">${h2("Send this email?", "font-size: 17px")}${tag("Jarvis asks every time", "blue")}</div>
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 12px">${h2("Send this email?", "font-size: 17px")}${tag("Edward asks every time", "blue")}</div>
 <div style="display: grid; grid-template-columns: 64px minmax(0, 1fr); row-gap: 4px; font-size: 13.5px">
 <div style="color: ${C.ink3}">To</div><div>Sam Carter</div>
 <div style="color: ${C.ink3}">Subject</div><div>Re: Weekly update</div>
@@ -149,7 +149,7 @@ ${tag("Pictures aren&#39;t checked by the privacy guard", "apricot", "warn")}
 // ---------------------------------------------------------------- Commands
 const GROUPS = [
   ["Conversation", [["/new", "Start a new conversation"], ["/resume", "Continue an earlier one"], ["/image", "Attach a picture"], ["/model", "Choose the model"], ["/effort", "How hard the model thinks"], ["/usage", "Your ChatGPT plan limits"], ["/mode", "What Codex may do here"]]],
-  ["What Jarvis looks after", [["/brief", "Today at a glance"], ["/calendar", "Today, tomorrow or the week"], ["/mail", "Unread mail from the last day"], ["/bills", "Bills found in your email"], ["/remind", "Reminders"], ["/memory", "What Jarvis remembers"], ["/images", "Pictures Jarvis made"]]],
+  ["What Edward looks after", [["/brief", "Today at a glance"], ["/calendar", "Today, tomorrow or the week"], ["/mail", "Unread mail from the last day"], ["/bills", "Bills found in your email"], ["/remind", "Reminders"], ["/memory", "What Edward remembers"], ["/images", "Pictures Edward made"]]],
   ["Setup and care", [["/connect", "Connect Google"], ["/google", "Connection status"], ["/background", "Reminders when closed"], ["/region", "Dates and currency"], ["/web", "Web search on or off"], ["/data", "Back up and export"], ["/doctor", "Check everything works"]]],
 ];
 
@@ -162,7 +162,7 @@ const commands = shell({
 <div style="flex-grow: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; text-align: center">
 ${spot("spot-bell", 200, "A small brass bell beside a cup of tea", "margin: -30px 0 -24px")}
 <div style="font-family: ${F.disp}; font-size: 30px; font-weight: 600; letter-spacing: -0.02em">What can I do for you?</div>
-<div style="max-width: 460px; color: ${C.ink2}; font-size: 15px">Just type. Jarvis answers, looks things up, keeps track of your day, and makes pictures.</div>
+<div style="max-width: 460px; color: ${C.ink2}; font-size: 15px">Just type. Edward answers, looks things up, keeps track of your day, and makes pictures.</div>
 </div>
 <div role="listbox" aria-label="Commands" style="width: 100%; max-width: 900px; box-sizing: border-box; padding: 18px 20px; border: 1px solid ${C.line}; border-radius: 20px; background: ${C.surface}; box-shadow: ${SHADOW_LG}; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px">
 ${GROUPS.map(
@@ -244,7 +244,7 @@ const modes = shell({
   bodyStyle: "display: flex; flex-direction: column; gap: 16px",
   body: `
 <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; flex-grow: 1; min-height: 0">
-${modeCard("Chat", "#2E8B57", "Jarvis talks, and uses only its own tools: calendar, mail, bills, reminders, memory.", ["Everything goes through the privacy guard", "Jarvis&#39;s own tools, each asking first"], ["Codex can&#39;t run commands", "Codex can&#39;t read your files or pictures"], true)}
+${modeCard("Chat", "#2E8B57", "Edward talks, and uses only its own tools: calendar, mail, bills, reminders, memory.", ["Everything goes through the privacy guard", "Edward&#39;s own tools, each asking first"], ["Codex can&#39;t run commands", "Codex can&#39;t read your files or pictures"], true)}
 ${modeCard("Manual", "#C97A2B", "Codex may work with files and commands, and asks before every single step.", ["Run commands, after you say yes", "Change files, after you say yes"], ["Nothing happens without asking"], false, "What Codex reads by itself doesn&#39;t pass the privacy guard.")}
 ${modeCard("Semi-auto", "#C97A2B", "Like Manual, but edits inside the working folder go ahead without asking.", ["Edit files in the working folder freely", "Everything else still asks"], ["No changes outside that folder"], false, "What Codex reads by itself doesn&#39;t pass the privacy guard.")}
 ${modeCard("Auto", "#B3261E", "Codex never asks. Use it only for a task you would hand over completely.", ["Commands and file changes without asking"], ["Not in the Shift + Tab cycle", "Asks you to confirm when you turn it on"], false, "Nothing is checked with you first.")}
@@ -253,12 +253,12 @@ ${modeCard("Auto", "#B3261E", "Codex never asks. Use it only for a task you woul
 ${card(
   `${h2("Switching")}
 <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap">${tag("Chat", "sage")}${ic("right", 16, C.ink3)}${tag("Manual", "apricot")}${ic("right", 16, C.ink3)}${tag("Semi-auto", "apricot")}<span style="color: ${C.ink2}">with</span><span style="padding: 3px 10px; border: 1px solid ${C.line}; border-radius: 8px; background: ${C.bg}; font-family: ${F.mono}; font-size: 12.5px">Shift + Tab</span></div>
-${muted("Auto is only reachable from this page or by typing /mode auto, and always asks you to confirm. Jarvis&#39;s own tools that change something outside Jarvis ask first in every mode.", "text-wrap: pretty")}`,
+${muted("Auto is only reachable from this page or by typing /mode auto, and always asks you to confirm. Edward&#39;s own tools that change something outside Edward ask first in every mode.", "text-wrap: pretty")}`,
   "padding: 20px; display: flex; flex-direction: column; gap: 12px",
 )}
 <div role="dialog" aria-label="Turn on Auto mode?" style="box-sizing: border-box; padding: 20px; border: 1px solid #EDBDB8; border-radius: 18px; background: ${C.surface}; box-shadow: ${SHADOW_LG}; display: flex; flex-direction: column; gap: 12px">
 <div style="display: flex; align-items: center; gap: 10px; color: ${C.roseInk}">${ic("warn", 20, "currentColor", 2)}${h2("Turn on Auto mode?", `color: ${C.roseInk}`)}</div>
-<div style="color: ${C.ink2}; text-wrap: pretty">Codex will run commands and change files without asking, and what it reads won&#39;t pass the privacy guard. Jarvis stays in Auto until you switch back.</div>
+<div style="color: ${C.ink2}; text-wrap: pretty">Codex will run commands and change files without asking, and what it reads won&#39;t pass the privacy guard. Edward stays in Auto until you switch back.</div>
 <div style="display: flex; gap: 8px; justify-content: flex-end">${btn("Stay in Chat", "secondary")}${btn("Turn on Auto", "dangerFill")}</div>
 </div>
 </div>`,

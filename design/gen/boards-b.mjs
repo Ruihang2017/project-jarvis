@@ -1,4 +1,4 @@
-// Row 2: what Jarvis looks after.
+// Row 2: what Edward looks after.
 import { C, F, SHADOW, asset, btn, card, h2, ic, iconBtn, label, mono, muted, segmented, shell, spot, tag, toggle } from "./lib.mjs";
 
 const sr = "position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%)";
@@ -38,7 +38,7 @@ ${label("Tomorrow · Saturday 3 October")}
 ${ev("10:00", "11:30", "Farmers market with Priya", "Harbour Square", "#6FA57E", tag("1 guest", "grey", "users"))}
 ${ev("18:30", "21:00", "Dinner at Mum&#39;s", "", C.apricot)}
 </div>
-${note("clock", "Clocks go forward one hour on Sunday 4 October. Jarvis already counts that when it works out times.", "blue")}`,
+${note("clock", "Clocks go forward one hour on Sunday 4 October. Edward already counts that when it works out times.", "blue")}`,
   "padding: 20px; display: flex; flex-direction: column; gap: 18px",
 )}
 <div style="display: flex; flex-direction: column; gap: 16px">
@@ -76,13 +76,13 @@ const change = (a, b) => `<span><span style="color: ${C.ink3}; text-decoration: 
 const calendarChanges = shell({
   active: "Calendar",
   title: "Calendar changes",
-  sub: "Jarvis asks before it adds, moves or removes anything, and never sends invitations.",
+  sub: "Edward asks before it adds, moves or removes anything, and never sends invitations.",
   bodyStyle: "display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 16px",
   body: `
 ${confirmCard("plus", "Add this event?", kv("What", "Dentist follow-up") + kv("When", "Thursday 15 October, 15:00 to 15:30") + kv("Where", "Northside Dental") + kv("Calendar", "Personal"), note("check", "No guests. Nobody is invited or notified.", "sage"), btn("Add to calendar", "primary", "check") + btn("Change details", "secondary") + btn("Cancel", "ghost"), "#C9D6F5")}
 ${confirmCard("pencil", "Move this event?", kv("What", "Dentist") + kv("When", change("Fri 2 Oct, 15:00", "Fri 2 Oct, 16:30")) + kv("Length", "45 minutes, unchanged") + kv("Calendar", "Personal"), note("clock", "You&#39;re free from 15:45 that day, so the new time doesn&#39;t clash.", "blue"), btn("Move it", "primary", "check") + btn("Cancel", "ghost"), "#C9D6F5")}
-${confirmCard("trash", "Remove this event?", kv("What", "Dinner at Mum&#39;s") + kv("When", "Saturday 3 October, 18:30 to 21:00") + kv("Calendar", "Personal"), note("warn", "Removing it can&#39;t be undone from Jarvis. You can restore it from the bin in Google Calendar for 30 days.", "apricot"), btn("Remove", "dangerFill") + btn("Keep it", "secondary"), "#EDBDB8", C.roseInk)}
-${confirmCard("users", "This event has guests", kv("What", "Farmers market with Priya") + kv("When", "Saturday 3 October, 10:00 to 11:30") + kv("Guests", "1 other person"), note("shield", "Jarvis doesn&#39;t change or remove events that other people are invited to, so nobody gets a surprise notice. Change it yourself in Google Calendar.", "grey"), btn("Open in Google Calendar", "secondary", "link"))}`,
+${confirmCard("trash", "Remove this event?", kv("What", "Dinner at Mum&#39;s") + kv("When", "Saturday 3 October, 18:30 to 21:00") + kv("Calendar", "Personal"), note("warn", "Removing it can&#39;t be undone from Edward. You can restore it from the bin in Google Calendar for 30 days.", "apricot"), btn("Remove", "dangerFill") + btn("Keep it", "secondary"), "#EDBDB8", C.roseInk)}
+${confirmCard("users", "This event has guests", kv("What", "Farmers market with Priya") + kv("When", "Saturday 3 October, 10:00 to 11:30") + kv("Guests", "1 other person"), note("shield", "Edward doesn&#39;t change or remove events that other people are invited to, so nobody gets a surprise notice. Change it yourself in Google Calendar.", "grey"), btn("Open in Google Calendar", "secondary", "link"))}`,
 });
 
 // ---------------------------------------------------------------- Mail
@@ -101,7 +101,7 @@ ${card(
 ${mailRow("Harbour Water", "Your October bill is ready", "Your bill for the period 1 July to 30 September is now available", "07:15", false, `<span style="margin-top: 4px">${tag("Looks like a bill", "apricot", "bill")}</span>`)}
 ${mailRow("Priya Nair", "Saturday?", "Still on for the market? I can pick you up at quarter to ten", "Yesterday")}
 ${mailRow("Northside Dental", "Appointment reminder", "This is a reminder of your appointment on Friday 2 October at", "Yesterday")}
-<div style="margin-top: auto">${note("eye", "Jarvis can read and search your mail and write drafts. It can&#39;t delete, archive or mark anything.")}</div>`,
+<div style="margin-top: auto">${note("eye", "Edward can read and search your mail and write drafts. It can&#39;t delete, archive or mark anything.")}</div>`,
   "padding: 12px; display: flex; flex-direction: column; gap: 4px",
 )}
 ${card(
@@ -127,7 +127,7 @@ const draftRow = (to, subject, when, on) =>
 
 const mailSend = shell({
   active: "Mail",
-  title: "Drafts Jarvis wrote",
+  title: "Drafts Edward wrote",
   sub: "Nothing is sent until you press Send, every time.",
   bodyStyle: "display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 16px",
   body: `
@@ -137,7 +137,7 @@ ${draftRow("jordan@harbourjoinery.example", "Quote for the pantry shelves", "09:
 ${draftRow("Sam Carter", "Re: Weekly update", "09:12", false)}
 <div style="margin-top: auto; display: flex; flex-direction: column; align-items: center; gap: 0; text-align: center">
 <div style="margin: 0 0 10px">${spot("spot-mail", 150, "A small stack of envelopes tied with string")}</div>
-${muted("Only drafts Jarvis wrote can be sent from here. Your own drafts stay in Gmail.", "padding: 0 12px 8px; text-wrap: pretty")}
+${muted("Only drafts Edward wrote can be sent from here. Your own drafts stay in Gmail.", "padding: 0 12px 8px; text-wrap: pretty")}
 </div>`,
   "padding: 12px; display: flex; flex-direction: column; gap: 4px",
 )}
@@ -146,7 +146,7 @@ ${muted("Only drafts Jarvis wrote can be sent from here. Your own drafts stay in
 <div style="display: grid; grid-template-columns: 72px minmax(0, 1fr); row-gap: 8px; font-size: 14px">
 ${kv("To", "jordan@harbourjoinery.example")}${kv("Subject", "Quote for the pantry shelves")}
 </div>
-${note("warn", "<strong>You haven&#39;t written to this address before.</strong> Check it letter by letter. Jarvis found it in Sam&#39;s email from 28 September.", "apricot")}
+${note("warn", "<strong>You haven&#39;t written to this address before.</strong> Check it letter by letter. Edward found it in Sam&#39;s email from 28 September.", "apricot")}
 <div style="position: relative; flex-grow: 1; min-height: 0; overflow: hidden; padding: 18px; border-radius: 14px; background: ${C.bg}; font-size: 14.5px; display: flex; flex-direction: column; gap: 10px; text-wrap: pretty">
 <div>Hi Jordan,</div>
 <div>Sam Carter passed on your details. We&#39;re fitting out a walk-in pantry and would like a quote for five fixed shelves in white oak, 2.4 metres wide and 400 millimetres deep, with a lip on the front edge.</div>
@@ -174,7 +174,7 @@ ${flags.map((f) => `<div style="display: flex; gap: 8px; color: ${C.apricotInk};
 const bills = shell({
   active: "Bills",
   title: "Bills",
-  sub: "Found in your email. Jarvis reminds you; paying is yours to do.",
+  sub: "Found in your email. Edward reminds you; paying is yours to do.",
   actions: btn("Check my mail now", "secondary", "refresh") + `<a href="BillsMonth.dc.html" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 8px; font-weight: 600">October summary</a>`,
   bodyStyle: "display: flex; flex-direction: column; gap: 16px",
   body: `
@@ -189,7 +189,7 @@ ${stat("2", "new bills to check")}
 )}
 <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; flex-grow: 1; min-height: 0">
 <div style="display: flex; flex-direction: column; gap: 12px">
-<div style="display: flex; align-items: center; justify-content: space-between">${h2("New, check these")}${tag("Jarvis tracks nothing until you say so", "blue")}</div>
+<div style="display: flex; align-items: center; justify-content: space-between">${h2("New, check these")}${tag("Edward tracks nothing until you say so", "blue")}</div>
 ${newBill("Harbour Water", "$86.50", "Due Friday 23 October · water", [], "BillReview.dc.html")}
 ${newBill("Northwind Energy Billing", "$1,245.30", "Due Monday 5 October · electricity", ["The payment details differ from this payee&#39;s last bill.", "The amount is five times your usual bill."], "BillReview.dc.html")}
 </div>
@@ -204,7 +204,7 @@ ${payRow("City Council rates", "rates", "$86.50", "Due 30 October", C.ink2)}
   "padding: 20px; display: flex; flex-direction: column; gap: 6px",
 )}
 </div>
-${note("lock", "Jarvis never pays, never signs in to a bank, and keeps no account, card or reference numbers, not even part of one. To pay, open the bill in your own banking app.")}`,
+${note("lock", "Edward never pays, never signs in to a bank, and keeps no account, card or reference numbers, not even part of one. To pay, open the bill in your own banking app.")}`,
 });
 
 // ---------------------------------------------------------------- Bill review
@@ -228,9 +228,9 @@ ${card(
 <div>Our bank details have changed. Please pay to BSB and account ${lockChip("bank account")} and quote ${lockChip("reference number")}.</div>
 <div>Pay within 24 hours to avoid disconnection.</div>
 </div>
-${note("shield", "2 numbers in this email were removed before the model saw it, and are not kept anywhere by Jarvis.", "sage")}
+${note("shield", "2 numbers in this email were removed before the model saw it, and are not kept anywhere by Edward.", "sage")}
 <div style="display: flex; flex-direction: column; gap: 10px; padding: 16px 18px; border: 1px solid ${C.line}; border-radius: 14px">${label("Northwind Energy&#39;s earlier bills")}<div style="display: grid; grid-template-columns: 120px minmax(0, 1fr); row-gap: 6px; font-size: 13.5px">${kv("Usual amount", "$230 to $260, every three months")}${kv("Sent from", "bills@northwindenergy.example")}${kv("Last one", "$245.30, tracked 2 October")}</div></div>
-<div style="margin-top: auto">${note("lock", "How you pay is up to you. Jarvis will not show, store or act on the payment details in an email.")}</div>`,
+<div style="margin-top: auto">${note("lock", "How you pay is up to you. Edward will not show, store or act on the payment details in an email.")}</div>`,
   "padding: 22px; display: flex; flex-direction: column; gap: 14px",
 )}
 <div style="display: flex; flex-direction: column; gap: 16px">
@@ -238,7 +238,7 @@ ${card(
   `<div style="display: flex; align-items: center; gap: 10px; color: ${C.apricotInk}">${ic("warn", 20, "currentColor", 2)}${h2("Take care with this one", `color: ${C.apricotInk}`)}</div>
 <div style="display: flex; flex-direction: column; gap: 10px">
 ${checkRow(true, "The amount and due date really are in the email.")}
-${checkRow(false, "The payment details differ from this payee&#39;s last bill. Jarvis compared them in memory and kept neither.")}
+${checkRow(false, "The payment details differ from this payee&#39;s last bill. Edward compared them in memory and kept neither.")}
 ${checkRow(false, "Sent from a different address than Northwind Energy&#39;s earlier bills.")}
 ${checkRow(false, "The amount is five times your usual bill.")}
 ${checkRow(false, "The email pushes you to pay within 24 hours.")}
@@ -247,7 +247,7 @@ ${muted("If in doubt, call the company on a number you already have, not one fro
   "padding: 20px; display: flex; flex-direction: column; gap: 14px; border-color: #F3C9A6",
 )}
 ${card(
-  `${h2("What Jarvis read")}
+  `${h2("What Edward read")}
 <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
 ${field("payee", "Payee", "Northwind Energy Billing", "grid-column: span 2")}
 ${field("amount", "Amount", "$1,245.30")}
@@ -295,9 +295,9 @@ ${tr("Tasman Mobile", "Phone · automatic", "1 Oct", "$45.40", tag("Paid", "sage
 )}
 ${card(
   `${h2("How bills work")}
-${setting("Look for bills", "Jarvis checks your mail on the first start each day.", segmented(["Every day", "Only when I ask"], "Every day", "Look for bills"))}
+${setting("Look for bills", "Edward checks your mail on the first start each day.", segmented(["Every day", "Only when I ask"], "Every day", "Look for bills"))}
 ${setting("New bills", "Ask about every new bill, or track bills from payees you&#39;ve confirmed before.", segmented(["Always ask me", "Trust known payees"], "Always ask me", "New bills"))}
-${setting("Remind me", "At 09:00, also when Jarvis is closed.", `<div style="display: flex; gap: 8px; flex-wrap: wrap">${pick("7 days before", false)}${pick("3 days before", true)}${pick("1 day before", false)}${pick("On the day", true)}${pick("Never", false)}</div>`)}
+${setting("Remind me", "At 09:00, also when Edward is closed.", `<div style="display: flex; gap: 8px; flex-wrap: wrap">${pick("7 days before", false)}${pick("3 days before", true)}${pick("1 day before", false)}${pick("On the day", true)}${pick("Never", false)}</div>`)}
 <div style="margin-top: auto; display: flex; flex-direction: column; gap: 8px; padding-top: 14px; border-top: 1px solid ${C.line}">${btn("Forget all bills", "danger", "trash")}${muted("Removes the list from this computer. Your email isn&#39;t touched.")}</div>`,
   "padding: 22px; display: flex; flex-direction: column; gap: 18px",
 )}`,
@@ -335,7 +335,7 @@ ${rem("15 Oct", "Renew the car registration", "Repeats every year", iconBtn("che
 <div style="display: flex; flex-direction: column; gap: 16px">
 ${card(
   `<div style="display: flex; justify-content: center">${spot("spot-reminder", 150, "A bedside alarm clock and a pad of sticky notes")}</div>
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 12px">${h2("When Jarvis is closed")}${toggle(true, "Reminders when Jarvis is closed")}</div>
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 12px">${h2("When Edward is closed")}${toggle(true, "Reminders when Edward is closed")}</div>
 ${muted("A small Windows task checks every minute and shows a notification. Last ran 20 seconds ago.", "text-wrap: pretty")}`,
   "padding: 20px; display: flex; flex-direction: column; gap: 10px",
 )}
@@ -355,13 +355,13 @@ const mem = (text, kind, when) =>
 const memory = shell({
   active: "Memory",
   title: "Memory",
-  sub: "What Jarvis remembers about you, kept on this computer",
+  sub: "What Edward remembers about you, kept on this computer",
   actions: btn("Undo last change", "secondary", "history") + btn("Export", "secondary", "download"),
   bodyStyle: "display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px",
   body: `
 ${card(
   `<div style="display: flex; gap: 8px">
-<div style="flex-grow: 1; display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 14px; border-radius: 12px; background: ${C.bg}; color: ${C.ink3}">${ic("search", 16)}<label for="mq" style="${sr}">Search memory</label><input id="mq" type="text" placeholder="Search what Jarvis remembers" style="flex-grow: 1; min-width: 0; min-height: 40px; border: 0; outline: 0; background: transparent; font: inherit; color: ${C.ink}"></div>
+<div style="flex-grow: 1; display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 14px; border-radius: 12px; background: ${C.bg}; color: ${C.ink3}">${ic("search", 16)}<label for="mq" style="${sr}">Search memory</label><input id="mq" type="text" placeholder="Search what Edward remembers" style="flex-grow: 1; min-width: 0; min-height: 40px; border: 0; outline: 0; background: transparent; font: inherit; color: ${C.ink}"></div>
 ${btn("Add something", "primary", "plus")}
 </div>
 <div style="padding: 16px 18px; border-radius: 14px; background: ${C.blueSoft}; color: ${C.ink}">
@@ -380,7 +380,7 @@ ${mem("Vegetarian on weekdays", "Preference", "learned 30 Aug")}
 <div style="display: flex; flex-direction: column; gap: 16px">
 ${card(
   `<div style="display: flex; align-items: center; justify-content: space-between; gap: 10px">${h2("Learn from conversations")}${toggle(true, "Learn from conversations")}</div>
-${muted("After a conversation Jarvis notes things worth keeping and asks you here before they count.", "text-wrap: pretty")}
+${muted("After a conversation Edward notes things worth keeping and asks you here before they count.", "text-wrap: pretty")}
 <div style="display: flex; flex-direction: column; gap: 8px">
 ${label("To review · 2")}
 <div style="display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border: 1px solid ${C.line}; border-radius: 14px"><div style="font-weight: 500">Kitchen install is on Monday 12 October</div><div style="display: flex; gap: 6px">${small("Keep", "primary")}${small("Don&#39;t keep")}</div></div>
@@ -389,7 +389,7 @@ ${label("To review · 2")}
   "padding: 20px; display: flex; flex-direction: column; gap: 12px",
 )}
 ${card(
-  `<div style="display: flex; align-items: center; gap: 4px"><div style="margin: 0 16px 0 0">${spot("spot-memory", 100, "An open notebook with a pressed leaf")}</div><div>${h2("Never in here", "font-size: 16px")}${muted("Account, card and ID numbers and passwords. If you ask Jarvis to remember one, it refuses.", "text-wrap: pretty")}</div></div>`,
+  `<div style="display: flex; align-items: center; gap: 4px"><div style="margin: 0 16px 0 0">${spot("spot-memory", 100, "An open notebook with a pressed leaf")}</div><div>${h2("Never in here", "font-size: 16px")}${muted("Account, card and ID numbers and passwords. If you ask Edward to remember one, it refuses.", "text-wrap: pretty")}</div></div>`,
   "padding: 18px 20px; flex-grow: 1; display: flex; align-items: center; overflow: hidden",
 )}
 </div>`,
@@ -402,7 +402,7 @@ const tile = (name, alt, on = false) =>
 const picturesBoard = shell({
   active: "Pictures",
   title: "Pictures",
-  sub: "Everything Jarvis has made for you",
+  sub: "Everything Edward has made for you",
   actions: btn("Open the folder", "secondary", "folder"),
   bodyStyle: "display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 16px",
   body: `
@@ -417,7 +417,7 @@ ${card(
 <div style="display: flex; gap: 8px">${btn("Open", "primary", "eye")}${btn("Copy", "secondary", "copy")}${btn("Show in folder", "secondary", "folder")}</div>
 <div style="margin-top: auto; display: flex; flex-direction: column; gap: 4px; padding-top: 12px; border-top: 1px solid ${C.line}">
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px"><div><div style="font-weight: 600">Open pictures when they&#39;re made</div></div>${toggle(true, "Open pictures when they are made")}</div>
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 12px"><div style="min-width: 0"><div style="font-weight: 600">Saved in</div><div style="font-family: ${F.mono}; font-size: 12.5px; color: ${C.ink2}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Pictures\\Jarvis</div></div>${btn("Change", "secondary")}</div>
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 12px"><div style="min-width: 0"><div style="font-weight: 600">Saved in</div><div style="font-family: ${F.mono}; font-size: 12.5px; color: ${C.ink2}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Pictures\\Edward</div></div>${btn("Change", "secondary")}</div>
 </div>`,
   "padding: 16px; display: flex; flex-direction: column; gap: 12px",
 )}`,

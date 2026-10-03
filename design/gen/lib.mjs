@@ -1,4 +1,4 @@
-// Shared tokens and building blocks for the Jarvis design boards.
+// Shared tokens and building blocks for the Edward design boards.
 // Every board is plain static markup; this file only saves retyping the shell.
 
 export const C = {
@@ -177,7 +177,7 @@ function sidebar(active) {
   return `<nav aria-label="Sections" style="width: 232px; flex-shrink: 0; box-sizing: border-box; padding: 20px 14px 16px; display: flex; flex-direction: column; gap: 18px; border-right: 1px solid ${C.line}; background: rgba(255,255,255,0.78)">
 <div style="display: flex; align-items: center; gap: 10px; padding: 0 8px">
 <img src="${asset("icon")}" alt="" style="width: 34px; height: 34px; border-radius: 10px">
-<div style="font-family: ${F.disp}; font-size: 20px; font-weight: 700; letter-spacing: -0.02em">Jarvis</div>
+<div style="font-family: ${F.disp}; font-size: 20px; font-weight: 700; letter-spacing: -0.02em">Edward</div>
 </div>
 <div style="display: flex; flex-direction: column; gap: 2px">${items}</div>
 <div style="margin-top: auto; display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 14px; background: ${C.soft}; font-size: 12.5px; color: ${C.ink2}">
@@ -207,7 +207,7 @@ ${body}
 }
 
 /** The message box, the same on every conversation screen. */
-export function composer({ placeholder = "Ask Jarvis, or type / for commands", value = "", attach = "" } = {}) {
+export function composer({ placeholder = "Ask Edward, or type / for commands", value = "", attach = "" } = {}) {
   return `<div style="display: flex; flex-direction: column; gap: 8px; padding: 8px 8px 8px 18px; border: 1px solid ${C.line}; border-radius: 18px; background: ${C.surface}; box-shadow: ${SHADOW}">
 ${attach}
 <div style="display: flex; align-items: center; gap: 6px">

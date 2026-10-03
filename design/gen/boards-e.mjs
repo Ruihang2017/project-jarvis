@@ -32,16 +32,16 @@ ${card(
 ${card(
   `${cardHead("bill", "Coming up")}
 <div style="display: flex; justify-content: space-between; gap: 10px"><div><div style="font-weight: 500">Northwind Energy</div><div style="font-size: 12.5px; color: ${C.apricotInk}; font-weight: 600">Due Monday</div></div><div style="font-weight: 600">$245.30</div></div>
-<div style="margin-top: auto">${muted("Jarvis reminds you on Monday at 09:00.")}</div>`,
+<div style="margin-top: auto">${muted("Edward reminds you on Monday at 09:00.")}</div>`,
   "padding: 18px; display: flex; flex-direction: column; gap: 14px",
 )}
 ${card(
   `${cardHead("moon", "While you sleep")}
-${muted("Reminders and the morning brief still arrive when Jarvis is closed. The next one is the brief at 08:30, Monday.", "text-wrap: pretty")}`,
+${muted("Reminders and the morning brief still arrive when Edward is closed. The next one is the brief at 08:30, Monday.", "text-wrap: pretty")}`,
   "padding: 18px; display: flex; flex-direction: column; gap: 14px",
 )}
 </div>
-<div style="flex-shrink: 0">${composer({ placeholder: "Ask Jarvis anything, or tell it what to do" })}</div>`,
+<div style="flex-shrink: 0">${composer({ placeholder: "Ask Edward anything, or tell it what to do" })}</div>`,
 });
 
 // ---------------------------------------------------------------- Name and icon candidates

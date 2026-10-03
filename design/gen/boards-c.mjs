@@ -17,7 +17,7 @@ ${muted(sub, "text-wrap: pretty")}
 const privacy = shell({
   active: "Privacy",
   title: "Privacy",
-  sub: "What Jarvis will not do, enforced by code before anything reaches the AI",
+  sub: "What Edward will not do, enforced by code before anything reaches the AI",
   actions: `<a href="Modes.dc.html" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 8px; font-weight: 600">Permission modes</a>`,
   bodyStyle: "display: flex; flex-direction: column; gap: 16px",
   body: `
@@ -25,7 +25,7 @@ ${card(
   `${spot("spot-privacy", 150, "A small wooden box with a brass padlock and a key")}
 <div style="display: flex; flex-direction: column; gap: 8px; max-width: 640px">
 <div style="font-family: ${F.disp}; font-size: 30px; font-weight: 600; line-height: 1.12; letter-spacing: -0.02em; text-wrap: balance">Your account, card and ID numbers never leave this computer.</div>
-<div style="font-size: 15px; color: ${C.ink2}; text-wrap: pretty">They are taken out before a single word goes to the AI, and Jarvis keeps no copy, not even the last four digits. This is a filter in the program, not a request to the model to behave.</div>
+<div style="font-size: 15px; color: ${C.ink2}; text-wrap: pretty">They are taken out before a single word goes to the AI, and Edward keeps no copy, not even the last four digits. This is a filter in the program, not a request to the model to behave.</div>
 </div>
 <div style="margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 8px">${tag("Guard is on", "sage", "shield")}${muted("Checked at start-up with a test number")}</div>`,
   "padding: 20px 28px; display: flex; align-items: center; gap: 24px; flex-shrink: 0",
@@ -33,7 +33,7 @@ ${card(
 <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; flex-grow: 1; min-height: 0">
 ${pillar("lock", "Never sent to the AI", "Removed from what you type, from emails and calendar entries, and from every answer a tool gives.", ["Card numbers", "Bank account and BSB numbers", "Bill and customer reference numbers", "Tax file, Medicare, passport and licence numbers", "Passwords, PINs and sign-in keys"], "x")}
 ${pillar("box", "Never stored", "Memory, reminders and bills refuse anything that looks like one of these, whole or in part.", ["No field anywhere for an account or card", "Nothing in the logs", "Google sign-in is kept encrypted by Windows", "Everything else stays in one folder you can open, export or delete"], "check")}
-${pillar("shield", "Never done", "Jarvis is a butler that reminds. It has no tools for these, so no instruction can make it.", ["Paying a bill", "Signing in to a bank", "Following instructions written inside an email", "Sending an email without showing it to you first", "Inviting people to calendar events"], "x")}
+${pillar("shield", "Never done", "Edward is a butler that reminds. It has no tools for these, so no instruction can make it.", ["Paying a bill", "Signing in to a bank", "Following instructions written inside an email", "Sending an email without showing it to you first", "Inviting people to calendar events"], "x")}
 </div>
 ${card(
   `<div style="display: flex; align-items: center; gap: 10px; color: ${C.apricotInk}">${ic("warn", 18, "currentColor", 2)}${h2("Where the guard stops", `font-size: 16px; color: ${C.apricotInk}`)}</div>
@@ -67,8 +67,8 @@ const guard = shell({
   bodyStyle: "display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px",
   body: `
 ${example("chat", "Something you type", `Is this fee normal? My card is ${strike("4111 1111 1111 1111")} and the password I use there is ${strike("hunter2")}`, `Is this fee normal? My card is ${gone("card number")} and the password I use there is ${gone("password")}`, "Shown under your message: 2 things were removed before it left this computer.")}
-${example("mail", "An email Jarvis reads", `Please pay to BSB ${strike("062-000")} account ${strike("1234 5678")} and quote reference ${strike("88 0042 7719")}.`, `Please pay to BSB and account ${gone("bank account")} and quote reference ${gone("reference number")}.`, "The email in Gmail is untouched. Only the copy sent to the AI is changed.")}
-${example("book", "Something you ask it to keep", `Remember that my Medicare number is ${strike("2123 45670 1")}`, `<span style="color: ${C.ink2}">Nothing. Jarvis answers: &ldquo;I don&#39;t keep ID numbers, not even part of one. I can remind you where you keep the card instead.&rdquo;</span>`, "Memory, reminders and bills all refuse. There is nowhere for it to be saved.", "apricot")}`,
+${example("mail", "An email Edward reads", `Please pay to BSB ${strike("062-000")} account ${strike("1234 5678")} and quote reference ${strike("88 0042 7719")}.`, `Please pay to BSB and account ${gone("bank account")} and quote reference ${gone("reference number")}.`, "The email in Gmail is untouched. Only the copy sent to the AI is changed.")}
+${example("book", "Something you ask it to keep", `Remember that my Medicare number is ${strike("2123 45670 1")}`, `<span style="color: ${C.ink2}">Nothing. Edward answers: &ldquo;I don&#39;t keep ID numbers, not even part of one. I can remind you where you keep the card instead.&rdquo;</span>`, "Memory, reminders and bills all refuse. There is nowhere for it to be saved.", "apricot")}`,
 });
 
 // ---------------------------------------------------------------- Setup: welcome
@@ -79,12 +79,12 @@ const welcome = frame(`
 <img src="${asset("hero-welcome")}" alt="" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: right center">
 <div style="position: absolute; inset: 0; background: linear-gradient(90deg, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.78) 36%, rgba(255,255,255,0) 60%)"></div>
 <div style="position: relative; height: 100%; box-sizing: border-box; width: 46%; min-width: 520px; padding: 56px 0 56px 72px; display: flex; flex-direction: column; gap: 22px; justify-content: center">
-<div style="display: flex; align-items: center; gap: 12px"><img src="${asset("icon")}" alt="" style="width: 44px; height: 44px; border-radius: 13px"><div style="font-family: ${F.disp}; font-size: 24px; font-weight: 700; letter-spacing: -0.02em">Jarvis</div></div>
+<div style="display: flex; align-items: center; gap: 12px"><img src="${asset("icon")}" alt="" style="width: 44px; height: 44px; border-radius: 13px"><div style="font-family: ${F.disp}; font-size: 24px; font-weight: 700; letter-spacing: -0.02em">Edward</div></div>
 <div style="font-family: ${F.disp}; font-size: 54px; font-weight: 600; line-height: 1.02; letter-spacing: -0.03em; text-wrap: balance">Someone to keep an eye on things.</div>
-<div style="font-size: 17px; color: ${C.ink2}; max-width: 440px; text-wrap: pretty">Jarvis watches your calendar, mail and bills, reminds you in time, and asks before it does anything on your behalf.</div>
+<div style="font-size: 17px; color: ${C.ink2}; max-width: 440px; text-wrap: pretty">Edward watches your calendar, mail and bills, reminds you in time, and asks before it does anything on your behalf.</div>
 <div style="display: flex; flex-direction: column; gap: 14px; padding: 6px 0">
-${stepLine(1, "Sign in with ChatGPT", "Jarvis runs on your own ChatGPT plan through Codex")}
-${stepLine(2, "Turn on reminders", "So they arrive even when Jarvis is closed")}
+${stepLine(1, "Sign in with ChatGPT", "Edward runs on your own ChatGPT plan through Codex")}
+${stepLine(2, "Turn on reminders", "So they arrive even when Edward is closed")}
 ${stepLine(3, "Connect Google, if you like", "Calendar and Gmail, through your own Google Cloud project")}
 </div>
 <div style="display: flex; align-items: center; gap: 16px">${btn("Get started", "primary", "right", "min-height: 52px; padding: 0 26px; font-size: 16px")}${muted("About ten minutes")}</div>
@@ -102,7 +102,7 @@ const sub = (n, title, body) =>
 const setupGoogle = frame(`
 <div style="display: flex; height: 100%">
 <aside aria-label="Setup steps" style="width: 340px; flex-shrink: 0; box-sizing: border-box; padding: 32px 22px; display: flex; flex-direction: column; gap: 6px; border-right: 1px solid ${C.line}; background: rgba(255,255,255,0.8)">
-<div style="display: flex; align-items: center; gap: 10px; padding: 0 12px 18px"><img src="${asset("icon")}" alt="" style="width: 34px; height: 34px; border-radius: 10px"><div style="font-family: ${F.disp}; font-size: 20px; font-weight: 700">Setting up Jarvis</div></div>
+<div style="display: flex; align-items: center; gap: 10px; padding: 0 12px 18px"><img src="${asset("icon")}" alt="" style="width: 34px; height: 34px; border-radius: 10px"><div style="font-family: ${F.disp}; font-size: 20px; font-weight: 700">Setting up Edward</div></div>
 ${sStep("done", 1, "This computer", "Node 24 and Codex 0.159 found")}
 ${sStep("done", 2, "ChatGPT", "Signed in as alex@example.com")}
 ${sStep("done", 3, "Reminders in the background", "On, checks every minute")}
@@ -112,13 +112,13 @@ ${sStep("todo", 6, "Final check", "Everything tested once")}
 <div style="margin-top: auto; display: flex; justify-content: center">${spot("spot-key", 150, "A brass key with a blank paper tag")}</div>
 </aside>
 <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; padding: 44px 64px; display: flex; flex-direction: column; gap: 22px">
-<div>${label("Step 4 of 6 · optional")}<h1 style="margin: 4px 0 6px; font-family: ${F.disp}; font-size: 38px; font-weight: 600; letter-spacing: -0.025em">Connect your Google account</h1><div style="font-size: 16px; color: ${C.ink2}; max-width: 640px; text-wrap: pretty">Jarvis talks to Google through a small project that belongs to you, so your mail and calendar travel from Google straight to this computer and nowhere else.</div></div>
+<div>${label("Step 4 of 6 · optional")}<h1 style="margin: 4px 0 6px; font-family: ${F.disp}; font-size: 38px; font-weight: 600; letter-spacing: -0.025em">Connect your Google account</h1><div style="font-size: 16px; color: ${C.ink2}; max-width: 640px; text-wrap: pretty">Edward talks to Google through a small project that belongs to you, so your mail and calendar travel from Google straight to this computer and nowhere else.</div></div>
 ${card(
   `${sub(1, "Create your Google Cloud project", `<div style="color: ${C.ink2}">A step-by-step guide with pictures. It takes about ten minutes and costs nothing.</div><div>${btn("Open the guide", "secondary", "link")}</div>`)}
 <div style="height: 1px; background: ${C.line}"></div>
 ${sub(2, "Choose the file you downloaded", `<div style="display: flex; align-items: center; gap: 10px; padding: 6px 6px 6px 14px; border: 1px solid ${C.line}; border-radius: 12px; background: ${C.bg}">${ic("file", 18, C.ink3)}<span style="flex-grow: 1; font-family: ${F.mono}; font-size: 13px">google-client.json</span>${tag("Looks right", "sage", "check")}${btn("Choose another", "secondary")}</div><div style="font-size: 13px; color: ${C.ink2}">This file stays on this computer. Don&#39;t share it or put it online.</div>`)}
 <div style="height: 1px; background: ${C.line}"></div>
-${sub(3, "Sign in with Google", `<div style="color: ${C.ink2}">Your browser opens. Google lists what Jarvis asks for: your calendar, reading mail, and writing drafts.</div><div>${btn("Sign in with Google", "primary", "link")}</div>`)}`,
+${sub(3, "Sign in with Google", `<div style="color: ${C.ink2}">Your browser opens. Google lists what Edward asks for: your calendar, reading mail, and writing drafts.</div><div>${btn("Sign in with Google", "primary", "link")}</div>`)}`,
   "padding: 24px; display: flex; flex-direction: column; gap: 18px; max-width: 760px",
 )}
 <div style="margin-top: auto; display: flex; align-items: center; justify-content: space-between; max-width: 760px">${btn("Back", "ghost", "left")}<div style="display: flex; gap: 8px">${btn("Skip for now", "secondary")}${btn("Continue", "primary", "right")}</div></div>
@@ -134,7 +134,7 @@ const setupDone = frame(`
 <div style="position: relative; height: 330px; flex-shrink: 0; overflow: hidden">
 <img src="${asset("hero-garden")}" alt="" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 22%">
 <div style="position: absolute; inset: 0; background: linear-gradient(180deg, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0) 55%, ${C.bg} 100%)"></div>
-<div style="position: relative; padding: 52px 72px"><div style="font-family: ${F.disp}; font-size: 54px; font-weight: 600; letter-spacing: -0.03em; line-height: 1.02">You&#39;re all set.</div><div style="font-size: 17px; color: ${C.ink}; margin-top: 8px">Jarvis is ready, and everything was tested once.</div></div>
+<div style="position: relative; padding: 52px 72px"><div style="font-family: ${F.disp}; font-size: 54px; font-weight: 600; letter-spacing: -0.03em; line-height: 1.02">You&#39;re all set.</div><div style="font-size: 17px; color: ${C.ink}; margin-top: 8px">Edward is ready, and everything was tested once.</div></div>
 </div>
 <div style="flex-grow: 1; box-sizing: border-box; padding: 0 72px 44px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; margin-top: -40px; position: relative">
 ${card(
@@ -157,7 +157,7 @@ ${tryChip("What&#39;s on tomorrow?")}
 ${tryChip("Any important mail today?")}
 ${tryChip("What bills are due this month?")}
 </div>
-<div style="margin-top: auto; display: flex; align-items: center; justify-content: space-between; gap: 12px">${muted("Shift + Tab changes what Codex may do. It starts in Chat, the safe one.", "max-width: 300px; text-wrap: pretty")}<a href="Main.dc.html" style="display: inline-flex; align-items: center; gap: 8px; min-height: 52px; padding: 0 26px; border-radius: 12px; background: ${C.blue}; color: #FFFFFF; font-weight: 600; font-size: 16px; text-decoration: none; box-shadow: 0 6px 16px rgba(42,82,190,0.22)">Open Jarvis${ic("right", 16)}</a></div>`,
+<div style="margin-top: auto; display: flex; align-items: center; justify-content: space-between; gap: 12px">${muted("Shift + Tab changes what Codex may do. It starts in Chat, the safe one.", "max-width: 300px; text-wrap: pretty")}<a href="Main.dc.html" style="display: inline-flex; align-items: center; gap: 8px; min-height: 52px; padding: 0 26px; border-radius: 12px; background: ${C.blue}; color: #FFFFFF; font-weight: 600; font-size: 16px; text-decoration: none; box-shadow: 0 6px 16px rgba(42,82,190,0.22)">Open Edward${ic("right", 16)}</a></div>`,
   "padding: 24px; display: flex; flex-direction: column; gap: 14px",
 )}
 </div>
