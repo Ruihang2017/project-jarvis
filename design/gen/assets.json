@@ -23,5 +23,11 @@
   "spot-rest": "/_blob/711bfbc90273ea8b256d13f328c1f742",
   "spot-umbrella": "/_blob/ce8fd169fb114cc172f7b61fac43feb4",
   "spot-lamp": "/_blob/c9c6e2a81f015f737891268585b13a5e",
-  "icon": "/_blob/bb8ffbf0174a18ceca895ece90235dea"
+  "icon": "/_blob/bb8ffbf0174a18ceca895ece90235dea",
+  "icon-bell": "/_blob/9b5a34a5494f94c0dd46663fb7c0d63b",
+  "icon-lantern": "/_blob/8cce88e8a9d6af0fd1a82e2e4aeb1ff6",
+  "icon-house": "/_blob/8212576b5fd78d41e41eeb9b45bbc4c4",
+  "icon-sunrise": "/_blob/4aab9b4d37efc4e66f1b1d7b113483ef",
+  "icon-wren": "/_blob/05e2f28c49438035cae5ec2d9b1a2b1d",
+  "icon-key": "/_blob/c50f0f42a5d5f41d574441c5ed2b1712"
 }

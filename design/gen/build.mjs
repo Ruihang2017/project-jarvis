@@ -14,14 +14,18 @@ const H = 860;
 const GAP = 80;
 const PITCH = H + 420;
 
-const ROWS = ["Today and conversation", "What Jarvis looks after", "Privacy and trust", "First-run setup", "Care, settings and states", "Design language"];
+const ROWS = ["Today and conversation", "What Jarvis looks after", "Privacy and trust", "First-run setup", "Care, settings and states", "Name, icon and design language"];
 
 const boards = [];
 for (const f of readdirSync(here).filter((f) => /^boards-.*\.mjs$/.test(f)).sort()) {
   boards.push(...(await import(pathToFileURL(join(here, f)).href)).default);
 }
 
-boards.forEach((b, i) => (b.pos ??= i));
+// Numbers follow the order boards were added, so adding one never renumbers the others.
+boards.forEach((b, i) => {
+  b.pos ??= i;
+  b.num = i + 1;
+});
 boards.sort((a, b) => a.row - b.row || a.pos - b.pos);
 // Main.dc.html must stay the entry and it already sorts first (row 0, pos 0).
 
@@ -64,7 +68,7 @@ for (const b of boards) {
   const h = b.h ?? H;
   const x = col[b.row] ?? 0;
   col[b.row] = x + w + GAP;
-  const n = String(index.order.length + 1).padStart(2, "0");
+  const n = String(b.num).padStart(2, "0");
   index.boards[b.file] = { x, y: b.row * PITCH, w, h, title: `${n} · ${b.title}`, ...(b.fixed ? {} : { expand: "fill" }) };
   index.order.push(b.file);
   const html = page(`Jarvis · ${b.title}`, b.markup, w, h);
