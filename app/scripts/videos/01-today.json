@@ -1,0 +1,12 @@
+[
+  { "caption": "Edward: a personal assistant that lives on your PC", "wait": 3200 },
+  { "caption": "Today shows your day at a glance", "point": "Good morning", "wait": 2600 },
+  { "caption": "Before an event: where it is, who's coming, and the emails about it", "scroll": ["Next trip", 380], "wait": 600 },
+  { "point": "Coming up", "wait": 1500 },
+  { "point": "Related email", "wait": 2200 },
+  { "caption": "Trips are found in your booking emails, with the weather there", "scroll": ["Coming up", -380], "wait": 500 },
+  { "point": "Weather there", "wait": 2200 },
+  { "caption": "and when to leave for the airport", "click": "1½ h", "wait": 2200 },
+  { "caption": "One click makes a packing list in Google Tasks", "click": "Packing list", "wait": 3200 },
+  { "caption": null, "wait": 800 }
+]

@@ -9,7 +9,7 @@ import { config } from "../config.js";
 import { MemoryStore, memoryDbPath } from "../memory/store.js";
 import { appDataDir, imagesDir } from "../settings.js";
 
-const TABLES = ["memories", "summaries", "reminders", "bills", "payees"];
+const TABLES = ["memories", "summaries", "reminders", "bills", "payees", "mail_digests", "trips", "voice_spend"];
 
 export interface ExportResult {
   dir: string;
@@ -52,6 +52,8 @@ export function exportAll(dir: string, now = new Date()): ExportResult {
       "summaries.json                summaries of past conversations",
       "reminders.json                reminders, including finished ones",
       "bills.json, payees.json       bills found in your email and the payees you confirmed",
+      "mail_digests.json             the last few mail summaries",
+      "trips.json                    trips found in booking emails",
       "settings.json                 your settings",
       "",
       "Not copied here (they stay where they are):",

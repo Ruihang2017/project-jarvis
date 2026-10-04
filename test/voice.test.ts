@@ -68,6 +68,27 @@ await rejects("key check fails on 401", checkKey("sk-wrong", fakeHttp(401, "{}")
 v.removeVoiceKey();
 await rejects("without a key, voice asks for one", answerCall("v=0\r\n", {}, fakeHttp(201, "x")), "Settings → Voice");
 
+// --- what voice costs (estimate) ---
+const sp = await import("../src/voice/spend.js");
+const usage = { total_tokens: 1500, input_tokens: 500, output_tokens: 1000, input_token_details: { text_tokens: 400, audio_tokens: 100, cached_tokens: 300, cached_tokens_details: { text_tokens: 300, audio_tokens: 0 } }, output_token_details: { text_tokens: 200, audio_tokens: 800 } };
+const counts = sp.fromResponseUsage(usage);
+eq("a reply's tokens, cached ones apart", [counts.textIn, counts.cachedTextIn, counts.audioIn, counts.textOut, counts.audioOut], [100, 300, 100, 200, 800]);
+const mini = sp.costOf("gpt-realtime-2.1-mini", counts);
+ok("priced like OpenAI's table", Math.abs(mini - (100 * 0.6 + 300 * 0.06 + 100 * 10 + 200 * 2.4 + 800 * 20) / 1e6) < 1e-12, String(mini));
+ok("an unknown model is priced like the dearest", sp.costOf("gpt-new", counts) > mini);
+eq("transcription by the minute", sp.costOf("gpt-realtime-2.1-mini", sp.fromTranscriptionUsage({ type: "duration", seconds: 120 })), 0.009);
+eq("junk from the window counts as nothing", [sp.fromResponseUsage({ input_token_details: { text_tokens: -5, audio_tokens: "9" } }).textIn, sp.fromTranscriptionUsage({ type: "tokens", input_tokens: 99 }).transcribed, sp.fromResponseUsage(null).audioOut], [0, 0, 0]);
+const spend = new sp.SpendStore();
+const day = new Date(2026, 9, 5, 12);
+spend.add("gpt-realtime-2.1-mini", counts, day);
+spend.add("gpt-realtime-2.1-mini", counts, day);
+spend.add("gpt-realtime-2.1-mini", sp.fromTranscriptionUsage({ type: "duration", seconds: 60 }), new Date(2026, 9, 1, 12));
+spend.add("gpt-realtime-2.1-mini", counts, new Date(2026, 7, 1, 12)); // over 30 days ago
+const tot = spend.totals(day);
+ok("today, and the last 30 days", Math.abs(tot.today - 2 * mini) < 1e-12 && Math.abs(tot.last30 - (2 * mini + 0.0045)) < 1e-12, JSON.stringify(tot));
+spend.close();
+eq("shown", [sp.dollars(0), sp.dollars(0.004), sp.dollars(0.4249), sp.dollars(12.5)], ["$0.00", "under 1¢", "$0.42", "$12.50"]);
+
 rmSync(dir, { recursive: true, force: true });
 console.log(results.map(([n, pass, info]) => `${pass ? "PASS" : "FAIL"}  ${n}${pass ? "" : "  → " + info}`).join("\n"));
 if (results.some(([, pass]) => !pass)) process.exitCode = 1;

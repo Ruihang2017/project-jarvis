@@ -14,6 +14,10 @@ import { showToast } from "./background/notify.js";
 import { reminderToast } from "./background/tick.js";
 import { missingFeatures } from "./google/instructions.js";
 import { noticeLine, noticeToast } from "./bills/remind.js";
+import { headsUpLines, headsUpToast } from "./headsup/meetings.js";
+import { digestLines, digestToast } from "./headsup/mailsummary.js";
+import { weekLines, weekToast } from "./headsup/weekly.js";
+import { tripNoticeLines, tripNoticeToast } from "./headsup/trips.js";
 import { GETTING_STARTED } from "./setup.js";
 import { detectSixel, preview, renderPreview } from "./sixel.js";
 import { formatDue, lateness } from "./reminders/schedule.js";
@@ -288,6 +292,25 @@ export async function repl(session: Session): Promise<void> {
         for (const n of due.bills) void showToast(noticeToast(n));
       }
       void due.brief?.then((brief) => notify([brief.title, ...brief.lines.map((l) => `  ${l}`)]));
+      for (const n of due.trips) {
+        notify(tripNoticeLines(n));
+        void showToast(tripNoticeToast(n));
+      }
+      void due.week?.then((w) => {
+        notify(weekLines(w));
+        void showToast(weekToast(w));
+      });
+      void due.mailDigest?.then((d) => {
+        if (!d) return;
+        notify(digestLines(d));
+        void showToast(digestToast(d));
+      });
+      void due.meetings.then((list) => {
+        for (const h of list) {
+          notify(headsUpLines(h));
+          void showToast(headsUpToast(h));
+        }
+      });
     } catch (e) {
       if (envVar("DEBUG")) console.error(dim(`[reminder check failed] ${e instanceof Error ? e.message : String(e)}`));
     }

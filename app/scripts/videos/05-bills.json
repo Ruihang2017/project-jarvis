@@ -1,0 +1,10 @@
+[{ "caption": "Bills are found in your email: payee, amount, due date", "go": "bills", "wait": 3000, "at": "bottom" },
+ { "caption": "Each one is checked for signs of fraud before you see it", "point": "Harbour Water", "wait": 2800 },
+ { "caption": "Edward reminds you before a bill is due. It never pays anything", "point": "Northwind Energy", "wait": 3000 },
+ { "caption": "Reminders: just say when", "go": "chat", "wait": 1200, "at": "top" },
+ { "type": [  "css:textarea",
+   "Remind me at 5pm to call Sam about the benchtop" ], "wait": 300 },
+ { "key": "Enter", "reply": 120000, "wait": 2500 },
+ { "go": "reminders", "wait": 3200, "at": "bottom" },
+ { "caption": null, "wait": 800 }
+]

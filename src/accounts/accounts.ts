@@ -16,6 +16,7 @@ import { GoogleAuthError, type Http } from "../google/oauth.js";
 import { hasCalendarAccess } from "../google/calendar.js";
 import { hasGmailAccess } from "../google/gmail.js";
 import { hasTasksAccess } from "../google/tasks.js";
+import { runtime } from "../runtime.js";
 
 export type Provider = "google";
 /** Lists (F3) live in one account at a time: there is no per-account switch for them. */
@@ -69,7 +70,7 @@ export interface ConnectResult {
 export class Accounts {
   private auths = new Map<string, GoogleAuth>();
 
-  constructor(private readonly http: Http = fetch) {}
+  constructor(private readonly http: Http = runtime.googleHttp ?? fetch) {}
 
   private read(): Stored {
     try {

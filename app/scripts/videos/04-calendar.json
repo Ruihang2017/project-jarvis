@@ -1,0 +1,12 @@
+[
+  { "caption": "Your calendars, from every account", "go": "calendar", "wait": 2500 },
+  { "click": "Week", "wait": 2600 },
+  { "caption": "Add an event in a form, or just ask Edward", "click": "New event", "wait": 1000 },
+  { "type": ["Dentist", "Haircut"], "wait": 400 },
+  { "type": ["Optional", "Salon on King St"], "wait": 600 },
+  { "click": "Add", "wait": 2600 },
+  { "click": "Month", "wait": 2600 },
+  { "caption": "Free time is worked out for you", "click": "Agenda", "wait": 1200 },
+  { "point": "Free time", "wait": 2800 },
+  { "caption": null, "wait": 800 }
+]

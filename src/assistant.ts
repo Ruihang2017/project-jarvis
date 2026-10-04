@@ -12,6 +12,11 @@ import { briefDue, briefGoogle, composeBrief, markBriefShown, type Brief } from 
 import { scanDue } from "./bills/scan.js";
 import { runScan, scanSummary } from "./bills/view.js";
 import { claimDueNotices, type DueNotice } from "./bills/remind.js";
+import { claimHeadsUps, type HeadsUp } from "./headsup/meetings.js";
+import { mergeDigests, nextSince, summariseMail, summaryDue, type MailDigest } from "./headsup/mailsummary.js";
+import { runtime } from "./runtime.js";
+import { composeWeek, weeklyDue, type Week } from "./headsup/weekly.js";
+import { claimTripNotices, scanTrips, tripLine, tripScanDue, type TripNotice, type TripScanResult } from "./headsup/trips.js";
 import { codexVersion, compareCodex } from "./doctor.js";
 import { openWithDefaultApp } from "./system.js";
 import { MemoryLearner } from "./memory/learn.js";
@@ -92,7 +97,7 @@ export function backgroundSuggestion(item: ThreadItem): string | null {
 /**
  * Work that runs while Edward is open: memory learning when a conversation is left and for any
  * missed at start-up, the daily memory tidy, a note if Codex changed version, and the daily bill
- * scan. Results arrive as lines through `notify`.
+ * and booking (H2) scans. Results arrive as lines through `notify`.
  */
 export function startBackgroundWork(session: Session, notify: (lines: string[]) => void, onError: (e: unknown) => void): MemoryLearner {
   const learner = new MemoryLearner(session);
@@ -105,8 +110,31 @@ export function startBackgroundWork(session: Session, notify: (lines: string[]) 
     if (codex.status !== "ok") notify([`Codex ${codex.detail} · the health check looks at everything`]);
     if (learner.enabled()) notify(await new MemoryTidier(session).runIfDue());
     if (session.accounts.for("mail").length && scanDue(session.bills)) notify(scanSummary(await runScan(session)));
+    if (session.accounts.for("mail").length && tripScanDue(session.notices)) notify(tripScanLines(await scanTripsNow(session)));
   })().catch(onError);
   return learner;
+}
+
+/** Looks for new booking emails (H2); the model only reads those without booking data. */
+export const scanTripsNow = (session: Session): Promise<TripScanResult> =>
+  scanTrips({ accounts: session.accounts, store: session.trips, run: (i, input, schema) => session.runEphemeral(i, input, schema) });
+
+export function tripScanLines(r: TripScanResult): string[] {
+  return r.found.map((t) => `✈ Found in your email: ${tripLine(t)}`);
+}
+
+let summarising: Promise<MailDigest> | null = null;
+
+/** Summarises the mail since the last summary (H4) and keeps it; one at a time. */
+export function summariseNow(session: Session, now = new Date()): Promise<MailDigest> {
+  summarising ??= summariseMail({ accounts: session.accounts, bills: session.bills, run: (i, input, schema) => session.runEphemeral(i, input, schema) }, nextSince(session.digests, now), now)
+    .then((fresh) => {
+      const d = mergeDigests(fresh, session.digests.latest());
+      session.digests.save(d);
+      return d;
+    })
+    .finally(() => (summarising = null));
+  return summarising;
 }
 
 export interface DueNow {
@@ -114,6 +142,14 @@ export interface DueNow {
   bills: DueNotice[];
   /** The daily brief, the first time Edward is open after its time on a brief day. */
   brief: Promise<Brief> | null;
+  /** Meeting heads-ups (H1); resolves to none when nothing is due or Google can't be reached. */
+  meetings: Promise<HeadsUp[]>;
+  /** The mail summary, at its times of day (H4); null when not due. */
+  mailDigest: Promise<MailDigest | null> | null;
+  /** The weekly review, on its day and time (H3). */
+  week: Promise<Week> | null;
+  /** The evening before a trip, and time to leave (H2). */
+  trips: TripNotice[];
 }
 
 /**
@@ -128,5 +164,10 @@ export function claimDueNow(session: Session, now = new Date()): DueNow {
     markBriefShown(session.memory, "repl");
     brief = briefGoogle(session.accounts, now).then((google) => composeBrief(session.memory, session.reminders, now, google, session.bills));
   }
-  return { reminders, bills, brief };
+  const meetings = claimHeadsUps(session.accounts, session.notices, session.memory, now).catch(() => []);
+  // A model call: not in screenshot checks (no background work there).
+  const mailDigest = !runtime.noBackgroundWork && session.accounts.for("mail").length && summaryDue(session.notices, now) ? summariseNow(session, now).catch(() => null) : null;
+  const week = weeklyDue(session.notices, now) ? composeWeek(session.accounts, session.reminders, session.bills, now) : null;
+  const trips = claimTripNotices(session.trips, session.notices, now);
+  return { reminders, bills, brief, meetings, mailDigest, week, trips };
 }

@@ -377,11 +377,81 @@ export interface PicturesView {
   autoOpen: boolean;
 }
 
+/** Meeting heads-up (H1): the next event within three hours that has a place, people or related email. */
+export interface ComingUp {
+  event: EventInfo;
+  /** "in 25 min" */
+  when: string;
+  /** Google Maps search for the place (a link only). */
+  mapUrl?: string;
+  /** "Alice and Bob" */
+  withWhom?: string;
+  related: MailSummary[];
+  /** From memory, about the people in it. */
+  notes: string[];
+}
+
+/** Mail summary (H4): new mail sorted by what needs the user. Item ids open in Mail like list ids. */
+export interface DigestView {
+  /** When it was made ("08:30", "yesterday 18:00") and the mail it covers from. */
+  made: string;
+  since: string;
+  /** Made today. */
+  today: boolean;
+  /** "3 to act on, 5 worth knowing" */
+  headline: string;
+  items: (Partial<FromAccount> & { id: string; group: "act" | "know" | "social"; line: string; from: string; subject: string; due?: string })[];
+  bills: { id: string; line: string }[];
+  /** "The rest: 12 not needed, 23 adverts." */
+  rest: string;
+  /** Numbers the privacy guard took out before the model read the emails. */
+  removed: number;
+  problems: string[];
+}
+
+/** Weekly review (H3): the seven days from tomorrow. */
+export interface WeekView {
+  /** "9 events, 2 bills, 3 to-dos" */
+  headline: string;
+  days: { date: string; label: string; events: string[] }[];
+  bills: string[];
+  todo: string[];
+  reminders: string[];
+  problems: string[];
+}
+
+/** A trip found in booking emails (H2). */
+export interface TripInfo {
+  id: number;
+  kind: "flight" | "hotel" | "car" | "train";
+  title: string;
+  /** "Fri 10-09 07:30 → 08:55" */
+  when: string;
+  where?: string;
+  mapUrl?: string;
+  status: "new" | "added" | "dismissed";
+  /** Found by the model and not confirmed by the email. */
+  needsCheck: boolean;
+  /** "05:30", for flights and trains. */
+  leaveBy?: string;
+  bufferMin: number;
+  /** Opens in Mail like a list id. */
+  mailId: string;
+  weather?: string;
+}
+
 export interface TodayView {
   greeting: string;
   date: string;
   evening: boolean;
   summary: string;
+  comingUp?: ComingUp;
+  /** Today's latest mail summary, if one was made. */
+  digest?: DigestView;
+  /** On the weekly review's day, from its time. */
+  week?: WeekView;
+  /** Bookings just found, and the next trip within a week. */
+  trips?: { found: TripInfo[]; next?: TripInfo };
   events: EventInfo[];
   tomorrow: EventInfo[];
   calendarProblem?: string;
@@ -426,9 +496,17 @@ export interface Settings {
   autoOpenImages: boolean;
   /** Load pictures from the web in emails without asking. */
   mailPictures: boolean;
+  /** Meeting heads-up (H1): minutes before, or off. */
+  meetingLead: MeetingLead;
+  /** Mail summary times (H4); empty when off. */
+  mailSummaryTimes: string[];
+  /** Weekly review (H3): null when off. */
+  weeklyReview: { day: number; time: string } | null;
   imagesDir: string;
   limits: { label: string; usedPercent: number; resets: string }[];
 }
+
+export type MeetingLead = "15" | "30" | "60" | "off";
 
 export type SettingsPatch = Partial<{
   model: string;
@@ -442,6 +520,9 @@ export type SettingsPatch = Partial<{
   currency: string | null;
   autoOpenImages: boolean;
   mailPictures: boolean;
+  meetingLead: MeetingLead;
+  mailSummaryTimes: string[] | "off";
+  weeklyReview: { day: number; time: string } | "off";
   billSettings: Partial<BillSettings>;
 }>;
 
@@ -488,6 +569,8 @@ export interface EdwardApi {
   voiceConnect(offer: string): Promise<Result & { sdp?: string }>;
   /** What the user said, transcribed: goes into the conversation like typed text; the reply comes back as voiceSay. */
   voiceHeard(text: string): Promise<void>;
+  /** Usage OpenAI reported on the call (a spoken reply's tokens, a transcription's length), for the spend estimate. */
+  voiceUsage(u: { kind: "response" | "transcription"; usage: unknown }): Promise<void>;
   /** The lists, and the items of one (the first when none is named). */
   lists(listId?: string): Promise<ListsView>;
   listCreate(title: string): Promise<Result & { id?: string }>;
@@ -507,6 +590,15 @@ export interface EdwardApi {
   mailWrite(d: ComposeDraft, notes: string): Promise<Result & { body?: string }>;
   /** Null when the email has no HTML. `pictures` lets it load pictures and styles from the web. */
   mailOriginal(id: string, pictures: boolean): Promise<MailOriginal | null>;
+  /** Trips (H2): add to the calendar, not a trip, the details are right, make a packing list. */
+  tripAction(id: number, action: "calendar" | "dismiss" | "confirm" | "packing"): Promise<Result>;
+  /** Minutes before departure to leave (60, 90, 120 or 180). */
+  tripBuffer(id: number, minutes: number): Promise<Result>;
+  tripScan(): Promise<Result>;
+  /** The latest mail summary (H4), or null. */
+  mailDigest(): Promise<DigestView | null>;
+  /** Summarises the mail since the last summary now (the model reads it, through the privacy guard). */
+  mailSummarize(): Promise<Result & { digest?: DigestView }>;
   bills(): Promise<BillsView>;
   billHistory(id: number): Promise<BillHistory>;
   billAction(id: number, action: "accept" | "ignore" | "paid"): Promise<Result>;
@@ -571,6 +663,9 @@ export interface VoiceInfo {
   voice: string;
   voices: string[];
   model: string;
+  /** Estimated spend on voice with the user's key: "$0.42", "under 1¢". */
+  spentToday: string;
+  spent30: string;
 }
 
 /** What preload puts on window.edward. */

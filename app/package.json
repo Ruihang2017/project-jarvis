@@ -1,6 +1,6 @@
 {
   "name": "edward-app",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Edward desktop app (Electron). The assistant itself is the core in ../src.",
   "type": "module",
@@ -50,6 +50,7 @@
       "icon": "build/icon.ico"
     },
     "nsis": {
+      "artifactName": "Edward-Setup-${version}.${ext}",
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,

@@ -1,0 +1,12 @@
+[
+  { "caption": "Your mail, from every Google account you connect", "go": "mail", "wait": 2500 },
+  { "caption": "The summary: what needs you, and what's worth knowing", "click": "Summary", "wait": 1200 },
+  { "click": "Summarize now", "until": "To act on", "wait": 2500 },
+  { "caption": "Open one, and reply", "click": "benchtop", "wait": 2000 },
+  { "click": "Reply", "wait": 1500 },
+  { "caption": "Tell Edward what to say; it writes the email", "click": "Ask Edward to write", "wait": 600 },
+  { "type": ["What should it say?", "Ash Grey please, and Monday still works"], "wait": 300 },
+  { "click": "Write", "until": "Read it through before sending", "wait": 3500 },
+  { "caption": "Nothing is sent until you press Send and confirm", "point": "Send", "wait": 3000 },
+  { "caption": null, "wait": 800 }
+]

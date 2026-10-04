@@ -1,6 +1,6 @@
 {
   "name": "edward-assistant",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A personal terminal assistant on the Codex CLI: calendar, Gmail, bills and reminders, with a privacy guard that removes account numbers and passwords before anything reaches the model",
   "type": "module",
   "private": true,
@@ -44,7 +44,7 @@
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "gen:protocol": "codex app-server generate-ts --experimental --out src/protocol",
-    "test": "tsx test/memory-store.test.ts && tsx test/reminders.test.ts && tsx test/background.test.ts && tsx test/google.test.ts && tsx test/calendar.test.ts && tsx test/gmail.test.ts && tsx test/guard.test.ts && tsx test/privacy.test.ts && tsx test/bills.test.ts && tsx test/data.test.ts && tsx test/setup.test.ts && tsx test/security.test.ts && tsx test/rename.test.ts && tsx test/actions.test.ts && tsx test/mailhtml.test.ts && tsx test/accounts.test.ts && tsx test/merged.test.ts && tsx test/compose.test.ts && tsx test/layout.test.ts && tsx test/tasks.test.ts && tsx test/voice.test.ts",
+    "test": "tsx test/memory-store.test.ts && tsx test/reminders.test.ts && tsx test/background.test.ts && tsx test/google.test.ts && tsx test/calendar.test.ts && tsx test/gmail.test.ts && tsx test/guard.test.ts && tsx test/privacy.test.ts && tsx test/bills.test.ts && tsx test/data.test.ts && tsx test/setup.test.ts && tsx test/security.test.ts && tsx test/rename.test.ts && tsx test/actions.test.ts && tsx test/mailhtml.test.ts && tsx test/accounts.test.ts && tsx test/merged.test.ts && tsx test/compose.test.ts && tsx test/layout.test.ts && tsx test/tasks.test.ts && tsx test/voice.test.ts && tsx test/headsup.test.ts && tsx test/mailsummary.test.ts && tsx test/weekly.test.ts && tsx test/trips.test.ts && tsx test/demo.test.ts",
     "prepublishOnly": "npm run typecheck && npm test"
   },
   "engines": {

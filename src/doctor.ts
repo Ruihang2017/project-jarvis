@@ -7,7 +7,7 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { styleText } from "node:util";
 import { taskStatus } from "./background/task.js";
-import { config } from "./config.js";
+import { config, INSTALL_CODEX } from "./config.js";
 import { DATA_VERSION, readDataVersion } from "./data/version.js";
 import { shortScope } from "./google/auth.js";
 import { missingFeatures } from "./google/instructions.js";
@@ -34,7 +34,7 @@ export function codexVersion(bin = config.codexBin): Promise<string | null> {
 
 /** Same major.minor as the verified release is fine; anything else may work but hasn't been tried. */
 export function compareCodex(found: string | null, tested = config.testedCodex): Check {
-  if (!found) return { name: "Codex", status: "fail", detail: "not found — install it (npm i -g @openai/codex) and make sure `codex` is on your PATH" };
+  if (!found) return { name: "Codex", status: "fail", detail: `not found — install it (${INSTALL_CODEX}, or npm i -g @openai/codex) and open Edward again` };
   const minor = (v: string) => v.split(".").slice(0, 2).join(".");
   if (minor(found) === minor(tested)) return { name: "Codex", status: "ok", detail: found };
   return { name: "Codex", status: "warn", detail: `${found} — Edward was verified with ${tested}; if something misbehaves, that is the first thing to suspect` };

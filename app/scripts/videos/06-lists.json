@@ -1,0 +1,13 @@
+[{ "caption": "Shopping lists and home jobs, in Google Tasks, so they're on your phone too", "go": "lists", "wait": 3000, "at": "bottom" },
+ { "type": [  "Add something to buy",
+   "Avocados" ], "wait": 300 },
+ { "click": "Add", "wait": 1500 },
+ { "click": "css:[aria-label='Tick off Milk']", "wait": 1500 },
+ { "caption": "Or tell Edward", "go": "chat", "wait": 1000, "at": "top" },
+ { "type": [  "css:textarea",
+   "The bathroom fan is noisy, add it to Home for Saturday" ], "wait": 300 },
+ { "key": "Enter", "reply": 120000, "wait": 2500 },
+ { "go": "lists", "wait": 1200, "at": "bottom" },
+ { "click": "Home", "wait": 3000 },
+ { "caption": null, "wait": 800 }
+]

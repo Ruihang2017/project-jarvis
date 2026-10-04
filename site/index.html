@@ -3,42 +3,155 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Jarvis</title>
-<meta name="description" content="Jarvis is a personal terminal assistant for one person, running on their own Windows computer.">
+<title>Edward: your personal assistant for Windows</title>
+<meta name="description" content="Edward is a personal assistant for Windows. It looks after your calendar, mail, bills and lists, reminds you in time, and asks before it acts. It runs on your own computer with your own ChatGPT account.">
+<meta property="og:title" content="Edward: your personal assistant for Windows">
+<meta property="og:description" content="Calendar, mail, bills, lists and reminders, on your own computer, with a privacy guard that keeps card and account numbers away from the AI.">
+<meta property="og:image" content="https://ruihang2017.github.io/project-jarvis/art/hero-welcome.jpg">
 <link rel="icon" href="icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..700&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<main>
-  <header>
-    <img src="icon.png" alt="" width="72" height="72">
-    <h1>Jarvis</h1>
-    <p class="lede">A personal terminal assistant for one person, running on their own Windows computer.</p>
-  </header>
+<nav class="top">
+  <a class="brand" href="#"><img src="icon.png" alt="" width="34" height="34"> Edward</a>
+  <div class="links">
+    <a href="#features">Features</a>
+    <a href="#privacy">Privacy</a>
+    <a href="#install">Install</a>
+    <a href="#faq">FAQ</a>
+    <a href="https://github.com/Ruihang2017/project-jarvis">GitHub</a>
+  </div>
+</nav>
 
-  <section>
-    <h2>What it is</h2>
-    <p>Jarvis is a private, single-user command-line assistant. It is not a hosted service, it has no servers, and it is not offered to the public. It runs only on its owner's computer and acts only for its owner.</p>
-  </section>
+<header class="hero">
+  <div class="hero-text">
+    <p class="eyebrow">Personal assistant for Windows · free beta</p>
+    <h1>Someone to keep an eye on things.</h1>
+    <p class="lede">Edward looks after your calendar, mail, bills and lists. It tells you what needs you, reminds you in time, and asks before it does anything on your behalf. It runs on your own computer, with your own ChatGPT account.</p>
+    <div class="cta">
+      <a class="btn primary" href="https://github.com/Ruihang2017/project-jarvis/releases/download/v0.2.0/Edward-Setup-0.2.0.exe">Download for Windows</a>
+      <a class="btn" href="#install">How to install</a>
+    </div>
+    <p class="small">Version 0.2.0 · Windows 10 or 11 · about 120 MB · <a href="https://github.com/Ruihang2017/project-jarvis/releases">all versions</a></p>
+  </div>
+  <img class="hero-art" src="art/hero-welcome.jpg" alt="A watercolour of an open front door onto a sunny garden">
+</header>
 
-  <section>
-    <h2>What it does with Google</h2>
-    <p>When the owner connects their own Google account, Jarvis can:</p>
+<section class="intro">
+  <div class="video-frame big">
+    <video controls muted playsinline preload="metadata" poster="videos/01-today.jpg" src="videos/01-today.mp4"></video>
+  </div>
+  <p class="caption">Today, at a glance: what's next, where you need to be, the emails about it, and the trip you're about to take.</p>
+</section>
+
+<section id="features" class="features">
+  <h2>What Edward does</h2>
+  <div class="feature">
+    <div class="text">
+      <h3>Ask anything</h3>
+      <p>Edward knows your calendar, mail and lists, searches the web, makes pictures and remembers what you tell it. Before anything leaves your computer, its privacy guard takes out card, account and ID numbers and passwords.</p>
+    </div>
+    <div class="video-frame"><video controls muted playsinline preload="none" poster="videos/02-chat.jpg" src="videos/02-chat.mp4"></video></div>
+  </div>
+  <div class="feature flip">
+    <div class="text">
+      <h3>Mail, sorted for you</h3>
+      <p>Twice a day Edward reads your new mail and tells you what needs you, what's worth knowing, and what LinkedIn and friends sent. Read, reply and forward in an Outlook-like inbox, or tell Edward what to say and let it write the email. Nothing is sent until you confirm.</p>
+    </div>
+    <div class="video-frame"><video controls muted playsinline preload="none" poster="videos/03-mail.jpg" src="videos/03-mail.mp4"></video></div>
+  </div>
+  <div class="feature">
+    <div class="text">
+      <h3>Your calendar, and a heads-up before you go</h3>
+      <p>Agenda, week and month views across all your Google accounts, a form to add events, and your free time worked out. Before an event with a place or other people, Edward reminds you with the address, who's coming and the emails about it.</p>
+    </div>
+    <div class="video-frame"><video controls muted playsinline preload="none" poster="videos/04-calendar.jpg" src="videos/04-calendar.mp4"></video></div>
+  </div>
+  <div class="feature flip">
+    <div class="text">
+      <h3>Bills and reminders</h3>
+      <p>Edward finds bills in your email, checks each one for signs of fraud (a new sender, changed payment details, an unusual amount) and reminds you before it's due. It never pays anything. "Remind me at 5pm to…" works anywhere, even when Edward is closed.</p>
+    </div>
+    <div class="video-frame"><video controls muted playsinline preload="none" poster="videos/05-bills.jpg" src="videos/05-bills.mp4"></video></div>
+  </div>
+  <div class="feature">
+    <div class="text">
+      <h3>Lists that follow you</h3>
+      <p>Shopping, home jobs and to-dos live in Google Tasks, so they're on your phone too. Add from the app or just say it: "the bathroom fan is noisy, put it on Home for Saturday".</p>
+    </div>
+    <div class="video-frame"><video controls muted playsinline preload="none" poster="videos/06-lists.jpg" src="videos/06-lists.mp4"></video></div>
+  </div>
+
+  <div class="more">
+    <div><h4>Trips</h4><p>Flights and hotels from your booking emails, with the weather there and when to leave for the airport.</p></div>
+    <div><h4>Week ahead</h4><p>On Sunday evening: next week's events, bills and to-dos on one page.</p></div>
+    <div><h4>Morning brief</h4><p>A notification with today's events, reminders, bills and mail.</p></div>
+    <div><h4>Voice</h4><p>Talk to Edward and hear the reply, with your own OpenAI API key (a few cents a minute; Edward shows what you've spent).</p></div>
+    <div><h4>Several accounts</h4><p>Connect more than one personal Google account; replies go from the account the email came to.</p></div>
+    <div><h4>Terminal too</h4><p>The same Edward as a command-line assistant, for those who prefer a terminal.</p></div>
+  </div>
+</section>
+
+<section id="privacy" class="privacy">
+  <img src="art/spot-privacy.jpg" alt="" width="220" height="220">
+  <div>
+    <h2>Private by design</h2>
     <ul>
-      <li><strong>Google Calendar</strong> — read upcoming events and create or update events the owner asks for.</li>
-      <li><strong>Gmail</strong> — read messages to summarise them and prepare reply drafts. Drafts are only sent after the owner confirms.</li>
+      <li><b>No Edward server.</b> Edward runs on your computer and talks only to ChatGPT (through OpenAI's Codex, with your own account) and to the Google services you connect.</li>
+      <li><b>A guard in code, not a promise.</b> Card, bank and account numbers, ID numbers, passwords and one-time codes are taken out before anything is sent to the AI, even partial ones like "card ending 1234". They are never stored.</li>
+      <li><b>You approve what matters.</b> Sending an email, changing your calendar and marking a bill paid all need your OK. Edward can't pay, sign in to a bank, or follow instructions found in an email.</li>
+      <li><b>Personal accounts only.</b> Work and school Google accounts are refused, so your employer's data never comes near it.</li>
     </ul>
-    <p>Jarvis asks only for the permissions a feature needs, and the owner can disconnect at any time.</p>
-  </section>
+    <p>Read exactly what is protected, and where the protection ends, in <a href="https://github.com/Ruihang2017/project-jarvis/blob/main/SECURITY.md">SECURITY.md</a> and the <a href="privacy.html">privacy policy</a>.</p>
+  </div>
+</section>
 
-  <section>
-    <h2>Privacy</h2>
-    <p>See the <a href="privacy.html">privacy policy</a> for what data is accessed, where it is stored and how to remove it.</p>
-  </section>
+<section id="install" class="install">
+  <h2>Install</h2>
+  <p class="need">You need Windows 10 or 11 and a ChatGPT account that includes Codex. Google is optional but makes Edward much more useful.</p>
+  <ol class="steps">
+    <li>
+      <h3>Install Codex</h3>
+      <p>Codex is OpenAI's free app that connects Edward to your ChatGPT account. Open <b>PowerShell</b> and run:</p>
+      <pre><code>winget install -e --id OpenAI.Codex</code></pre>
+      <p class="small">Or see <a href="https://developers.openai.com/codex">OpenAI's Codex page</a> for other ways.</p>
+    </li>
+    <li>
+      <h3>Install Edward</h3>
+      <p><a href="https://github.com/Ruihang2017/project-jarvis/releases/download/v0.2.0/Edward-Setup-0.2.0.exe">Download Edward Setup</a> and run it. While Edward is in beta the installer isn't signed, so Windows says <i>"Windows protected your PC"</i>: click <b>More info</b>, then <b>Run anyway</b>.</p>
+    </li>
+    <li>
+      <h3>Sign in to ChatGPT</h3>
+      <p>Edward opens your browser to sign in. Your login stays on your computer.</p>
+    </li>
+    <li>
+      <h3>Connect Google</h3>
+      <p>In Settings → Accounts, add your personal Google account. During the beta Google shows <i>"Google hasn't verified this app"</i>: click <b>Advanced</b>, then <b>Go to Edward</b>. The beta has room for 100 people.</p>
+    </li>
+    <li>
+      <h3>Optional: voice</h3>
+      <p>To talk to Edward, add an OpenAI API key in Settings → Voice.</p>
+    </li>
+  </ol>
+</section>
 
-  <footer>
-    <a href="privacy.html">Privacy policy</a>
-  </footer>
-</main>
+<section id="faq" class="faq">
+  <h2>Questions</h2>
+  <details><summary>Is it free?</summary><p>Edward is free and open source (MIT). It uses your ChatGPT plan's Codex allowance, so there is no extra subscription. Voice is billed by OpenAI to your own API key, usually a few cents a minute.</p></details>
+  <details><summary>Where is my data?</summary><p>In <code>%LOCALAPPDATA%\Edward</code> on your computer. Google sign-ins are encrypted with Windows. Settings → Your data can back it up, export it or delete it.</p></details>
+  <details><summary>Can Edward send email or change my calendar by itself?</summary><p>No. Every email is shown to you before it is sent, and every change to your calendar asks first. Edward never invites people or deletes mail.</p></details>
+  <details><summary>Outlook, iCloud, WeChat, WhatsApp?</summary><p>Personal Google accounts work today; personal Microsoft accounts are planned. Work accounts are never supported. WeChat and WhatsApp have no way to connect a personal account safely, but their email notifications show up in the mail summary.</p></details>
+  <details><summary>Mac or phone?</summary><p>Windows only for now. Lists and events live in Google, so you see them on your phone.</p></details>
+  <details><summary>Why the warnings when installing?</summary><p>Signing the installer and Google's app review cost time and money that a free beta doesn't have yet. Both warnings are expected; the source code is on GitHub for anyone to check.</p></details>
+</section>
+
+<footer>
+  <img src="icon.png" alt="" width="28" height="28">
+  <span>Edward · <a href="privacy.html">Privacy policy</a> · <a href="https://github.com/Ruihang2017/project-jarvis">GitHub</a> · MIT licence</span>
+  <span class="small">Not affiliated with OpenAI or Google. ChatGPT and Codex are OpenAI's; Gmail, Google Calendar and Google Tasks are Google's.</span>
+</footer>
 </body>
 </html>

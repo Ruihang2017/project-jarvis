@@ -368,7 +368,7 @@ const VOICE_WORDS: Record<VoicePhase, string> = {
 function VoiceBar({ phase, onStop }: { phase: VoicePhase; onStop: () => void }) {
   return (
     <div className="voice-bar" role="status" aria-live="polite">
-      <span className={`voice-dot ${phase}`} aria-hidden />
+      <span className="voice-dot" data-phase={phase} aria-hidden />
       <div className="grow">
         <b>{VOICE_WORDS[phase]}</b>
         <div className="muted" style={{ fontSize: 12 }}>

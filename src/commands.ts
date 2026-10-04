@@ -22,7 +22,9 @@ import { preview, renderPreview } from "./sixel.js";
 import { copyImageToClipboard, openWithDefaultApp } from "./system.js";
 import { GoogleAuthError, shortScope } from "./google/auth.js";
 import { stripControl, tildify, truncate } from "./util.js";
-import { withoutNotes } from "./assistant.js";
+import { scanTripsNow, summariseNow, tripScanLines, withoutNotes } from "./assistant.js";
+import { tripLine } from "./headsup/trips.js";
+import { digestLines } from "./headsup/mailsummary.js";
 import { formatAmount, type Bill } from "./bills/store.js";
 import { billLine, billLines, billSettings, runScan, scanSummary } from "./bills/view.js";
 import { monthCsv, monthSummary } from "./bills/summary.js";
@@ -68,8 +70,9 @@ export const HELP_GROUPS: [string, [string, string][]][] = [
     [
       ["/brief", "today at a glance: events, reminders, bills, mail"],
       ["/calendar", "your Google Calendar, today and tomorrow or the week"],
-      ["/mail", "unread mail from the last day"],
+      ["/mail", "unread mail from the last day; /mail summary: what needs you"],
       ["/lists", "shopping list, home jobs, to-dos"],
+      ["/trips", "flights, hotels and car hire found in booking emails"],
       ["/bills", "bills found in your email: review, pay status, monthly summary"],
       ["/remind", "reminders: list, done, snooze, cancel"],
       ["/memory", "what Edward remembers about you"],
@@ -772,11 +775,17 @@ const COMMANDS: Record<string, Command> = {
   },
 
   "/mail": {
-    usage: "/mail",
-    help: "Unread mail in Gmail's Primary tab from the last 24 hours, from every account (no model call)",
-    run: async (_, session) => {
+    usage: "/mail [summary]",
+    help: "Unread mail in Gmail's Primary tab from the last 24 hours, from every account (no model call). /mail summary: new mail sorted into what needs you, worth knowing and social (the model reads it, through the privacy guard)",
+    run: async (args, session) => {
       const accounts = session.accounts.for("mail");
       if (!accounts.length) return console.log(dim("[no mail connected — /connect google]"));
+      if (args.trim() === "summary") {
+        console.log(dim("[reading new mail…]"));
+        const d = await summariseNow(session);
+        for (const l of digestLines(d)) console.log(l);
+        return;
+      }
       const lists = await Promise.all(accounts.map(async (a) => (await new GmailClient(session.accounts.auth(a)).search(UNREAD_QUERY, 20)).map((m) => ({ m, a }))));
       const unread = lists.flat().sort((x, y) => y.m.date.getTime() - x.m.date.getTime());
       if (!unread.length) return console.log(dim("[no unread mail in Primary from the last 24 hours]"));
@@ -784,6 +793,29 @@ const COMMANDS: Record<string, Command> = {
       const many = accounts.length > 1;
       for (const { m, a } of unread) console.log(`  ${summaryLine(m, now)}${many ? dim(` · ${session.accounts.label(a)}`) : ""}`);
       console.log(dim(`  ${unread.length}${lists.some((l) => l.length === 20) ? "+" : ""} unread · ask Edward to summarise or read one`));
+    },
+  },
+
+  "/trips": {
+    usage: "/trips [scan|ok <n>|hide <n>]",
+    help: "Trips found in booking emails (flights, hotels, car hire, trains). scan: look now · ok <n>: the details are right · hide <n>: not a trip",
+    run: async (args, session) => {
+      const [sub, n] = args.split(/\s+/).filter(Boolean);
+      if (sub === "scan") {
+        if (!session.accounts.for("mail").length) return console.log(dim("[no mail connected — /connect google]"));
+        const r = await scanTripsNow(session);
+        const lines = tripScanLines(r);
+        return console.log(lines.length ? lines.join("\n") : dim(`[no new bookings in ${r.scanned} email${r.scanned === 1 ? "" : "s"}]`));
+      }
+      if ((sub === "ok" || sub === "hide") && n) {
+        const t = session.trips.get(Number(n));
+        if (!t) return console.log(dim(`[no trip #${n}]`));
+        session.trips.update(t.id, sub === "ok" ? { needsCheck: false } : { status: "dismissed" });
+        return console.log(dim(`[${sub === "ok" ? "confirmed" : "hidden"}: ${t.title}]`));
+      }
+      const trips = session.trips.upcoming();
+      if (!trips.length) return console.log(dim("[no trips — booking confirmations in your email show up here; /trips scan]"));
+      for (const t of trips) console.log(`  #${t.id} ${tripLine(t)}${t.status === "added" ? dim(" · in your calendar") : ""}`);
     },
   },
 

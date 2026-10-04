@@ -38,6 +38,7 @@ you › reply to Sam's update and ask whether the energy account is set up
 | **Voice** (desktop app) | Talk to Edward and hear the reply, with your own OpenAI API key |
 | **Bills** | Finds bills in your email, checks them for signs of fraud, reminds you before they are due |
 | **Daily brief** | Today's events, reminders, bills and unread mail in one glance |
+| **Heads-ups** | Before an event with a place or people (and the related emails); a mail summary twice a day; the week ahead on Sunday evening; trips from booking emails, with when to leave |
 
 ## Privacy guard
 
@@ -61,6 +62,13 @@ before you rely on Edward.
 
 ## Install
 
+**Desktop app (Windows):** download `Edward-Setup-0.2.0.exe` from the
+[releases](https://github.com/Ruihang2017/project-jarvis/releases) and follow the
+[install steps](https://ruihang2017.github.io/project-jarvis/#install) (Codex first:
+`winget install -e --id OpenAI.Codex`).
+
+**Terminal version:**
+
 ```
 npm install -g github:Ruihang2017/project-jarvis
 edward setup
@@ -76,7 +84,7 @@ Just type. Slash commands cover the rest — `/help` lists them in three groups:
 
 | Conversation | What Edward looks after | Setup and care |
 |---|---|---|
-| `/new` `/resume` `/image` `/model` `/effort` `/usage` `/mode` | `/brief` `/calendar` `/mail` `/lists` `/bills` `/remind` `/memory` `/images` | `/start` `/connect` `/accounts` `/google` `/disconnect` `/background` `/region` `/web` `/data` `/doctor` |
+| `/new` `/resume` `/image` `/model` `/effort` `/usage` `/mode` | `/brief` `/calendar` `/mail` `/lists` `/trips` `/bills` `/remind` `/memory` `/images` | `/start` `/connect` `/accounts` `/google` `/disconnect` `/background` `/region` `/web` `/data` `/doctor` |
 
 ### The desktop app
 

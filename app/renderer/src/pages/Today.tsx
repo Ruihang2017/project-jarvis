@@ -1,8 +1,9 @@
-import type { EventInfo } from "../../../shared/api";
+import type { ComingUp, EventInfo, TripInfo, WeekView } from "../../../shared/api";
 import { useApp, Shell } from "../App";
 import { call, useData } from "../api";
 import { art, Card, Icon, Loading, Note } from "../ui";
 import { Composer } from "./Chat";
+import { digestMail, openMailLater } from "./Mail";
 
 const SUGGESTIONS = ["What's on tomorrow?", "Any important mail today?", "Remind me at 5pm to call the dentist", "What bills are still unpaid this month?"];
 
@@ -37,12 +38,14 @@ const eventSub = (e: EventInfo) => [e.end && `until ${e.end}`, e.location].filte
 
 export function Today() {
   const { go, chat, state } = useApp();
-  const { data } = useData(() => call("today"), [state.google.connected]);
+  const { data, reload } = useData(() => call("today"), [state.google.connected]);
   const evening = data?.evening ?? new Date().getHours() >= 18;
+  // A heads-up card above the others: the page scrolls rather than squeezing them.
+  const banner = Boolean(data?.comingUp || data?.week || data?.trips);
   return (
-    <Shell title="Today" sub={data?.date ?? ""} fixed>
-      <div className="stack" style={{ height: "100%", gap: 16 }}>
-        <section className="hero" aria-label="Today at a glance" style={{ height: 270, background: evening ? "#131b33" : undefined }}>
+    <Shell title="Today" sub={data?.date ?? ""} fixed={!banner}>
+      <div className="stack" style={{ height: banner ? undefined : "100%", gap: 16 }}>
+        <section className="hero" aria-label="Today at a glance" style={{ height: banner ? 196 : 270, flexShrink: 0, background: evening ? "#131b33" : undefined }}>
           <img src={art(evening ? "hero-evening" : "hero-morning")} alt="" style={{ objectPosition: evening ? "center 45%" : "center 40%" }} />
           <div
             style={{
@@ -64,10 +67,14 @@ export function Today() {
           </div>
         </section>
 
+        {data?.trips && <TripsCard found={data.trips.found} next={data.trips.next} onChange={reload} />}
+        {data?.week && <WeekCard w={data.week} />}
+        {data?.comingUp && <ComingUpCard c={data.comingUp} />}
+
         {!data ? (
           <Loading what="Getting today ready" />
         ) : (
-          <div className="grid-4" style={{ flex: 1, minHeight: 0 }}>
+          <div className="grid-4" style={{ flex: 1, minHeight: banner ? 300 : 0 }}>
             <Card className="pad stack">
               <CardHead icon="calendar" title="Calendar" page="calendar" />
               {!data.google ? (
@@ -119,6 +126,27 @@ export function Today() {
               <CardHead icon="mail" title="Mail" page="mail" />
               {!data.google ? (
                 <ConnectHint />
+              ) : data.digest ? (
+                <div className="stack" style={{ gap: 8 }}>
+                  <div style={{ fontWeight: 600 }}>{data.digest.headline}</div>
+                  {!data.digest.items.length && data.digest.rest && <div className="muted">{data.digest.rest}</div>}
+                  {[...data.digest.items.filter((i) => i.group === "act"), ...data.digest.items.filter((i) => i.group !== "act")].slice(0, 3).map((i) => (
+                    <button
+                      type="button"
+                      key={i.id}
+                      className="list-btn"
+                      style={{ padding: "4px 8px", margin: "0 -8px" }}
+                      onClick={() => {
+                        openMailLater(digestMail(i));
+                        go("mail");
+                      }}
+                    >
+                      <span style={{ fontWeight: i.group === "act" ? 500 : 400, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+                        {i.line}
+                      </span>
+                    </button>
+                  ))}
+                </div>
               ) : data.mailProblem ? (
                 <Note tone="apricot" icon="warn">
                   {data.mailProblem}
@@ -137,7 +165,11 @@ export function Today() {
               ) : (
                 <p className="muted">No unread mail in Primary since yesterday.</p>
               )}
-              {data.mailCount > 0 && (
+              {data.digest ? (
+                <div className="muted" style={{ marginTop: "auto", paddingTop: 12, borderTop: "1px solid var(--line)" }}>
+                  Summary of mail since {data.digest.since} · {data.mailCount === 20 ? "20+" : data.mailCount} unread
+                </div>
+              ) : data.mailCount > 0 && (
                 <div className="muted" style={{ marginTop: "auto", paddingTop: 12, borderTop: "1px solid var(--line)" }}>
                   {data.mailCount === 20 ? "20+" : data.mailCount} unread in Primary since yesterday
                 </div>
@@ -179,6 +211,235 @@ export function Today() {
         </div>
       </div>
     </Shell>
+  );
+}
+
+const KIND_LABEL = { flight: "Flight", hotel: "Stay", car: "Car hire", train: "Train" };
+const BUFFER_OPTIONS = [
+  { value: 60, label: "1 h" },
+  { value: 90, label: "1½ h" },
+  { value: 120, label: "2 h" },
+  { value: 180, label: "3 h" },
+];
+
+/** Trips (H2): bookings just found in email, and the next trip within a week. */
+function TripsCard({ found, next, onChange }: { found: TripInfo[]; next?: TripInfo; onChange: () => void }) {
+  const { go, toast } = useApp();
+  const act = async (id: number, action: "calendar" | "dismiss" | "confirm" | "packing") => {
+    const r = await call("tripAction", id, action);
+    toast(r);
+    if (r.ok && action === "packing") go("lists");
+    else onChange();
+  };
+  const openMail = (t: TripInfo) => {
+    openMailLater({ id: t.mailId, threadId: "", from: "", subject: t.title, snippet: "", date: "", looksLikeBill: false, unread: false });
+    go("mail");
+  };
+  return (
+    <Card className="pad stack" style={{ flexShrink: 0, gap: 12, borderLeft: "4px solid var(--sage, #4f8a6b)" }}>
+      {next && (
+        <div className="between" style={{ alignItems: "flex-start", gap: 16 }}>
+          <div className="stack" style={{ gap: 4, minWidth: 0 }}>
+            <div className="label">Next trip · {next.when}</div>
+            <div style={{ fontFamily: "var(--disp)", fontSize: 19, fontWeight: 600 }} className="ellipsis">
+              {next.title}
+            </div>
+            {next.where && (
+              <div className="row muted" style={{ gap: 6 }}>
+                <Icon name="pin" size={15} />
+                <span className="ellipsis">{next.where}</span>
+                {next.mapUrl && (
+                  <a href={next.mapUrl} target="_blank" rel="noreferrer noopener">
+                    Map
+                  </a>
+                )}
+              </div>
+            )}
+            {next.weather && <div className="muted">Weather there: {next.weather}</div>}
+            {next.leaveBy && (
+              <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                <span>
+                  Leave by <b>{next.leaveBy}</b>, allowing
+                </span>
+                {BUFFER_OPTIONS.map((o) => (
+                  <button
+                    type="button"
+                    key={o.value}
+                    className="pill"
+                    aria-pressed={next.bufferMin === o.value}
+                    style={{ fontWeight: next.bufferMin === o.value ? 700 : 400 }}
+                    onClick={async () => {
+                      await call("tripBuffer", next.id, o.value);
+                      onChange();
+                    }}
+                  >
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="row" style={{ gap: 8, flexShrink: 0 }}>
+            {next.status !== "added" && (
+              <button type="button" className="btn small" onClick={() => void act(next.id, "calendar")}>
+                <Icon name="calendar" size={15} /> Add to calendar
+              </button>
+            )}
+            <button type="button" className="btn small" onClick={() => void act(next.id, "packing")}>
+              <Icon name="check" size={15} /> Packing list
+            </button>
+            <button type="button" className="btn small" onClick={() => openMail(next)}>
+              <Icon name="mail" size={15} /> Email
+            </button>
+          </div>
+        </div>
+      )}
+      {found.filter((t) => t.id !== next?.id).length > 0 && (
+        <div className="stack" style={{ gap: 6, borderTop: next ? "1px solid var(--line)" : undefined, paddingTop: next ? 10 : 0 }}>
+          <div className="label">Found in your email</div>
+          {found
+            .filter((t) => t.id !== next?.id)
+            .map((t) => (
+              <div key={t.id} className="between" style={{ gap: 12 }}>
+                <div className="ellipsis">
+                  <b>{KIND_LABEL[t.kind]}</b> {t.title.replace(/^(Flight|Train|Stay:|Car hire:?)\s*/, "")} · {t.when}
+                  {t.needsCheck && <span className="muted"> · please check the details in the email</span>}
+                </div>
+                <div className="row" style={{ gap: 6, flexShrink: 0 }}>
+                  {t.needsCheck && (
+                    <button type="button" className="btn small" onClick={() => void act(t.id, "confirm")}>
+                      Details are right
+                    </button>
+                  )}
+                  <button type="button" className="btn small" onClick={() => void act(t.id, "calendar")}>
+                    Add to calendar
+                  </button>
+                  <button type="button" className="btn small" onClick={() => openMail(t)}>
+                    Email
+                  </button>
+                  <button type="button" className="btn small" onClick={() => void act(t.id, "dismiss")}>
+                    Not a trip
+                  </button>
+                </div>
+              </div>
+            ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+/** Weekly review (H3): the seven days from tomorrow, on the review day. */
+function WeekCard({ w }: { w: WeekView }) {
+  const { go, chat } = useApp();
+  const extras = [...w.bills.map((b) => `Bill: ${b}`), ...w.todo.map((x) => `To do: ${x}`), ...w.reminders.map((r) => `Reminder: ${r}`)];
+  return (
+    <Card className="pad stack" style={{ flexShrink: 0, gap: 12, borderLeft: "4px solid var(--apricot)" }}>
+      <div className="between">
+        <div>
+          <div className="label">Next week</div>
+          <div style={{ fontFamily: "var(--disp)", fontSize: 19, fontWeight: 600 }}>{w.headline}</div>
+        </div>
+        <button
+          type="button"
+          className="btn small"
+          onClick={() => {
+            chat.send("Help me plan the coming week: look at my calendar, bills and lists for the next seven days and suggest what to do when.");
+            go("chat");
+          }}
+        >
+          <Icon name="chat" size={15} /> Plan my week
+        </button>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: 8 }}>
+        {w.days.map((d) => (
+          <div key={d.date} className="stack" style={{ gap: 2, minWidth: 0 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--blue-ink)" }}>{d.label}</div>
+            {d.events.slice(0, 3).map((e, i) => (
+              <div key={i} className="ellipsis" style={{ fontSize: 13 }}>
+                {e}
+              </div>
+            ))}
+            {d.events.length > 3 && <div className="muted" style={{ fontSize: 12.5 }}>+{d.events.length - 3} more</div>}
+            {!d.events.length && <div className="muted" style={{ fontSize: 13 }}>Free</div>}
+          </div>
+        ))}
+      </div>
+      {extras.length > 0 && (
+        <div className="muted ellipsis" style={{ borderTop: "1px solid var(--line)", paddingTop: 8 }}>
+          {extras.slice(0, 3).join(" · ")}
+          {extras.length > 3 ? ` · and ${extras.length - 3} more` : ""}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+/** Meeting heads-up (H1): the next event with a place, people or related email. */
+function ComingUpCard({ c }: { c: ComingUp }) {
+  const { go, chat } = useApp();
+  const e = c.event;
+  return (
+    <Card className="pad" style={{ flexShrink: 0, display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1.2fr) auto", gap: 24, alignItems: "start", borderLeft: "4px solid var(--blue)" }}>
+      <div className="stack" style={{ gap: 6 }}>
+        <div className="label">Coming up · {c.when}</div>
+        <div style={{ fontFamily: "var(--disp)", fontSize: 21, fontWeight: 600, lineHeight: 1.2 }} className="ellipsis">
+          {e.start} {e.title}
+        </div>
+        {e.location && (
+          <div className="row muted" style={{ gap: 6 }}>
+            <Icon name="pin" size={15} />
+            <span className="ellipsis">{e.location}</span>
+            {c.mapUrl && (
+              <a href={c.mapUrl} target="_blank" rel="noreferrer noopener" style={{ flexShrink: 0 }}>
+                Map
+              </a>
+            )}
+          </div>
+        )}
+        {c.withWhom && (
+          <div className="row muted" style={{ gap: 6 }}>
+            <Icon name="users" size={15} />
+            <span className="ellipsis">With {c.withWhom}</span>
+          </div>
+        )}
+      </div>
+      <div className="stack" style={{ gap: 4, minWidth: 0 }}>
+        {c.related.length > 0 && <div className="muted">Related email</div>}
+        {c.related.map((m) => (
+          <button
+            type="button"
+            key={m.id}
+            className="list-btn"
+            style={{ padding: "4px 8px" }}
+            onClick={() => {
+              openMailLater(m);
+              go("mail");
+            }}
+          >
+            <div className="ellipsis" style={{ fontWeight: 500 }}>
+              {m.from} — {m.subject}
+            </div>
+          </button>
+        ))}
+        {c.notes.map((n) => (
+          <div key={n} className="muted ellipsis">
+            <Icon name="book" size={14} /> {n}
+          </div>
+        ))}
+        {!c.related.length && !c.notes.length && <div className="muted">Nothing in your mail about it in the last 30 days.</div>}
+      </div>
+      <button
+        type="button"
+        className="btn small"
+        onClick={() => {
+          chat.send(`Help me get ready for "${e.title}" at ${e.start} today.`);
+          go("chat");
+        }}
+      >
+        <Icon name="chat" size={15} /> Help me get ready
+      </button>
+    </Card>
   );
 }
 

@@ -11,6 +11,8 @@ export type VoicePhase = "connecting" | "listening" | "hearing" | "thinking" | "
 /** Stops the call after this long with nobody talking (the session costs while it is open). */
 const IDLE_MS = 5 * 60_000;
 
+type VoiceEvent = { type: string; transcript?: string; error?: { message?: string }; usage?: unknown; response?: { usage?: unknown } };
+
 export class VoiceCall {
   private pc: RTCPeerConnection | null = null;
   private dc: RTCDataChannel | null = null;
@@ -59,7 +61,7 @@ export class VoiceCall {
         this.poke();
         for (const t of this.queued.splice(0)) this.say(t);
       };
-      dc.onmessage = (m) => this.event(JSON.parse(String(m.data)) as { type: string; transcript?: string; error?: { message?: string } });
+      dc.onmessage = (m) => this.event(JSON.parse(String(m.data)) as VoiceEvent);
       pc.onconnectionstatechange = () => {
         if (pc.connectionState === "failed" || pc.connectionState === "closed") {
           if (this.phase !== "off") this.on.problem("The voice connection dropped.");
@@ -78,8 +80,12 @@ export class VoiceCall {
     }
   }
 
-  private event(e: { type: string; transcript?: string; error?: { message?: string } }) {
+  private event(e: VoiceEvent) {
     switch (e.type) {
+      // What it cost: kept as numbers for the estimate in Settings → Voice.
+      case "response.done":
+        if (e.response?.usage) void call("voiceUsage", { kind: "response", usage: e.response.usage }).catch(() => {});
+        break;
       case "input_audio_buffer.speech_started":
         this.poke();
         // Talking over Edward stops it (the session also cancels its answer).
@@ -87,6 +93,7 @@ export class VoiceCall {
         this.set("hearing");
         break;
       case "conversation.item.input_audio_transcription.completed": {
+        if (e.usage) void call("voiceUsage", { kind: "transcription", usage: e.usage }).catch(() => {});
         const text = (e.transcript ?? "").trim();
         if (text) {
           this.set("thinking");

@@ -33,6 +33,9 @@ import { REMINDER_INSTRUCTIONS } from "./reminders/prompt.js";
 import { ReminderStore } from "./reminders/store.js";
 import { Accounts } from "./accounts/accounts.js";
 import { BillStore } from "./bills/store.js";
+import { NoticeStore } from "./headsup/notices.js";
+import { DigestStore } from "./headsup/mailsummary.js";
+import { TripStore } from "./headsup/trips.js";
 import { BILL_INSTRUCTIONS } from "./bills/tools.js";
 import { googleInstructions } from "./google/instructions.js";
 import { config, PERSONA } from "./config.js";
@@ -141,6 +144,12 @@ export class Session {
   /** Connected Google accounts (A1). */
   readonly accounts = new Accounts();
   readonly bills = new BillStore();
+  /** Heads-ups already shown (H). */
+  readonly notices = new NoticeStore();
+  /** Mail summaries (H4). */
+  readonly digests = new DigestStore();
+  /** Trips found in booking emails (H2). */
+  readonly trips = new TripStore();
   private tools = new ToolRunner(config.workspace, this.memory, this.reminders, this.accounts, this.bills);
   /** Told whenever the privacy guard removed something on its way to Codex. */
   onRedacted?: (source: Source, removed: Category[]) => void;
@@ -232,7 +241,7 @@ export class Session {
 
   async init(): Promise<GetAccountResponse> {
     await this.client.request<InitializeResponse>("initialize", {
-      clientInfo: { name: "edward", title: "Edward", version: "0.1.0" },
+      clientInfo: { name: "edward", title: "Edward", version: "0.2.0" },
       // Needed for dynamicTools (Edward tools); experimental fields may change across codex versions.
       capabilities: { experimentalApi: true, requestAttestation: false },
     });
@@ -519,5 +528,8 @@ export class Session {
     this.memory.close();
     this.reminders.close();
     this.bills.close();
+    this.notices.close();
+    this.digests.close();
+    this.trips.close();
   }
 }

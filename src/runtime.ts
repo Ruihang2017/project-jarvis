@@ -21,4 +21,6 @@ export const runtime: {
   noBackgroundWork?: boolean;
   /** Google desktop client built into the app at packaging time (D37); a google-client.json in the data folder wins. */
   googleClient?: { clientId: string; clientSecret: string };
+  /** Demo mode (D44): Google answered from made-up data (src/demo/google.ts). Unset in normal use. */
+  googleHttp?: typeof fetch;
 } = {};

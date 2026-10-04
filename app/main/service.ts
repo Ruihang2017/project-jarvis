@@ -12,7 +12,10 @@ import { config } from "../../src/config.js";
 import { appDataDir, imagesDir, loadSettings, updateSettings } from "../../src/settings.js";
 import { activityLabel, activityNotes } from "../../src/activity.js";
 import { runtime } from "../../src/runtime.js";
-import { backgroundSuggestion, claimDueNow, handleGeneratedImage, startBackgroundWork, turnInputs, withoutNotes } from "../../src/assistant.js";
+import { backgroundSuggestion, claimDueNow, handleGeneratedImage, scanTripsNow, startBackgroundWork, summariseNow, tripScanLines, turnInputs, withoutNotes } from "../../src/assistant.js";
+import { digestHeadline, digestRest, digestToast, sinceLabel, summaryTimes, type MailDigest } from "../../src/headsup/mailsummary.js";
+import { composeWeek, weekHeadline, weeklySchedule, weeklyShowing, weekToast } from "../../src/headsup/weekly.js";
+import { BUFFERS, DEFAULT_BUFFER_MIN, destination, foundToast, leaveBy, packingList, tripEvent, tripNoticeToast, weather, when as tripWhen, whenLabel, type Trip } from "../../src/headsup/trips.js";
 import { moveFromJarvis, renameMessage } from "../../src/data/rename.js";
 import { ensureDataVersion, readDataVersion, DATA_VERSION } from "../../src/data/version.js";
 import { backupData, listBackups } from "../../src/data/backup.js";
@@ -37,6 +40,7 @@ import { startFrom, WRITE_INSTRUCTIONS } from "../../src/google/compose.js";
 import { STARTER_LISTS, TasksClient } from "../../src/google/tasks.js";
 import { DEFAULT_MODEL, DEFAULT_VOICE, hasVoiceKey, looksLikeKey, removeVoiceKey, saveVoiceKey, speakable, VOICES } from "../../src/voice/voice.js";
 import { answerCall, checkKey } from "./voice.js";
+import { dollars, fromResponseUsage, fromTranscriptionUsage, SpendStore } from "../../src/voice/spend.js";
 import { ALL_SCOPES, missingFeatures } from "../../src/google/instructions.js";
 import { shortScope } from "../../src/google/auth.js";
 import { clientPath, hasClient, loadClient, GoogleAuthError } from "../../src/google/oauth.js";
@@ -55,6 +59,7 @@ import { listImages, stripRequest } from "../../src/images.js";
 import { briefSchedule, nextBriefAt } from "../../src/background/brief.js";
 import { installTask, removeTask, taskStatus } from "../../src/background/task.js";
 import { showToast } from "../../src/background/notify.js";
+import { findRelated, headsUpToast, isCandidate, mapUrl, meetingLead, minutesUntil, peopleNotes, withWhom, worthIt } from "../../src/headsup/meetings.js";
 import { reminderToast } from "../../src/background/tick.js";
 import { copyImageToClipboard, openWithDefaultApp } from "../../src/system.js";
 import { runDoctor } from "../../src/doctor.js";
@@ -68,6 +73,8 @@ import type * as A from "../shared/api.js";
 
 const GUIDE_URL = "https://github.com/Ruihang2017/project-jarvis/blob/main/docs/google-cloud-setup.md";
 const REMINDER_POLL_MS = 20_000;
+const COMING_UP_MS = 3 * 3_600_000;
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 const MAX_ATTACHMENTS = 5;
 const IMAGE_TYPES = ["png", "jpg", "jpeg", "gif", "webp"];
 
@@ -84,6 +91,9 @@ export class EdwardService implements A.EdwardApi {
   private signedIn = false;
   private ready = false;
   private timer?: NodeJS.Timeout;
+  /** Set on quit: Codex stopping then is expected, not news. */
+  private closing = false;
+  private spend?: SpendStore;
 
   constructor(
     private readonly emit: (e: A.EdwardEvent) => void,
@@ -106,7 +116,7 @@ export class EdwardService implements A.EdwardApi {
       const where = { message: "your message", tool: "a tool's answer", instructions: "Edward's notes", answer: "your answer", background: "a background task" }[source];
       this.push({ kind: "notice", id: randomUUID(), tone: "guard", text: `${capitalise(describeRemoved(removed))} removed from ${where} before it left this computer. The model didn't see it.` });
     };
-    this.session.client.on("exit", (code) => this.notice([`Codex stopped (${code}). Close and reopen Edward.`]));
+    this.session.client.on("exit", (code) => !this.closing && this.notice([`Codex stopped (${code}). Close and reopen Edward.`]));
     const { account } = await this.session.init();
     this.signedIn = account?.type === "chatgpt";
     if (account?.type === "chatgpt") this.account.email = account.email ?? undefined;
@@ -125,6 +135,25 @@ export class EdwardService implements A.EdwardApi {
         const lines = [...due.reminders.map((f) => `⏰ ${f.occurrence.slice(11)} ${f.reminder.text}`), ...due.bills.map(noticeLine)];
         if (lines.length) this.notice(lines);
         void due.brief?.then((b) => this.notice([b.title, ...b.lines]));
+        for (const n of due.trips) {
+          void showToast(tripNoticeToast(n));
+          this.notice([tripNoticeToast(n).title]);
+        }
+        void due.week?.then((w) => {
+          void showToast(weekToast(w));
+          this.notice([weekToast(w).title]);
+        });
+        void due.mailDigest?.then((d) => {
+          if (!d) return;
+          void showToast(digestToast(d));
+          this.notice([digestToast(d).title]);
+        });
+        void due.meetings.then((list) => {
+          for (const h of list) {
+            void showToast(headsUpToast(h));
+            this.notice([headsUpToast(h).title]);
+          }
+        });
       } catch {
         // a failed check is retried on the next tick
       }
@@ -134,6 +163,8 @@ export class EdwardService implements A.EdwardApi {
   }
 
   close() {
+    this.closing = true;
+    this.spend?.close();
     if (this.timer) clearInterval(this.timer);
     this.session?.close();
   }
@@ -286,7 +317,8 @@ export class EdwardService implements A.EdwardApi {
 
   async voiceInfo(): Promise<A.VoiceInfo> {
     const s = loadSettings();
-    return { hasKey: hasVoiceKey(), voice: s.voice && (VOICES as readonly string[]).includes(s.voice) ? s.voice : DEFAULT_VOICE, voices: [...VOICES], model: s.voiceModel || DEFAULT_MODEL };
+    const spent = (this.spend ??= new SpendStore()).totals();
+    return { hasKey: hasVoiceKey(), voice: s.voice && (VOICES as readonly string[]).includes(s.voice) ? s.voice : DEFAULT_VOICE, voices: [...VOICES], model: s.voiceModel || DEFAULT_MODEL, spentToday: dollars(spent.today), spent30: dollars(spent.last30) };
   }
 
   async voiceSaveKey(key: string): Promise<A.Result> {
@@ -319,6 +351,11 @@ export class EdwardService implements A.EdwardApi {
     } catch (e) {
       return fail(e);
     }
+  }
+
+  async voiceUsage(u: { kind: "response" | "transcription"; usage: unknown }): Promise<void> {
+    const counts = u?.kind === "response" ? fromResponseUsage(u.usage) : u?.kind === "transcription" ? fromTranscriptionUsage(u.usage) : null;
+    if (counts) (this.spend ??= new SpendStore()).add(loadSettings().voiceModel || DEFAULT_MODEL, counts);
   }
 
   async voiceHeard(text: string): Promise<void> {
@@ -446,13 +483,22 @@ export class EdwardService implements A.EdwardApi {
     let events: A.EventInfo[] = [];
     let tomorrow: A.EventInfo[] = [];
     let calendarProblem: string | undefined;
+    let live: { e: CalendarEvent; a: Account }[] = [];
     if (acc.for("calendar").length) {
       const day = localDate(now);
       const { events: all, problem } = await this.eventsAcross(dayStart(day), dayStart(nextDate(day, 2)));
-      const live = all.filter(({ e }) => !e.declined);
+      live = all.filter(({ e }) => !e.declined);
       events = live.filter(({ e }) => localDate(e.start) === day && (e.allDay || e.end > now)).map((x) => this.eventInfo(x));
       tomorrow = live.filter(({ e }) => localDate(e.start) === nextDate(day)).map((x) => this.eventInfo(x));
       calendarProblem = problem;
+    }
+    const comingUp = live.length ? await this.comingUp(live, now) : undefined;
+    const latest = this.session.digests.latest();
+    const digest = latest && localDate(new Date(latest.at)) === localDate(now) ? this.digestView(latest, now) : undefined;
+    let week: A.WeekView | undefined;
+    if (weeklyShowing(now)) {
+      const w = await composeWeek(acc, this.session.reminders, this.session.bills, now);
+      week = { headline: capitalise(weekHeadline(w)), days: w.days.map((d) => ({ date: d.date, label: d.label, events: d.events.map(clean) })), bills: w.bills.map(clean), todo: w.todo.map(clean), reminders: w.reminders.map(clean), problems: w.problems };
     }
     let mail: A.MailSummary[] = [];
     let mailCount = 0;
@@ -478,6 +524,10 @@ export class EdwardService implements A.EdwardApi {
       date: now.toLocaleDateString("en-AU", { weekday: "long", day: "numeric", month: "long" }),
       evening,
       summary,
+      comingUp,
+      digest,
+      week,
+      trips: await this.tripsToday(now),
       events,
       tomorrow,
       calendarProblem,
@@ -488,6 +538,22 @@ export class EdwardService implements A.EdwardApi {
       mailProblem,
       reminders,
       google,
+    };
+  }
+
+  /** The next event within three hours worth a heads-up (H1): it has a place, people or related email. */
+  private async comingUp(events: { e: CalendarEvent; a: Account }[], now: Date): Promise<A.ComingUp | undefined> {
+    const next = events.find(({ e }) => isCandidate(e) && e.start > now && e.start.getTime() - now.getTime() <= COMING_UP_MS);
+    if (!next) return undefined;
+    const related = await findRelated(this.session.accounts, next.e).catch(() => []);
+    if (!worthIt(next.e, related.length)) return undefined;
+    return {
+      event: this.eventInfo(next),
+      when: minutesUntil(next.e.start, now),
+      mapUrl: next.e.location ? mapUrl(next.e.location) : undefined,
+      withWhom: withWhom(next.e) || undefined,
+      related: related.map((r) => this.mailSummary(r.m, r.account)),
+      notes: peopleNotes(this.session.memory, next.e).map(clean),
     };
   }
 
@@ -584,6 +650,136 @@ export class EdwardService implements A.EdwardApi {
     if (!list.more) this.mailLists.delete(id!);
     const problem = list.problems.map((p) => (accounts.length > 1 ? `${acc.label(acc.get(p.key)!)}: ${googleProblem(p.error)}` : googleProblem(p.error))).join(" · ");
     return { connected: true, items, cursor: list.more ? id : undefined, problem: problem || undefined, manyAccounts: accounts.length > 1 };
+  }
+
+  // ------------------------------------------------ trips (H2)
+
+  /** Weather per place and day, for an hour: the Today page asks often. */
+  private readonly weatherCache = new Map<string, { at: number; text: string | null }>();
+
+  private async tripsToday(now: Date): Promise<A.TodayView["trips"]> {
+    const trips = this.session.trips.upcoming(now);
+    const recent = now.getTime() - 14 * 86_400_000;
+    const found = trips.filter((t) => t.status === "new" && new Date(t.foundAt).getTime() > recent).slice(0, 3);
+    const next = trips.find((t) => !t.needsCheck && tripWhen(t.start).getTime() - now.getTime() < 7 * 86_400_000);
+    if (!found.length && !next) return undefined;
+    return { found: found.map((t) => this.tripInfo(t)), next: next ? { ...this.tripInfo(next), weather: (await this.tripWeather(next)) ?? undefined } : undefined };
+  }
+
+  private async tripWeather(t: Trip): Promise<string | null> {
+    const date = localDate(tripWhen(t.start));
+    const key = `${destination(t)}|${date}`;
+    const hit = this.weatherCache.get(key);
+    if (hit && Date.now() - hit.at < 3_600_000) return hit.text;
+    const text = await weather(destination(t), date);
+    this.weatherCache.set(key, { at: Date.now(), text });
+    return text;
+  }
+
+  private tripInfo(t: Trip): A.TripInfo {
+    const leave = leaveBy(t);
+    const where = t.kind === "hotel" || t.kind === "car" ? (t.address ?? t.place) : t.from && t.to ? `${t.from} → ${t.to}` : undefined;
+    const end = t.end ? (t.kind === "hotel" || t.kind === "car" ? ` → ${whenLabel(t.end)}` : /T/.test(t.end) ? ` → ${hhmm(tripWhen(t.end))}` : "") : "";
+    return {
+      id: t.id,
+      kind: t.kind,
+      title: clean(t.title),
+      when: `${whenLabel(t.start)}${end}`,
+      where: where ? clean(where) : undefined,
+      mapUrl: (t.kind === "hotel" || t.kind === "car") && (t.address ?? t.place) ? mapUrl(clean(t.address ?? t.place!)) : undefined,
+      status: t.status,
+      needsCheck: t.needsCheck,
+      leaveBy: leave ? hhmm(leave) : undefined,
+      bufferMin: t.bufferMin ?? DEFAULT_BUFFER_MIN,
+      mailId: `${t.mailbox}/${t.messageId}`,
+    };
+  }
+
+  async tripAction(id: number, action: "calendar" | "dismiss" | "confirm" | "packing"): Promise<A.Result> {
+    const t = this.session.trips.get(Number(id));
+    if (!t) return { ok: false, message: "That trip is gone." };
+    const acc = this.session.accounts;
+    try {
+      if (action === "dismiss") {
+        this.session.trips.update(t.id, { status: "dismissed" });
+        return ok("Hidden");
+      }
+      if (action === "confirm") {
+        this.session.trips.update(t.id, { needsCheck: false });
+        return ok("Thanks. Edward will remind you before it.");
+      }
+      if (action === "packing") {
+        const a = acc.primary("tasks");
+        if (!a) return { ok: false, message: "Lists need Google Tasks: sign in again in Accounts." };
+        const list = await packingList(new TasksClient(acc.auth(a)), t);
+        return ok(`Made "${list.title}" in Lists`);
+      }
+      const a = acc.primary("calendar");
+      if (!a) return { ok: false, message: "No calendar is connected." };
+      const client = new CalendarClient(acc.auth(a));
+      const calendar = (await client.calendars()).find((c) => c.primary && c.writable);
+      if (!calendar) return { ok: false, message: "Your calendar is read-only." };
+      const e = tripEvent(t);
+      await client.createEvent(calendar, { title: e.title, ...resolveTimes(e.start, e.end), location: e.location, notes: e.notes });
+      this.session.trips.update(t.id, { status: "added", needsCheck: false });
+      return ok(`Added to ${calendar.name}`);
+    } catch (err) {
+      return fail(err);
+    }
+  }
+
+  async tripBuffer(id: number, minutes: number): Promise<A.Result> {
+    if (!BUFFERS.includes(Number(minutes))) return { ok: false, message: "Choose 1, 1½, 2 or 3 hours." };
+    this.session.trips.update(Number(id), { bufferMin: Number(minutes) });
+    return ok("");
+  }
+
+  async tripScan(): Promise<A.Result> {
+    if (!this.session.accounts.for("mail").length) return { ok: false, message: "No mail account is connected." };
+    try {
+      const r = await scanTripsNow(this.session);
+      if (r.found.length) void showToast(foundToast(r.found));
+      return ok(r.found.length ? tripScanLines(r).join(" · ").replace(/✈ /g, "") : `No new bookings in ${r.scanned} email${r.scanned === 1 ? "" : "s"}.`);
+    } catch (e) {
+      return fail(e);
+    }
+  }
+
+  // ------------------------------------------------ mail summary (H4)
+
+  async mailDigest(): Promise<A.DigestView | null> {
+    const d = this.session.digests.latest();
+    return d ? this.digestView(d) : null;
+  }
+
+  async mailSummarize(): Promise<A.Result & { digest?: A.DigestView }> {
+    if (!this.session.accounts.for("mail").length) return { ok: false, message: "No mail account is connected." };
+    try {
+      const d = await summariseNow(this.session);
+      return { ...ok(`Mail since ${sinceLabel(d)}: ${digestHeadline(d)}`), digest: this.digestView(d) };
+    } catch (e) {
+      return fail(e);
+    }
+  }
+
+  private digestView(d: MailDigest, now = new Date()): A.DigestView {
+    const acc = this.session.accounts;
+    const made = new Date(d.at);
+    const madeLabel = localDate(made) === localDate(now) ? hhmm(made) : `${shortDay(localDate(made), localDate(now))} ${hhmm(made)}`;
+    return {
+      made: madeLabel,
+      since: sinceLabel(d, now),
+      today: localDate(made) === localDate(now),
+      headline: capitalise(digestHeadline(d)),
+      items: d.items.map((i) => {
+        const a = acc.get(i.id.split("/")[0]!);
+        return { ...(a ? this.from(a) : {}), id: i.id, group: i.group, line: clean(i.line), from: clean(i.from), subject: clean(i.subject), due: i.due ? shortDay(i.due, localDate(now)) : undefined };
+      }),
+      bills: d.bills.map((b) => ({ id: b.id, line: clean(b.line) })),
+      rest: digestRest(d),
+      removed: d.removed,
+      problems: d.problems.map(clean),
+    };
   }
 
   // ------------------------------------------------ writing email (F1b): the user's own, no model
@@ -1163,6 +1359,9 @@ export class EdwardService implements A.EdwardApi {
       currencyDetected: !s.currency,
       autoOpenImages: s.autoOpenImages !== false,
       mailPictures: s.mailPictures === "always",
+      meetingLead: String(meetingLead() ?? "off") as A.MeetingLead,
+      mailSummaryTimes: summaryTimes(),
+      weeklyReview: weeklySchedule(),
       imagesDir: imagesDir(),
       limits: windows.map((w) => ({
         label: w.windowDurationMins === 10080 ? "Weekly limit" : w.windowDurationMins ? `${Math.round(w.windowDurationMins / 60)}-hour limit` : "Limit",
@@ -1199,6 +1398,14 @@ export class EdwardService implements A.EdwardApi {
     if (p.currency !== undefined) updateSettings({ currency: p.currency ? p.currency.toUpperCase() : undefined });
     if (p.autoOpenImages !== undefined) updateSettings({ autoOpenImages: p.autoOpenImages });
     if (p.mailPictures !== undefined) updateSettings({ mailPictures: p.mailPictures ? "always" : "ask" });
+    if (p.weeklyReview === "off") updateSettings({ weeklyReview: "off" });
+    else if (p.weeklyReview && Number.isInteger(p.weeklyReview.day) && p.weeklyReview.day >= 0 && p.weeklyReview.day <= 6 && TIME_RE.test(String(p.weeklyReview.time))) updateSettings({ weeklyReview: { day: p.weeklyReview.day, time: p.weeklyReview.time } });
+    if (p.mailSummaryTimes === "off") updateSettings({ mailSummaryTimes: "off" });
+    else if (Array.isArray(p.mailSummaryTimes)) {
+      const times = p.mailSummaryTimes.filter((t) => TIME_RE.test(String(t)));
+      if (times.length) updateSettings({ mailSummaryTimes: times.slice(0, 4) });
+    }
+    if (p.meetingLead && ["15", "30", "60", "off"].includes(p.meetingLead)) updateSettings({ meetingLead: p.meetingLead === "off" ? "off" : Number(p.meetingLead) });
     if (p.billSettings) {
       const b = p.billSettings;
       if (b.scan) updateSettings({ billsScan: b.scan });
@@ -1539,6 +1746,14 @@ function total(list: Bill[]): string {
 function niceDay(d: string, first: string): string {
   const date = dayStart(d).toLocaleDateString("en-AU", { weekday: "long", day: "numeric", month: "long" });
   return d === first ? `Today · ${date}` : d === nextDate(first) ? `Tomorrow · ${date}` : date;
+}
+
+/** "today", "tomorrow", "yesterday", "Fri 9 Oct" */
+function shortDay(d: string, today: string): string {
+  if (d === today) return "today";
+  if (d === nextDate(today)) return "tomorrow";
+  if (d === nextDate(today, -1)) return "yesterday";
+  return dayStart(d).toLocaleDateString("en-AU", { weekday: "short", day: "numeric", month: "short" });
 }
 
 function niceDue(at: string): string {

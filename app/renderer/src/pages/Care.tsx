@@ -94,6 +94,41 @@ export function Settings() {
               <input className="input" type="time" aria-label="Brief time" value={data.briefTime} onChange={(e) => e.target.value && set({ briefTime: e.target.value })} style={{ width: 120 }} />
             </Row>
             <Segmented label="Brief days" value={data.briefDays} onChange={(v) => set({ briefDays: v })} options={[{ value: "weekdays", label: "Weekdays" }, { value: "daily", label: "Daily" }, { value: "off", label: "Off" }]} />
+            <Row name="Mail summary" help="Edward reads your new mail and tells you what needs you. Uses your ChatGPT plan; only while Edward is open.">
+              <Toggle on={data.mailSummaryTimes.length > 0} label="Mail summary" onChange={(v) => set({ mailSummaryTimes: v ? ["08:30", "18:00"] : "off" })} />
+            </Row>
+            {data.mailSummaryTimes.length > 0 && (
+              <div className="row" style={{ gap: 8 }}>
+                {data.mailSummaryTimes.map((t, i) => (
+                  <input
+                    key={i}
+                    className="input"
+                    type="time"
+                    aria-label={`Mail summary time ${i + 1}`}
+                    value={t}
+                    onChange={(e) => e.target.value && set({ mailSummaryTimes: data.mailSummaryTimes.map((x, j) => (j === i ? e.target.value : x)) })}
+                    style={{ width: 120 }}
+                  />
+                ))}
+              </div>
+            )}
+            <Row name="Weekly review" help="The week ahead: events, bills, to-dos and reminders.">
+              <Toggle on={Boolean(data.weeklyReview)} label="Weekly review" onChange={(v) => set({ weeklyReview: v ? { day: 0, time: "19:00" } : "off" })} />
+            </Row>
+            {data.weeklyReview && (
+              <div className="row" style={{ gap: 8 }}>
+                <select className="input" aria-label="Weekly review day" value={data.weeklyReview.day} onChange={(e) => set({ weeklyReview: { ...data.weeklyReview!, day: Number(e.target.value) } })} style={{ width: 150 }}>
+                  {["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"].map((n, i) => (
+                    <option key={n} value={i}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+                <input className="input" type="time" aria-label="Weekly review time" value={data.weeklyReview.time} onChange={(e) => e.target.value && set({ weeklyReview: { ...data.weeklyReview!, time: e.target.value } })} style={{ width: 120 }} />
+              </div>
+            )}
+            <Row name="Before events" help="A heads-up with the place, the people and related email. Only for events that have one of those." />
+            <Segmented label="Heads-up before events" value={data.meetingLead} onChange={(v) => set({ meetingLead: v })} options={[{ value: "15", label: "15 min" }, { value: "30", label: "30 min" }, { value: "60", label: "1 hour" }, { value: "off", label: "Off" }]} />
             <Hr />
             <h3>Region</h3>
             <Row name="Dates" help={data.dateOrder === "dmy" ? "10/12 means 10 December." : "10/12 means October 12."} />
@@ -666,6 +701,24 @@ function VoiceCard() {
           </Button>
         </form>
       )}
+      <Row
+        name="Spent on voice"
+        help={
+          <>
+            Estimated from what OpenAI reports during calls. Exact figures for your whole account:{" "}
+            <a href="https://platform.openai.com/usage" target="_blank" rel="noreferrer noopener">
+              platform.openai.com/usage
+            </a>
+          </>
+        }
+      >
+        <div style={{ textAlign: "right", flexShrink: 0 }}>
+          <div>
+            Today <b>{data.spentToday}</b>
+          </div>
+          <div className="muted">Last 30 days {data.spent30}</div>
+        </div>
+      </Row>
       <Row name="Edward's voice" help="marin and cedar sound the most natural.">
         <select className="input" value={data.voice} onChange={async (e) => (await call("voiceSetVoice", e.target.value), reload(), voice.phase !== "off" && toast("The new voice starts with the next call."))}>
           {data.voices.map((v) => (

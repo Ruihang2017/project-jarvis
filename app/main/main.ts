@@ -4,14 +4,18 @@
  * in shared/api.ts through preload.
  */
 import { app, BrowserWindow, ipcMain, Menu, nativeImage, session as electronSession, shell, Tray } from "electron";
-import { appendFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, sep } from "node:path";
 import { AUMID } from "../../src/background/notify.js";
 import { runtime } from "../../src/runtime.js";
+import { envVar } from "../../src/settings.js";
+import { INSTALL_CODEX } from "../../src/config.js";
+import { demoGoogle } from "../../src/demo/google.js";
 import "./builtin.js";
 import { handleScheme, registerScheme } from "./images.js";
 import { handleMailScheme, MAIL_PRIVILEGES, MAIL_SCHEME } from "./mailview.js";
 import { EdwardService } from "./service.js";
+import { record, type Step } from "./record.js";
 import type { EdwardApi, EdwardEvent } from "../shared/api.js";
 
 const here = import.meta.dirname; // build/main
@@ -27,7 +31,21 @@ runtime.tick = { exe: process.execPath, args: [unpacked(join(here, "tick.js"))],
 
 /** Test hook: EDWARD_SHOT="page=file.png;page2=file2.png" renders those pages hidden and saves pictures, then quits. */
 const SHOTS = (process.env.EDWARD_SHOT ?? "").split(";").filter(Boolean).map((s) => s.split("=") as [string, string]);
-if (SHOTS.length) {
+/** Tutorial videos (D44): EDWARD_RECORD=<steps.json> EDWARD_RECORD_OUT=<folder> plays the steps and saves frames (record.ts). */
+const RECORD = process.env.EDWARD_RECORD;
+/** A hidden, automated run: screenshots or a recording. */
+const AUTOMATED = SHOTS.length > 0 || Boolean(RECORD);
+/**
+ * Demo mode (D44): Google answered from made-up data, for the tutorial videos. Only with its own data
+ * folder (filled by app/scripts/demo.ts), so it can never mix with real accounts.
+ */
+if (process.env.EDWARD_DEMO) {
+  if (!envVar("DATA_DIR")) throw new Error("EDWARD_DEMO needs EDWARD_DATA_DIR: a separate folder made by app/scripts/demo.ts");
+  runtime.googleHttp = demoGoogle();
+  runtime.silent = true;
+  app.setPath("userData", join(app.getPath("temp"), "edward-demo"));
+}
+if (AUTOMATED) {
   runtime.silent = true;
   runtime.noBackgroundWork = true;
   // Its own browser profile, so a check can run while the installed Edward is open.
@@ -39,20 +57,21 @@ let tray: Tray | null = null;
 let quitting = false;
 let service: EdwardService;
 
-if (!SHOTS.length && !app.requestSingleInstanceLock()) app.quit();
+if (!AUTOMATED && !app.requestSingleInstanceLock()) app.quit();
 app.setAppUserModelId(AUMID);
 registerScheme([MAIL_PRIVILEGES]);
 
 const shotListeners: ((e: EdwardEvent) => void)[] = [];
 const emit = (e: EdwardEvent) => {
   for (const l of shotListeners) l(e);
-  win?.webContents.send("edward:event", e);
+  // While quitting, Codex's exit and late background results arrive after the window is gone.
+  if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send("edward:event", e);
 };
 
 function createWindow() {
   win = new BrowserWindow({
-    width: 1360,
-    height: 860,
+    // Recordings are 16:9 (1440×810 of page, at the screen's scale).
+    ...(RECORD ? { width: 1440, height: 810, useContentSize: true } : { width: 1360, height: 860 }),
     minWidth: 1020,
     minHeight: 680,
     show: false,
@@ -82,12 +101,12 @@ function createWindow() {
   });
   win.on("close", (e) => {
     // Closing the window keeps Edward in the tray, so reminders still pop up; Quit is in the tray menu.
-    if (!quitting && !SHOTS.length) {
+    if (!quitting && !AUTOMATED) {
       e.preventDefault();
       win?.hide();
     }
   });
-  if (!SHOTS.length) win.once("ready-to-show", () => win?.show());
+  if (!AUTOMATED) win.once("ready-to-show", () => win?.show());
   void win.loadFile(RENDERER);
 }
 
@@ -111,7 +130,8 @@ function createTray() {
 
 const METHODS = new Set<keyof EdwardApi>([
   "state", "signIn", "send", "interrupt", "newConversation", "conversations", "openConversation", "transcript", "setMode", "answer",
-  "attachFiles", "attachClipboard", "removeAttachment", "today", "calendar", "mail", "mailMessage", "mailOriginal", "mailList", "calendarRange", "calendarTargets", "voiceInfo", "voiceSaveKey", "voiceRemoveKey", "voiceSetVoice", "voiceConnect", "voiceHeard", "lists", "listCreate", "listAdd", "listUpdate", "listRemove", "eventSave", "eventDelete", "mailCompose", "mailCheck", "mailSend", "mailSaveDraft", "mailWrite", "bills", "billHistory", "billAction",
+  "attachFiles", "attachClipboard", "removeAttachment", "today", "calendar", "mail", "mailMessage", "mailOriginal", "mailDigest", "tripAction", "tripBuffer", "tripScan",
+  "mailSummarize", "mailList", "calendarRange", "calendarTargets", "voiceInfo", "voiceSaveKey", "voiceRemoveKey", "voiceSetVoice", "voiceConnect", "voiceHeard", "voiceUsage", "lists", "listCreate", "listAdd", "listUpdate", "listRemove", "eventSave", "eventDelete", "mailCompose", "mailCheck", "mailSend", "mailSaveDraft", "mailWrite", "bills", "billHistory", "billAction",
   "billEdit", "billScan", "billMonth", "billExport", "forgetBills", "reminders", "reminderAction", "memory", "memoryAdd", "memoryEdit",
   "memoryForget", "memoryReview", "memoryUndo", "memoryExport", "pictures", "pictureAction", "settings", "updateSettings", "chooseImagesFolder",
   "doctor", "data", "backup", "exportAll", "openDataFolder", "deleteEverything", "google", "chooseGoogleClient", "connectGoogle", "checkGoogle",
@@ -146,17 +166,43 @@ app.whenReady().then(async () => {
     const fn = (service as unknown as Record<string, (...a: unknown[]) => unknown>)[method]!;
     return fn.apply(service, Array.isArray(args) ? args : []);
   });
-  const started = service.start().catch((e) => emit({ type: "notice", lines: [`Edward couldn't start: ${e instanceof Error ? e.message : String(e)}`] }));
+  const started = service.start().catch((e) => {
+    const message = e instanceof Error ? e.message : String(e);
+    // The usual first-start problem: Codex isn't installed yet.
+    const lines = /ENOENT|not recognized|spawn codex/i.test(message)
+      ? ["Edward needs Codex, OpenAI's free app that connects to your ChatGPT account.", `Open PowerShell and run:  ${INSTALL_CODEX}  then open Edward again.`]
+      : [`Edward couldn't start: ${message}`];
+    emit({ type: "notice", lines });
+  });
   ipcMain.handle("edward:ready", () => started.then(() => true));
   createWindow();
+  if (RECORD) return makeRecording(RECORD);
   if (SHOTS.length) return takeShots();
   createTray();
 });
 
 app.on("window-all-closed", () => {
-  if (SHOTS.length) app.quit();
+  if (AUTOMATED) app.quit();
   // otherwise stay in the tray
 });
+
+async function makeRecording(stepsFile: string) {
+  const w = win!;
+  await new Promise<void>((r) => w.webContents.once("did-finish-load", () => r()));
+  await w.webContents.executeJavaScript("window.edward.ready()");
+  await new Promise((r) => setTimeout(r, 2500));
+  const out = process.env.EDWARD_RECORD_OUT ?? join(app.getPath("temp"), "edward-recording");
+  mkdirSync(out, { recursive: true });
+  try {
+    const steps = JSON.parse(readFileSync(stepsFile, "utf8")) as Step[];
+    const r = await record(w, steps, out, { navigate: (to) => emit({ type: "navigate", to }), busy: () => service.session.busy });
+    writeFileSync(join(out, "done.json"), JSON.stringify(r));
+  } catch (e) {
+    writeFileSync(join(out, "error.txt"), e instanceof Error ? (e.stack ?? e.message) : String(e));
+  }
+  quitting = true;
+  app.quit();
+}
 
 async function takeShots() {
   const w = win!;

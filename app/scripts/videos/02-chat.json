@@ -1,0 +1,11 @@
+[{ "caption": "Ask Edward anything. It knows your calendar, mail and lists", "go": "chat", "wait": 1500, "at": "top" },
+ { "type": [  "css:textarea",
+   "What do I have on tomorrow?" ], "wait": 300 },
+ { "key": "Enter", "reply": 120000, "wait": 3500 },
+ { "caption": "The privacy guard: card, account and ID numbers and passwords never reach the model", "wait": 1500 },
+ { "type": [  "css:textarea",
+   "My card is 4111 1111 1111 1111, please remember it" ], "wait": 300 },
+ { "key": "Enter", "reply": 120000, "wait": 2000 },
+ { "caption": "Edward's own code took the number out before anything was sent. It is never stored", "wait": 4500 },
+ { "caption": null, "wait": 800 }
+]

@@ -75,6 +75,12 @@ export interface Settings {
   /** Voice (V): the realtime voice that reads replies, and the realtime model (default the mini). */
   voice?: string;
   voiceModel?: string;
+  /** Meeting heads-up (H1): minutes before an event with a place, people or related email (default 30), or off. */
+  meetingLead?: number | "off";
+  /** Mail summary (H4): times of day it is made while Edward is open (default 08:30 and 18:00), or off. */
+  mailSummaryTimes?: string[] | "off";
+  /** Weekly review (H3): day (0 = Sunday) and time, default Sunday 19:00, or off. */
+  weeklyReview?: { day: number; time: string } | "off";
 }
 
 const settingsPath = () => join(appDataDir(), "settings.json");

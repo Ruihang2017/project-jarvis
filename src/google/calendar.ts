@@ -47,6 +47,8 @@ export interface CalendarEvent {
   recurring: boolean;
   /** Attendees other than the user. Edward doesn't change events with guests (D22). */
   guests: number;
+  /** Those attendees' addresses and names (H1: related email, who it's with). */
+  people: { email?: string; name?: string }[];
 }
 
 interface ApiEvent {
@@ -59,7 +61,7 @@ interface ApiEvent {
   description?: string;
   transparency?: string;
   recurringEventId?: string;
-  attendees?: { self?: boolean; responseStatus?: string; resource?: boolean }[];
+  attendees?: { self?: boolean; responseStatus?: string; resource?: boolean; email?: string; displayName?: string }[];
 }
 
 /** What Edward writes: local times, or dates for all-day events (end date inclusive). */
@@ -119,6 +121,9 @@ export function toEvent(e: ApiEvent, cal: CalendarInfo): CalendarEvent | null {
     declined: e.attendees?.some((a) => a.self && a.responseStatus === "declined") ?? false,
     recurring: Boolean(e.recurringEventId),
     guests: e.attendees?.filter((a) => !a.self && !a.resource).length ?? 0,
+    people: (e.attendees ?? [])
+      .filter((a) => !a.self && !a.resource)
+      .map((a) => ({ email: a.email ? stripControl(a.email).trim().toLowerCase() || undefined : undefined, name: a.displayName ? stripControl(a.displayName).trim() || undefined : undefined })),
   };
 }
 

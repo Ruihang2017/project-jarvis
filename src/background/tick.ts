@@ -1,7 +1,7 @@
 /**
  * `edward tick`: run every minute by the scheduled task. Fires due reminders as notifications and
- * exits. Deliberately light: no Codex, no model calls; the only network call is a Google token
- * refresh every few hours when Google is connected.
+ * exits. Deliberately light: no Codex, no model calls. Network: a Google token refresh every few
+ * hours, and a look at the next events every five minutes for meeting heads-ups (H1).
  */
 import { appendFileSync, mkdirSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -18,6 +18,10 @@ import { backgroundCheck } from "../google/health.js";
 import { BillStore } from "../bills/store.js";
 import { claimDueNotices, noticeToast } from "../bills/remind.js";
 import { readDataVersion, DATA_VERSION } from "../data/version.js";
+import { NoticeStore } from "../headsup/notices.js";
+import { claimHeadsUps, headsUpToast } from "../headsup/meetings.js";
+import { composeWeek, weekToast, weeklyDue } from "../headsup/weekly.js";
+import { claimTripNotices, tripNoticeToast, TripStore } from "../headsup/trips.js";
 
 const logPath = () => join(appDataDir(), "logs", "tick.log");
 
@@ -53,6 +57,37 @@ export async function runTick(now = new Date()): Promise<Fired[]> {
     bills.close();
   }
   const accounts = new Accounts();
+  const notices = new NoticeStore();
+  const memory = new MemoryStore();
+  try {
+    for (const h of await claimHeadsUps(accounts, notices, memory, now)) await showToast(headsUpToast(h, now));
+  } catch (e) {
+    log(`heads-up failed: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  try {
+    if (weeklyDue(notices, now)) {
+      const reminders = new ReminderStore();
+      const billStore = new BillStore();
+      try {
+        await showToast(weekToast(await composeWeek(accounts, reminders, billStore, now)));
+      } finally {
+        reminders.close();
+        billStore.close();
+      }
+    }
+  } catch (e) {
+    log(`weekly review failed: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  const trips = new TripStore();
+  try {
+    for (const n of claimTripNotices(trips, notices, now)) await showToast(tripNoticeToast(n));
+  } catch (e) {
+    log(`trip notices failed: ${e instanceof Error ? e.message : String(e)}`);
+  } finally {
+    trips.close();
+    notices.close();
+    memory.close();
+  }
   const many = accounts.connected().length > 1;
   for (const a of accounts.connected()) {
     try {

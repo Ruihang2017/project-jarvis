@@ -1,8 +1,10 @@
 # Security and privacy
 
 Edward is a personal assistant that runs on your own Windows computer. It talks to an AI model through
-the Codex CLI and your own ChatGPT account, and — if you connect them — to your own Google Calendar and
-Gmail. There is no Edward server: nothing is sent anywhere except to those services.
+the Codex CLI and your own ChatGPT account, and — if you connect them — to your own Google Calendar,
+Gmail and Google Tasks. Two more only when used: OpenAI's realtime voice service (with your own API key)
+and Open-Meteo for the weather where a trip goes (a place name and a date). There is no Edward server:
+nothing is sent anywhere else.
 
 This page says what Edward protects, how, and where the protection ends.
 
@@ -79,6 +81,28 @@ A fooled model can also save a wrong "memory". You are shown every memory as it 
 (`/memory undo`); if a wrong memory later puts the wrong recipient on an email, the send prompt shows the
 address and flags it as a first-time recipient.
 
+## Heads-ups and the mail summary
+
+- **Before events** Edward's code, not the model, looks at the next events every five minutes (the
+  background task, or Edward while it is open) and, for an event with a place or other people, searches
+  your Gmail for related email. The notification shows what it found; nothing goes to the model. Edward
+  keeps only which notices it has shown (ids and times, for two months).
+- **The mail summary** is a model call. At the times set in Settings (08:30 and 18:00 unless you change
+  them; only while Edward is open) and whenever you press Summarize, the model reads the new mail in your
+  inbox since the last summary: at most 40 emails, the first 800 characters of each, through the privacy
+  guard and marked as data. Adverts and forum mail are only counted, and emails Edward already knows as
+  bills aren't sent again. Edward's code keeps a line only if it names one of the emails it was given and
+  holds nothing Edward never stores; the last three summaries are kept in `memory.db`. Switch it off in
+  Settings → Your day.
+- **The weekly review** is code only, like the daily brief.
+- **Trips.** Once a day Edward searches your Gmail for booking confirmations from the last 60 days. Most
+  carry booking data (schema.org) that Edward's code reads; only emails without it go to the model, through
+  the guard, and what it finds must match the email (flight number or hotel name, and the date) or it is
+  marked "please check" and stays quiet. Booking references, ticket, membership and passport numbers are
+  not kept: the `trips` table has no column for them and every field is checked like a memory. Adding a
+  trip to your calendar is a button you press. For the weather at the destination Edward asks
+  [Open-Meteo](https://open-meteo.com) (free, no account) with only the place's name and the date.
+
 ## Bills
 
 Bills are found in your Gmail and reduced to payee, category, amount, due date and status. Account and
@@ -90,7 +114,7 @@ is discarded.
 
 ## Where your data is
 
-Everything is in `%LOCALAPPDATA%\Edward` on your computer: memories, reminders and bills (`memory.db`),
+Everything is in `%LOCALAPPDATA%\Edward` on your computer: memories, reminders, bills, mail summaries and trips (`memory.db`),
 settings, generated images, and Codex's conversation history (`codex-home`). These files are not
 encrypted; they are protected by your Windows account. Each Google sign-in token is encrypted with Windows
 DPAPI (one per account, in `accounts\<id>\`) and never logged.
@@ -133,6 +157,8 @@ directly, billed to that key.
   realtime model never answers on its own and has no tools.
 - The key is encrypted with Windows DPAPI on your computer, never shown again, never logged and never sent
   to Codex. The window never has it: the main process makes the connection. `edward delete-data` deletes it.
+- What voice costs is estimated from the token counts OpenAI reports during a call; only those numbers are
+  kept (`voice_spend` in `memory.db`), never what was said. Edward doesn't ask for an OpenAI admin key.
 - The microphone is allowed only for Edward's own page and only for sound (no camera); the email frame
   can't use it. A call stops after five quiet minutes.
 
@@ -162,6 +188,12 @@ On top of that:
 - **What you typed is shown as it was sent:** if the guard removed a number from your message, the
   conversation shows "card number removed" in its place, not the number.
 - Closing the window keeps Edward in the tray so reminders still appear; Quit is in the tray menu.
+
+## Demo mode
+
+The tutorial videos are recorded with a demo mode (`EDWARD_DEMO`) in which Google is answered from
+made-up data built into Edward; it refuses every other address. It only starts together with its own
+separate data folder, so it can't mix with real accounts, and it is never on otherwise.
 
 ## Dependencies
 

@@ -1,19 +1,49 @@
 import { useEffect, useRef, useState } from "react";
-import type { ComposeCheck, ComposeDraft, MailListView, MailMessage, MailOriginal, MailPage, MailSummary } from "../../../shared/api";
+import type { ComposeCheck, ComposeDraft, DigestView, MailListView, MailMessage, MailOriginal, MailPage, MailSummary } from "../../../shared/api";
 import { useApp, Shell } from "../App";
 import { call, useData } from "../api";
 import { AccountChip, Button, Card, Confirm, Icon, IconButton, Loading, Note, Segmented, Spot, Tag } from "../ui";
 import { NotConnected } from "./Calendar";
 
-const VIEWS: { value: MailListView; label: string; sub: string }[] = [
+type View = MailListView | "summary";
+
+const VIEWS: { value: View; label: string; sub: string }[] = [
+  { value: "summary", label: "Summary", sub: "What needs you in your new mail" },
   { value: "inbox", label: "Inbox", sub: "Your inbox, the last 30 days" },
   { value: "unread", label: "Unread", sub: "Unread in your Primary tab from the last 24 hours" },
   { value: "search", label: "Search", sub: "Search all your mail" },
 ];
 
+/** An email another page wants opened (Today's cards): taken by the Mail page when it opens. */
+let wanted: MailSummary | null = null;
+export const openMailLater = (m: MailSummary) => {
+  wanted = m;
+};
+
 export function Mail() {
   const { go, chat, toast } = useApp();
-  const [listView, setListView] = useState<MailListView>("inbox");
+  const [asked] = useState(() => {
+    const m = wanted;
+    wanted = null;
+    return m;
+  });
+  const [listView, setListView] = useState<View>("inbox");
+  const [digest, setDigest] = useState<DigestView | null | undefined>(undefined);
+  const [summarizing, setSummarizing] = useState(false);
+  useEffect(() => {
+    if (listView !== "summary" || digest !== undefined) return;
+    call("mailDigest").then(setDigest, () => setDigest(null));
+  }, [listView, digest]);
+  const summarize = async () => {
+    setSummarizing(true);
+    try {
+      const r = await call("mailSummarize");
+      if (r.digest) setDigest(r.digest);
+      toast(r);
+    } finally {
+      setSummarizing(false);
+    }
+  };
   const [query, setQuery] = useState("");
   const [searched, setSearched] = useState("");
   const [page, setPage] = useState<MailPage | null>(null);
@@ -21,7 +51,7 @@ export function Mail() {
   const [loading, setLoading] = useState(false);
   const [listProblem, setListProblem] = useState<string | null>(null);
   const [round, setRound] = useState(0);
-  const [picked, setPicked] = useState<MailSummary | null>(null);
+  const [picked, setPicked] = useState<MailSummary | null>(asked);
   const [message, setMessage] = useState<MailMessage | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [view, setView] = useState<"original" | "text">("original");
@@ -41,14 +71,14 @@ export function Mail() {
     setItems([]);
     setPage(null);
     setListProblem(null);
-    if (listView === "search" && !searched) return;
+    if ((listView === "search" && !searched) || listView === "summary") return;
     setLoading(true);
     call("mailList", { view: listView, query: searched }).then(
       (p) => {
         if (!live) return;
         setPage(p);
         setItems(p.items);
-        setPicked((x) => (x && p.items.some((m) => m.id === x.id) ? x : (p.items[0] ?? null)));
+        setPicked((x) => (x && (x === asked || p.items.some((m) => m.id === x.id)) ? x : (p.items[0] ?? null)));
         setLoading(false);
       },
       (e: unknown) => live && (setListProblem(e instanceof Error ? e.message : String(e)), setLoading(false)),
@@ -61,7 +91,7 @@ export function Mail() {
     if (!page?.cursor || loading) return;
     setLoading(true);
     try {
-      const next = await call("mailList", { view: listView, query: searched, cursor: page.cursor });
+      const next = await call("mailList", { view: listView as MailListView, query: searched, cursor: page.cursor });
       setPage(next);
       setItems((list) => [...list, ...next.items.filter((m) => !list.some((x) => x.id === m.id))]);
     } catch (e) {
@@ -117,6 +147,7 @@ export function Mail() {
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "400px minmax(0, 1fr)", gap: 16, height: "100%" }}>
           <Card className="stack" style={{ padding: 12, gap: 4, overflow: "auto" }}>
+            {listView === "summary" && <DigestPane digest={digest} busy={summarizing} onSummarize={() => void summarize()} picked={picked?.id} onPick={setPicked} many={Boolean(digest?.items.some((i) => i.accountLabel !== digest.items[0]?.accountLabel))} />}
             {listView === "search" && (
               <form
                 className="search"
@@ -139,7 +170,7 @@ export function Mail() {
               </Note>
             )}
             {!items.length && loading && <Loading />}
-            {!items.length && !loading && !problemText && (listView !== "search" || searched) && (
+            {!items.length && !loading && !problemText && listView !== "summary" && (listView !== "search" || searched) && (
               <div className="empty">
                 <Spot name="spot-rest" size={140} alt="An armchair with a blanket" />
                 <h2>{listView === "search" ? "Nothing found" : listView === "unread" ? "No unread mail" : "Your inbox is empty"}</h2>
@@ -174,7 +205,7 @@ export function Mail() {
             {page?.cursor && (
               <LoadMore loading={loading} onVisible={loadMore} />
             )}
-            <div style={{ marginTop: "auto", paddingTop: 8 }}>
+            <div style={{ marginTop: "auto", paddingTop: 8, display: listView === "summary" ? "none" : undefined }}>
               <Note icon="eye">Edward can read and search your mail and write drafts. It can't delete, archive or mark anything, so opening an email here leaves it unread in Gmail.</Note>
             </div>
           </Card>
@@ -415,6 +446,92 @@ function Compose({ start, onClose }: { start: ComposeDraft; onClose: () => void 
 }
 
 /** At the end of a list: loads the next page when it scrolls into view (or when clicked). */
+/** A summary item, opened like a list item. */
+export const digestMail = (i: { id: string; from: string; subject: string; account?: string; accountLabel?: string; color?: string }): MailSummary => ({
+  id: i.id,
+  threadId: "",
+  from: i.from,
+  subject: i.subject,
+  snippet: "",
+  date: "",
+  looksLikeBill: false,
+  unread: false,
+  account: i.account,
+  accountLabel: i.accountLabel,
+  color: i.color,
+});
+
+const GROUPS = [
+  ["act", "To act on"],
+  ["know", "Worth knowing"],
+  ["social", "Social"],
+] as const;
+
+/** Mail summary (H4): what needs you, worth knowing, social; each line opens its email. */
+function DigestPane({ digest, busy, onSummarize, picked, onPick, many }: { digest: DigestView | null | undefined; busy: boolean; onSummarize: () => void; picked?: string; onPick: (m: MailSummary) => void; many: boolean }) {
+  if (digest === undefined) return <Loading />;
+  return (
+    <div className="stack" style={{ gap: 10 }}>
+      <div className="between" style={{ alignItems: "flex-start", gap: 12, padding: "4px 4px 0" }}>
+        <div>
+          <div style={{ fontWeight: 600 }}>{digest ? digest.headline : "No summary yet"}</div>
+          <div className="muted">{digest ? `Mail since ${digest.since} · made ${digest.made}` : "Edward reads your new mail and tells you what needs you."}</div>
+        </div>
+        <Button small icon="spark" onClick={onSummarize} disabled={busy}>
+          {busy ? "Reading…" : "Summarize now"}
+        </Button>
+      </div>
+      {busy && <Loading what="Reading your new mail" />}
+      {digest?.problems.map((p) => (
+        <Note key={p} tone="apricot" icon="warn">
+          {p}
+        </Note>
+      ))}
+      {digest &&
+        GROUPS.map(([g, title]) => {
+          const items = digest.items.filter((i) => i.group === g);
+          if (!items.length) return null;
+          return (
+            <div key={g} className="stack" style={{ gap: 2 }}>
+              <div className="label" style={{ padding: "6px 4px 2px" }}>
+                {title}
+              </div>
+              {items.map((i) => (
+                <button type="button" key={i.id} className="list-btn" aria-pressed={picked === i.id} onClick={() => onPick(digestMail(i))}>
+                  <span style={{ fontWeight: 500 }}>{i.line}</span>
+                  <span className="muted ellipsis">
+                    {i.from}
+                    {i.due ? ` · by ${i.due}` : ""}
+                  </span>
+                  {many && i.accountLabel && <AccountChip label={i.accountLabel} color={i.color} />}
+                </button>
+              ))}
+            </div>
+          );
+        })}
+      {digest && digest.bills.length > 0 && (
+        <div className="stack" style={{ gap: 2 }}>
+          <div className="label" style={{ padding: "6px 4px 2px" }}>
+            Bills
+          </div>
+          {digest.bills.map((b) => (
+            <button type="button" key={b.id} className="list-btn" aria-pressed={picked === b.id} onClick={() => onPick(digestMail({ id: b.id, from: "", subject: b.line }))}>
+              <span style={{ fontWeight: 500 }}>{b.line}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      {digest?.rest && <p className="muted" style={{ padding: "0 4px" }}>{digest.rest}</p>}
+      {digest && digest.removed > 0 && (
+        <Note icon="shield">
+          {digest.removed} number{digest.removed === 1 ? " was" : "s were"} taken out before the model read the emails.
+        </Note>
+      )}
+      <Note icon="lock">To make this, the model reads your new mail through the privacy guard. It happens at the times set in Settings while Edward is open, or when you ask.</Note>
+    </div>
+  );
+}
+
 function LoadMore({ loading, onVisible }: { loading: boolean; onVisible: () => void }) {
   const ref = useRef<HTMLButtonElement>(null);
   const latest = useRef(onVisible);

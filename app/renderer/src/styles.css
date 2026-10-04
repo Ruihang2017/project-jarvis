@@ -87,10 +87,11 @@ a { color: var(--blue-ink); }
 
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .header { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 68px; padding: 12px 28px; }
-.header .titles { min-width: 0; }
+/* In a narrow window the title keeps its line and the buttons wrap, rather than the title folding into a column. */
+.header .titles { min-width: 150px; flex: 1 1 150px; }
 .header h1 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.header .sub { font-size: 13px; color: var(--ink2); }
-.header .actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.header .sub { font-size: 13px; color: var(--ink2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.header .actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px 10px; min-width: 0; }
 .body { flex: 1; min-height: 0; padding: 4px 28px 24px; overflow: auto; }
 .body.fixed { overflow: hidden; }
 
@@ -179,11 +180,12 @@ a { color: var(--blue-ink); }
 /* Voice (V): the bar at the bottom while a call is on. */
 .voice-bar { position: fixed; left: 50%; transform: translateX(-50%); bottom: 24px; z-index: 55; display: flex; align-items: center; gap: 14px; padding: 12px 14px 12px 18px; border-radius: 18px; background: var(--surface); box-shadow: var(--shadow-lg); border: 1px solid var(--line); width: min(560px, calc(100vw - 48px)); }
 .voice-dot { width: 14px; height: 14px; border-radius: 50%; background: var(--ink3); flex-shrink: 0; }
-.voice-dot.listening { background: var(--sage-ink); }
-.voice-dot.hearing { background: var(--blue); animation: voice-pulse 0.9s ease-in-out infinite; }
-.voice-dot.thinking { background: var(--apricot-ink); animation: voice-pulse 1.4s ease-in-out infinite; }
-.voice-dot.speaking { background: var(--blue); animation: voice-pulse 0.6s ease-in-out infinite; }
-.voice-dot.connecting { background: var(--ink3); animation: voice-pulse 1.2s ease-in-out infinite; }
+/* data-phase, not a class: ".thinking" is also the chat's "Thinking…" row and would pad the dot into an oval. */
+.voice-dot[data-phase="listening"] { background: var(--sage-ink); }
+.voice-dot[data-phase="hearing"] { background: var(--blue); animation: voice-pulse 0.9s ease-in-out infinite; }
+.voice-dot[data-phase="thinking"] { background: var(--apricot-ink); animation: voice-pulse 1.4s ease-in-out infinite; }
+.voice-dot[data-phase="speaking"] { background: var(--blue); animation: voice-pulse 0.6s ease-in-out infinite; }
+.voice-dot[data-phase="connecting"] { background: var(--ink3); animation: voice-pulse 1.2s ease-in-out infinite; }
 @keyframes voice-pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.35); opacity: 0.6; } }
 @media (prefers-reduced-motion: reduce) { .voice-dot { animation: none !important; } }
 
