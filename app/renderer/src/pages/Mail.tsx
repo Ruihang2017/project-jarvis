@@ -132,13 +132,23 @@ export function Mail() {
                     />
                   )}
                 </div>
-                {asSent && original?.remote && !pictures && (
-                  <div className="row" style={{ gap: 12, flexWrap: "wrap" }}>
-                    <span className="muted grow" style={{ minWidth: 240 }}>
+                {asSent && original?.remote && !original.shown && (
+                  <div className="note apricot" style={{ alignItems: "center" }}>
+                    <span className="grow" style={{ minWidth: 220 }}>
                       Pictures from the web are hidden. Loading them can tell the sender you opened this email.
                     </span>
-                    <Button small icon="image" onClick={() => setPictures(true)}>
+                    <Button small kind="primary" icon="image" onClick={() => setPictures(true)}>
                       Show pictures
+                    </Button>
+                    <Button
+                      small
+                      kind="ghost"
+                      onClick={async () => {
+                        await call("updateSettings", { mailPictures: true });
+                        setPictures(true);
+                      }}
+                    >
+                      Always show
                     </Button>
                   </div>
                 )}

@@ -168,6 +168,8 @@ export interface MailOriginal {
   url: string;
   /** It loads pictures or styles from the web, which are blocked unless `pictures` was asked for. */
   remote: boolean;
+  /** Web content is shown (asked for, or the user chose to always show it). */
+  shown: boolean;
 }
 
 export interface MailView {
@@ -325,6 +327,8 @@ export interface Settings {
   currency: string;
   currencyDetected: boolean;
   autoOpenImages: boolean;
+  /** Load pictures from the web in emails without asking. */
+  mailPictures: boolean;
   imagesDir: string;
   limits: { label: string; usedPercent: number; resets: string }[];
 }
@@ -340,6 +344,7 @@ export type SettingsPatch = Partial<{
   dateOrder: "dmy" | "mdy" | null;
   currency: string | null;
   autoOpenImages: boolean;
+  mailPictures: boolean;
   billSettings: Partial<BillSettings>;
 }>;
 

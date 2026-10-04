@@ -577,7 +577,8 @@ export class EdwardService implements A.EdwardApi {
       this.prepared.set(id, html);
       while (this.prepared.size > 10) this.prepared.delete(this.prepared.keys().next().value!);
     }
-    return { url: showMail(html, pictures), remote: hasRemoteContent(html) };
+    const shown = pictures || loadSettings().mailPictures === "always";
+    return { url: showMail(html, shown), remote: hasRemoteContent(html), shown };
   }
 
   // ---------------------------------------------------------------- bills
@@ -802,6 +803,7 @@ export class EdwardService implements A.EdwardApi {
       currency: r.currency,
       currencyDetected: !s.currency,
       autoOpenImages: s.autoOpenImages !== false,
+      mailPictures: s.mailPictures === "always",
       imagesDir: imagesDir(),
       limits: windows.map((w) => ({
         label: w.windowDurationMins === 10080 ? "Weekly limit" : w.windowDurationMins ? `${Math.round(w.windowDurationMins / 60)}-hour limit` : "Limit",
@@ -837,6 +839,7 @@ export class EdwardService implements A.EdwardApi {
     if (p.dateOrder !== undefined) updateSettings({ dateOrder: p.dateOrder ?? undefined });
     if (p.currency !== undefined) updateSettings({ currency: p.currency ? p.currency.toUpperCase() : undefined });
     if (p.autoOpenImages !== undefined) updateSettings({ autoOpenImages: p.autoOpenImages });
+    if (p.mailPictures !== undefined) updateSettings({ mailPictures: p.mailPictures ? "always" : "ask" });
     if (p.billSettings) {
       const b = p.billSettings;
       if (b.scan) updateSettings({ billsScan: b.scan });

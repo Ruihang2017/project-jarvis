@@ -133,6 +133,9 @@ export function Settings() {
               <Row name="Open pictures when they're made">
                 <Toggle on={data.autoOpenImages} label="Open pictures when they are made" onChange={(v) => set({ autoOpenImages: v })} />
               </Row>
+              <Row name="Show pictures in emails" help="Off: you choose per email. Pictures from the web can tell the sender you opened it.">
+                <Toggle on={data.mailPictures} label="Show pictures in emails without asking" onChange={(v) => set({ mailPictures: v })} />
+              </Row>
               <Row name="Saved in" help={<span className="mono" style={{ overflowWrap: "anywhere" }}>{data.imagesDir}</span>}>
                 <Button onClick={async () => (await call("chooseImagesFolder"), reload())}>Change</Button>
               </Row>

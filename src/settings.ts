@@ -70,6 +70,8 @@ export interface Settings {
    * only, so a company domain never appears in the code.
    */
   blockedDomains?: string[];
+  /** Desktop app: load pictures from the web in emails without asking each time (D35; default ask). */
+  mailPictures?: "ask" | "always";
 }
 
 const settingsPath = () => join(appDataDir(), "settings.json");
