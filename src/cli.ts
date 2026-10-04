@@ -6,7 +6,7 @@ import { existsSync } from "node:fs";
 import { unregisterNotifications } from "./background/notify.js";
 import { installTask, removeTask, taskStatus } from "./background/task.js";
 import { codexVersion, compareCodex } from "./doctor.js";
-import { CALENDAR_SCOPES, GMAIL_SCOPES, missingFeatures } from "./google/instructions.js";
+import { ALL_SCOPES, missingFeatures } from "./google/instructions.js";
 import { clientPath, hasClient } from "./google/oauth.js";
 import { region } from "./region.js";
 import { updateSettings } from "./settings.js";
@@ -135,7 +135,7 @@ export async function setupCli(): Promise<void> {
       },
       missing: () => [...new Set(accounts.connected().flatMap((a) => missingFeatures(accounts.state(a))))],
       connect: async () => {
-        const { state: s } = await accounts.connect([...CALENDAR_SCOPES, ...GMAIL_SCOPES], (url) => {
+        const { state: s } = await accounts.connect(ALL_SCOPES, (url) => {
           console.log(`  If your browser doesn't open, visit:\n  ${url}`);
           openBrowser(url);
         });

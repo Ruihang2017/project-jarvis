@@ -72,6 +72,9 @@ export interface Settings {
   blockedDomains?: string[];
   /** Desktop app: load pictures from the web in emails without asking each time (D35; default ask). */
   mailPictures?: "ask" | "always";
+  /** Voice (V): the realtime voice that reads replies, and the realtime model (default the mini). */
+  voice?: string;
+  voiceModel?: string;
 }
 
 const settingsPath = () => join(appDataDir(), "settings.json");

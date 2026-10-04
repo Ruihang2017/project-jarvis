@@ -176,6 +176,17 @@ a { color: var(--blue-ink); }
 .toast { padding: 14px 16px; border-radius: 14px; background: var(--surface); box-shadow: var(--shadow-lg); border: 1px solid var(--line); display: flex; gap: 12px; align-items: flex-start; }
 .toast .grow { white-space: pre-line; }
 
+/* Voice (V): the bar at the bottom while a call is on. */
+.voice-bar { position: fixed; left: 50%; transform: translateX(-50%); bottom: 24px; z-index: 55; display: flex; align-items: center; gap: 14px; padding: 12px 14px 12px 18px; border-radius: 18px; background: var(--surface); box-shadow: var(--shadow-lg); border: 1px solid var(--line); width: min(560px, calc(100vw - 48px)); }
+.voice-dot { width: 14px; height: 14px; border-radius: 50%; background: var(--ink3); flex-shrink: 0; }
+.voice-dot.listening { background: var(--sage-ink); }
+.voice-dot.hearing { background: var(--blue); animation: voice-pulse 0.9s ease-in-out infinite; }
+.voice-dot.thinking { background: var(--apricot-ink); animation: voice-pulse 1.4s ease-in-out infinite; }
+.voice-dot.speaking { background: var(--blue); animation: voice-pulse 0.6s ease-in-out infinite; }
+.voice-dot.connecting { background: var(--ink3); animation: voice-pulse 1.2s ease-in-out infinite; }
+@keyframes voice-pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.35); opacity: 0.6; } }
+@media (prefers-reduced-motion: reduce) { .voice-dot { animation: none !important; } }
+
 .modal-back { position: fixed; inset: 0; background: rgba(26, 34, 54, 0.32); display: flex; align-items: center; justify-content: center; z-index: 60; padding: 24px; }
 .modal { width: 100%; max-width: 480px; padding: 22px; border-radius: 18px; background: var(--surface); box-shadow: var(--shadow-lg); display: flex; flex-direction: column; gap: 12px; }
 .modal.danger { border: 1px solid var(--rose-line); }

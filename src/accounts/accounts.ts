@@ -15,9 +15,11 @@ import { GoogleAuth, readState, statePath, tokenPath, type GoogleState } from ".
 import { GoogleAuthError, type Http } from "../google/oauth.js";
 import { hasCalendarAccess } from "../google/calendar.js";
 import { hasGmailAccess } from "../google/gmail.js";
+import { hasTasksAccess } from "../google/tasks.js";
 
 export type Provider = "google";
-export type Feature = "mail" | "calendar";
+/** Lists (F3) live in one account at a time: there is no per-account switch for them. */
+export type Feature = "mail" | "calendar" | "tasks";
 
 export interface Account {
   /** "g1", "g2" …; never reused while the account exists. */
@@ -39,6 +41,8 @@ interface Stored {
   /** Default account for new emails and for new events. */
   sendFrom?: string;
   calendarIn?: string;
+  /** Account that keeps the lists (Google Tasks). */
+  tasksIn?: string;
 }
 
 export const COLORS = ["#2A52BE", "#C8742C", "#4F8A6B", "#B5536A", "#6B5BB5", "#2C8C99"];
@@ -147,7 +151,9 @@ export class Accounts {
   /** Whether the account's mail or calendar can be used now: switched on, permission given, sign-in valid. */
   usable(a: Account, f: Feature): boolean {
     const s = this.state(a);
-    if (!s || s.invalidAt || !a[f]) return false;
+    if (!s || s.invalidAt) return false;
+    if (f === "tasks") return hasTasksAccess(s.scopes);
+    if (!a[f]) return false;
     return f === "mail" ? hasGmailAccess(s.scopes) : hasCalendarAccess(s.scopes);
   }
 
@@ -159,7 +165,7 @@ export class Accounts {
   /** Where a new email is sent from / a new event goes: the chosen default, else the first account. */
   primary(f: Feature): Account | undefined {
     const s = this.read();
-    const id = f === "mail" ? s.sendFrom : s.calendarIn;
+    const id = f === "mail" ? s.sendFrom : f === "calendar" ? s.calendarIn : s.tasksIn;
     const all = this.for(f);
     return all.find((a) => a.id === id) ?? all[0];
   }
@@ -181,7 +187,7 @@ export class Accounts {
   setDefault(f: Feature, id: string) {
     const s = this.read();
     if (!s.accounts.some((a) => a.id === id)) throw new Error(`no account ${id}`);
-    this.write({ ...s, ...(f === "mail" ? { sendFrom: id } : { calendarIn: id }) });
+    this.write({ ...s, ...(f === "mail" ? { sendFrom: id } : f === "calendar" ? { calendarIn: id } : { tasksIn: id }) });
   }
 
   update(id: string, patch: Partial<Pick<Account, "name" | "color" | "mail" | "calendar">>): Account {
@@ -250,6 +256,7 @@ export class Accounts {
       accounts: s.accounts.filter((a) => a.id !== id),
       sendFrom: s.sendFrom === id ? undefined : s.sendFrom,
       calendarIn: s.calendarIn === id ? undefined : s.calendarIn,
+      tasksIn: s.tasksIn === id ? undefined : s.tasksIn,
     });
     return r;
   }

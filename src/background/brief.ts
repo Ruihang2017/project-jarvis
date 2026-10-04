@@ -12,14 +12,17 @@ import { truncate } from "../util.js";
 import type { Account, Accounts } from "../accounts/accounts.js";
 import type { BillStore } from "../bills/store.js";
 import { briefBills } from "../bills/remind.js";
-import { CalendarClient, hasCalendarAccess, todayLines } from "../google/calendar.js";
+import { CalendarClient, hasCalendarAccess, localDate, todayLines } from "../google/calendar.js";
 import { displayName, GmailClient, hasGmailAccess, UNREAD_QUERY } from "../google/gmail.js";
+import { TasksClient } from "../google/tasks.js";
 
 /** A Google section of the brief: undefined when not connected/granted, "unavailable" when offline or expired. */
 export type BriefSection = { lines: string[]; count: number } | "unavailable" | undefined;
 export interface BriefGoogle {
   calendar?: BriefSection;
   mail?: BriefSection;
+  /** List items due today or overdue (F3). */
+  tasks?: BriefSection;
 }
 
 const GOOGLE_TIMEOUT_MS = 15_000;
@@ -47,7 +50,8 @@ export async function briefGoogle(accounts: Accounts, now = new Date()): Promise
   const live = (list: Account[]) => list.filter((a) => !accounts.state(a)!.invalidAt);
   const cal = granted("calendar");
   const box = granted("mail");
-  const [calendar, mail] = await Promise.all([
+  const listsIn = accounts.primary("tasks");
+  const [calendar, mail, tasks] = await Promise.all([
     section(cal.length > 0, live(cal).length === 0, async () => {
       const lines = await todayLines(live(cal).map((a) => new CalendarClient(accounts.auth(a))), now);
       return { lines, count: lines.length };
@@ -61,8 +65,15 @@ export async function briefGoogle(accounts: Accounts, now = new Date()): Promise
       // Unread mail is one thing to do ("check mail"), not one per message: 20 newsletters shouldn't read as "20 things today".
       return { lines: [head, ...unread.slice(0, MAIL_SHOWN).map((m) => `   ${truncate(displayName(m.from), 24)} — ${truncate(m.subject, 60)}`)], count: 1 };
     }),
+    // Only items with a date that has come: an undated shopping list isn't a thing to do today.
+    section(Boolean(listsIn), false, async () => {
+      const c = new TasksClient(accounts.auth(listsIn!));
+      const day = localDate(now);
+      const due = (await Promise.all((await c.lists()).map(async (l) => (await c.tasks(l.id, now)).filter((t) => !t.done && t.due && t.due <= day).map((t) => ({ t, list: l.title }))))).flat();
+      return { lines: due.slice(0, 5).map(({ t, list }) => `☐ ${truncate(t.title, 60)} · ${list}${t.due! < day ? " (overdue)" : ""}`), count: due.length };
+    }),
   ]);
-  return { calendar, mail };
+  return { calendar, mail, tasks };
 }
 
 export type BriefDays = "weekdays" | "daily" | "off";
@@ -100,6 +111,7 @@ export function composeBrief(memory: MemoryStore, reminders: ReminderStore, now 
   const count = (s: BriefSection) => (s === "unavailable" || !s ? 0 : s.count);
   const events = lines(google.calendar, "📅 calendar");
   const mail = lines(google.mail, "✉ mail");
+  const todo = lines(google.tasks, "☐ lists");
   const todays = reminders
     .upcoming()
     .filter((r) => (r.snoozedUntil ?? r.dueAt).slice(0, 10) === day)
@@ -113,11 +125,11 @@ export function composeBrief(memory: MemoryStore, reminders: ReminderStore, now 
   const pending = memory.list({ status: "pending" }).length;
   const review = pending ? [`🔒 ${pending} memor${pending === 1 ? "y" : "ies"} awaiting /memory review`] : [];
 
-  const total = count(google.calendar) + todays.length + billing.count + comingUp.length + count(google.mail) + pending;
+  const total = count(google.calendar) + todays.length + count(google.tasks) + billing.count + comingUp.length + count(google.mail) + pending;
   const date = formatDue(`${day}T00:00`, now).slice(0, -6); // "Thu 10-01"
   return {
     title: total ? `☀ ${date} · ${total} thing${total === 1 ? "" : "s"} today` : `☀ ${date} · nothing scheduled`,
-    lines: [...events, ...todays, ...billing.lines, ...comingUp, ...mail, ...review],
+    lines: [...events, ...todays, ...todo, ...billing.lines, ...comingUp, ...mail, ...review],
     count: total,
   };
 }

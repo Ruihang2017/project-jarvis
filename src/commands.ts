@@ -15,8 +15,9 @@ import { describeReminder } from "./reminders/tools.js";
 import { installTask, removeTask, TASK_NAME, taskStatus } from "./background/task.js";
 import { briefGoogle, briefSchedule, composeBrief, nextBriefAt } from "./background/brief.js";
 import { GmailClient, summaryLine, UNREAD_QUERY } from "./google/gmail.js";
-import { GMAIL_SCOPES } from "./google/instructions.js";
-import { CALENDAR_SCOPES, CalendarClient, dayLabel, dayStart, eventLine, groupByDay, localDate, nextDate } from "./google/calendar.js";
+import { ALL_SCOPES } from "./google/instructions.js";
+import { TasksClient } from "./google/tasks.js";
+import { CalendarClient, dayLabel, dayStart, eventLine, groupByDay, localDate, nextDate } from "./google/calendar.js";
 import { preview, renderPreview } from "./sixel.js";
 import { copyImageToClipboard, openWithDefaultApp } from "./system.js";
 import { GoogleAuthError, shortScope } from "./google/auth.js";
@@ -68,6 +69,7 @@ export const HELP_GROUPS: [string, [string, string][]][] = [
       ["/brief", "today at a glance: events, reminders, bills, mail"],
       ["/calendar", "your Google Calendar, today and tomorrow or the week"],
       ["/mail", "unread mail from the last day"],
+      ["/lists", "shopping list, home jobs, to-dos"],
       ["/bills", "bills found in your email: review, pay status, monthly summary"],
       ["/remind", "reminders: list, done, snooze, cancel"],
       ["/memory", "what Edward remembers about you"],
@@ -716,7 +718,7 @@ const COMMANDS: Record<string, Command> = {
       console.log(dim("[opening your browser to sign in to Google — waiting up to 5 min, Ctrl+C cancels]"));
       if (!again && session.accounts.connected().length) console.log(dim("  pick the account to add in Google's list (or the one to sign in to again)"));
       const r = await session.accounts.connect(
-        [...CALENDAR_SCOPES, ...GMAIL_SCOPES],
+        ALL_SCOPES,
         (url) => {
           console.log(dim(`  if it doesn't open, visit:\n  ${url}`));
           openWithDefaultApp(url);
@@ -747,6 +749,24 @@ const COMMANDS: Record<string, Command> = {
         console.log(bold(dayLabel(day) + (day === first ? " · today" : day === nextDate(first) ? " · tomorrow" : "")));
         if (!list.length) console.log(dim("  nothing"));
         for (const e of list) console.log(`  ${eventLine(e)}${many ? dim(` · ${session.accounts.label(owner.get(e)!)}`) : ""}`);
+      }
+    },
+  },
+
+  "/lists": {
+    usage: "/lists [name]",
+    help: "Your lists in Google Tasks (open items; a list by name also shows what was ticked off this week). To add or tick off, just ask (no model call here)",
+    run: async (args, session) => {
+      const a = session.accounts.primary("tasks");
+      if (!a) return console.log(dim(session.accounts.connected().length ? "[lists need one more Google permission — /connect google]" : "[Google isn't connected — /connect google]"));
+      const c = new TasksClient(session.accounts.auth(a));
+      const lists = args.trim() ? [await c.findList(args.trim())].filter((l) => l !== undefined) : await c.lists();
+      if (!lists.length) return console.log(dim(args.trim() ? `[no list called "${args.trim()}"]` : "[no lists yet — ask Edward to add something]"));
+      for (const l of lists) {
+        const items = (await c.tasks(l.id)).filter((t) => args.trim() || !t.done);
+        console.log(bold(l.title));
+        if (!items.length) console.log(dim("  nothing"));
+        for (const t of items) console.log(`  ${t.done ? dim(`☑ ${t.title}`) : `☐ ${t.title}`}${t.due ? dim(` · due ${dayLabel(t.due)}`) : ""}`);
       }
     },
   },

@@ -34,6 +34,8 @@ you › reply to Sam's update and ask whether the energy account is set up
 | **Reminders** | "Remind me at 5pm to call the dentist" — a Windows notification, even when Edward is closed |
 | **Calendar** | What's on, when you're free, add / move / delete events (each one confirmed) — across all your Google accounts |
 | **Gmail** | Search, read, summarise; draft replies; send only after you approve the draft — one or several personal Gmail accounts |
+| **Lists** | Shopping list, things to fix at home, to-dos, in Google Tasks so they are on your phone too |
+| **Voice** (desktop app) | Talk to Edward and hear the reply, with your own OpenAI API key |
 | **Bills** | Finds bills in your email, checks them for signs of fraud, reminds you before they are due |
 | **Daily brief** | Today's events, reminders, bills and unread mail in one glance |
 
@@ -74,7 +76,7 @@ Just type. Slash commands cover the rest — `/help` lists them in three groups:
 
 | Conversation | What Edward looks after | Setup and care |
 |---|---|---|
-| `/new` `/resume` `/image` `/model` `/effort` `/usage` `/mode` | `/brief` `/calendar` `/mail` `/bills` `/remind` `/memory` `/images` | `/start` `/connect` `/accounts` `/google` `/disconnect` `/background` `/region` `/web` `/data` `/doctor` |
+| `/new` `/resume` `/image` `/model` `/effort` `/usage` `/mode` | `/brief` `/calendar` `/mail` `/lists` `/bills` `/remind` `/memory` `/images` | `/start` `/connect` `/accounts` `/google` `/disconnect` `/background` `/region` `/web` `/data` `/doctor` |
 
 ### The desktop app
 

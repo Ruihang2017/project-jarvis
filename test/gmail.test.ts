@@ -8,7 +8,7 @@ process.env.JARVIS_DATA_DIR = dir;
 
 const g = await import("../src/google/gmail.js");
 const { GMAIL_TOOLS, clip, formatThread } = await import("../src/google/gmail-tools.js");
-const { googleInstructions, missingFeatures, CALENDAR_SCOPES, GMAIL_SCOPES } = await import("../src/google/instructions.js");
+const { googleInstructions, missingFeatures, ALL_SCOPES, CALENDAR_SCOPES, GMAIL_SCOPES } = await import("../src/google/instructions.js");
 const { briefGoogle, composeBrief } = await import("../src/background/brief.js");
 const { fakeAccounts } = await import("./fake-accounts.js");
 /** The model instructions for one account in this state (null: nothing connected). */
@@ -284,7 +284,7 @@ await throws("draft deleted in Gmail", () => tool("gmail_send").prepare({ draft:
 ok("instructions: Gmail granted", instructionsFor(state([...CALENDAR_SCOPES, ...GMAIL_SCOPES])).includes("gmail_search"));
 ok("instructions: draft then send, can't delete", /gmail_draft[\s\S]*gmail_send[\s\S]*can't archive, label, mark read or delete/.test(instructionsFor(state(GMAIL_SCOPES))));
 ok("instructions: Gmail not granted", instructionsFor(state(CALENDAR_SCOPES)).includes("Gmail access hasn't been granted"));
-eq("missing features", [missingFeatures(null), missingFeatures(state([])), missingFeatures(state(CALENDAR_SCOPES)), missingFeatures(state([...CALENDAR_SCOPES, ...GMAIL_SCOPES]))], [[], ["calendar", "Gmail"], ["Gmail"], []]);
+eq("missing features", [missingFeatures(null), missingFeatures(state([])), missingFeatures(state(CALENDAR_SCOPES)), missingFeatures(state([...CALENDAR_SCOPES, ...GMAIL_SCOPES])), missingFeatures(state(ALL_SCOPES))], [[], ["calendar", "Gmail", "lists"], ["Gmail", "lists"], ["lists"], []]);
 
 // --- brief ---
 current = state(GMAIL_SCOPES);

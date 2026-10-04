@@ -1,16 +1,19 @@
 import type { Account, Accounts } from "../accounts/accounts.js";
 import type { GoogleState } from "./auth.js";
 import { hasCalendarAccess } from "./calendar.js";
-import { hasGmailAccess } from "./gmail.js";
+import { CALENDAR_SCOPES } from "./calendar.js";
+import { GMAIL_SCOPES, hasGmailAccess } from "./gmail.js";
+import { hasTasksAccess, TASKS_SCOPES } from "./tasks.js";
+
+export { CALENDAR_SCOPES, GMAIL_SCOPES, TASKS_SCOPES };
 
 /** Every scope Edward's features use; /connect google asks for all of them. */
-export { CALENDAR_SCOPES } from "./calendar.js";
-export { GMAIL_SCOPES } from "./gmail.js";
+export const ALL_SCOPES = [...CALENDAR_SCOPES, ...GMAIL_SCOPES, ...TASKS_SCOPES];
 
-/** Features whose permission is still missing, for the startup notice ("calendar", "Gmail"). */
+/** Features whose permission is still missing, for the startup notice ("calendar", "Gmail", "lists"). */
 export function missingFeatures(state: GoogleState | null): string[] {
   if (!state) return [];
-  return [!hasCalendarAccess(state.scopes) && "calendar", !hasGmailAccess(state.scopes) && "Gmail"].filter((x): x is string => Boolean(x));
+  return [!hasCalendarAccess(state.scopes) && "calendar", !hasGmailAccess(state.scopes) && "Gmail", !hasTasksAccess(state.scopes) && "lists"].filter((x): x is string => Boolean(x));
 }
 
 /** Thread instructions about Google, from the connected accounts when the conversation starts. */
@@ -52,6 +55,17 @@ export function googleInstructions(accounts: Accounts): string {
     );
   } else {
     lines.push("Calendar access hasn't been granted yet: if they ask about their calendar, tell them to run /connect google to add it.");
+  }
+  const lists = accounts.primary("tasks");
+  if (lists) {
+    lines.push(
+      `Lists (Google Tasks${connected.length > 1 ? `, in ${accounts.label(lists)}` : ""}; they show on the user's phone): the shopping list ("Shopping"), things to fix or do at home ("Home"), and other to-dos ("My Tasks", or a list the user names). ` +
+        "tasks_add to add (several items at once is fine; the list is made if needed), tasks_show to see them, tasks_update to tick off or change, tasks_delete to remove. " +
+        "\"Add milk\", \"we're out of eggs\", \"the tap is leaking, note it\" go on a list; a list item is not a reminder: add a reminder only when the user wants one at a time. " +
+        "Items have a date at most, no time of day.",
+    );
+  } else if (connected.length) {
+    lines.push("Lists (shopping list, to-dos) need one more Google permission: if the user asks for them, tell them to sign in to Google again (/connect google).");
   }
   if (canMail) {
     lines.push(

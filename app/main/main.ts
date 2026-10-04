@@ -111,7 +111,7 @@ function createTray() {
 
 const METHODS = new Set<keyof EdwardApi>([
   "state", "signIn", "send", "interrupt", "newConversation", "conversations", "openConversation", "transcript", "setMode", "answer",
-  "attachFiles", "attachClipboard", "removeAttachment", "today", "calendar", "mail", "mailMessage", "mailOriginal", "mailList", "calendarRange", "calendarTargets", "eventSave", "eventDelete", "mailCompose", "mailCheck", "mailSend", "mailSaveDraft", "mailWrite", "bills", "billHistory", "billAction",
+  "attachFiles", "attachClipboard", "removeAttachment", "today", "calendar", "mail", "mailMessage", "mailOriginal", "mailList", "calendarRange", "calendarTargets", "voiceInfo", "voiceSaveKey", "voiceRemoveKey", "voiceSetVoice", "voiceConnect", "voiceHeard", "lists", "listCreate", "listAdd", "listUpdate", "listRemove", "eventSave", "eventDelete", "mailCompose", "mailCheck", "mailSend", "mailSaveDraft", "mailWrite", "bills", "billHistory", "billAction",
   "billEdit", "billScan", "billMonth", "billExport", "forgetBills", "reminders", "reminderAction", "memory", "memoryAdd", "memoryEdit",
   "memoryForget", "memoryReview", "memoryUndo", "memoryExport", "pictures", "pictureAction", "settings", "updateSettings", "chooseImagesFolder",
   "doctor", "data", "backup", "exportAll", "openDataFolder", "deleteEverything", "google", "chooseGoogleClient", "connectGoogle", "checkGoogle",
@@ -131,8 +131,14 @@ app.on("before-quit", () => {
 app.whenReady().then(async () => {
   handleScheme();
   handleMailScheme();
-  // The page needs no camera, microphone, location or notifications from Chromium.
-  electronSession.defaultSession.setPermissionRequestHandler((_wc, _perm, done) => done(false));
+  // The page needs no camera, location or notifications from Chromium. The microphone, for voice (V),
+  // only for Edward's own page and only audio; the email frame never gets it.
+  const ownPage = (url: string | undefined) => Boolean(url?.startsWith("file://"));
+  electronSession.defaultSession.setPermissionRequestHandler((wc, perm, done, details) => {
+    const audioOnly = perm === "media" && "mediaTypes" in details && (details.mediaTypes ?? []).length > 0 && (details.mediaTypes ?? []).every((t) => t === "audio");
+    done(audioOnly && wc === win?.webContents && ownPage(details.requestingUrl) && details.isMainFrame !== false);
+  });
+  electronSession.defaultSession.setPermissionCheckHandler((wc, perm, origin, details) => perm === "media" && details.mediaType !== "video" && wc === win?.webContents && (ownPage(origin) || origin === "file:///" || ownPage(details.requestingUrl)));
   service = new EdwardService(emit, () => win);
   ipcMain.handle("edward:call", async (e, method: string, args: unknown[]) => {
     // Only Edward's own page, and only the listed methods.

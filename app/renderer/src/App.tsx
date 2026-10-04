@@ -1,13 +1,15 @@
 import { Component, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { AppState, Ask, ChatEntry, Mode, Result } from "../../shared/api";
 import { call, edward } from "./api";
-import { art, Confirm, Icon, ModeBar } from "./ui";
+import { art, Button, Confirm, Icon, ModeBar } from "./ui";
+import { VoiceCall, type VoicePhase } from "./voice";
 import { Today } from "./pages/Today";
 import { Chat, History } from "./pages/Chat";
 import { Calendar } from "./pages/Calendar";
 import { Mail } from "./pages/Mail";
 import { BillReview, Bills, BillsMonth } from "./pages/Bills";
 import { Reminders } from "./pages/Reminders";
+import { Lists } from "./pages/Lists";
 import { Memory } from "./pages/Memory";
 import { Pictures } from "./pages/Pictures";
 import { Modes, Privacy } from "./pages/Trust";
@@ -31,6 +33,8 @@ interface Ctx {
     send: (text: string) => void;
     reset: (entries: ChatEntry[]) => void;
   };
+  /** Voice (V): a call with the realtime model, kept while moving between pages. */
+  voice: { phase: VoicePhase; start: () => void; stop: () => void };
 }
 
 const AppCtx = createContext<Ctx>(null as unknown as Ctx);
@@ -44,6 +48,7 @@ const NAV: ([string, string, string] | null)[] = [
   ["mail", "Mail", "mail"],
   ["bills", "Bills", "bill"],
   ["reminders", "Reminders", "bell"],
+  ["lists", "Lists", "check"],
   ["memory", "Memory", "book"],
   ["pictures", "Pictures", "image"],
   null,
@@ -69,6 +74,8 @@ export function App() {
   const [confirmAuto, setConfirmAuto] = useState(false);
   const [badges, setBadges] = useState<{ bills: number; mail: number }>({ bills: 0, mail: 0 });
   const toastId = useRef(0);
+  const [voicePhase, setVoicePhase] = useState<VoicePhase>("off");
+  const voiceCall = useRef<VoiceCall | null>(null);
 
   const refresh = useCallback(() => void call("state").then(setState), []);
   const toast = useCallback((r: Result | string) => {
@@ -97,6 +104,10 @@ export function App() {
           break;
         case "ask":
           setAsks((a) => [...a, e.ask]);
+          voiceCall.current?.say("I need your OK on the screen.");
+          break;
+        case "voiceSay":
+          voiceCall.current?.say(e.text);
           break;
         case "askDone":
           setAsks((a) => a.filter((x) => x.id !== e.id));
@@ -137,9 +148,22 @@ export function App() {
     void call("send", text);
   }, []);
 
+  const startVoice = useCallback(async () => {
+    const info = await call("voiceInfo");
+    if (!info.hasKey) {
+      toast({ ok: false, message: "Add your OpenAI API key in Settings → Voice first." });
+      setRoute({ page: "settings" });
+      return;
+    }
+    voiceCall.current ??= new VoiceCall({ phase: setVoicePhase, heard: (t) => void call("voiceHeard", t), problem: (m) => toast({ ok: false, message: m }) });
+    await voiceCall.current.start();
+  }, [toast]);
+  const stopVoice = useCallback(() => voiceCall.current?.stop(), []);
+  const voice = useMemo(() => ({ phase: voicePhase, start: () => void startVoice(), stop: stopVoice }), [voicePhase, startVoice, stopVoice]);
+
   const ctx = useMemo<Ctx | null>(
-    () => (state ? { state, route, go, refresh, toast, setMode, chat: { entries, asks, busy, label, send, reset: setEntries } } : null),
-    [state, route, go, refresh, toast, setMode, entries, asks, busy, label, send],
+    () => (state ? { state, route, go, refresh, toast, setMode, chat: { entries, asks, busy, label, send, reset: setEntries }, voice } : null),
+    [state, route, go, refresh, toast, setMode, entries, asks, busy, label, send, voice],
   );
 
   if (!state || !ctx) {
@@ -164,6 +188,7 @@ export function App() {
           <Page />
         </div>
       )}
+      {voicePhase !== "off" && <VoiceBar phase={voicePhase} onStop={stopVoice} />}
       <div className="toast-stack" aria-live="polite">
         {toasts.map((t) => (
           <div className="toast" key={t.id} role="status">
@@ -307,6 +332,8 @@ function PageBody() {
       return <BillsMonth />;
     case "reminders":
       return <Reminders />;
+    case "lists":
+      return <Lists />;
     case "memory":
       return <Memory />;
     case "pictures":
@@ -326,4 +353,31 @@ function PageBody() {
     default:
       return <Today />;
   }
+}
+
+const VOICE_WORDS: Record<VoicePhase, string> = {
+  connecting: "Starting voice…",
+  listening: "Listening",
+  hearing: "Hearing you…",
+  thinking: "Edward is thinking…",
+  speaking: "Edward is speaking",
+  off: "",
+};
+
+/** While voice is on: what it is doing, the privacy reminder, and Stop. */
+function VoiceBar({ phase, onStop }: { phase: VoicePhase; onStop: () => void }) {
+  return (
+    <div className="voice-bar" role="status" aria-live="polite">
+      <span className={`voice-dot ${phase}`} aria-hidden />
+      <div className="grow">
+        <b>{VOICE_WORDS[phase]}</b>
+        <div className="muted" style={{ fontSize: 12 }}>
+          What you say isn't checked by the privacy guard: don't say card or account numbers or passwords.
+        </div>
+      </div>
+      <Button small kind="primary" icon="x" onClick={onStop}>
+        Stop
+      </Button>
+    </div>
+  );
 }

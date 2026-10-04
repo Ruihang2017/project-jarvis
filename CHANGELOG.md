@@ -11,6 +11,12 @@
   (work or school) accounts are refused. The existing account moves into `accounts\g1\` on first start.
 - Emails show as sent (their own HTML in a sandboxed frame; pictures from the web only when asked), and
   marketing mail with a broken plain-text part reads properly.
+- Desktop app: an Inbox of the last 30 days with search, writing, replying and forwarding email; Week
+  and Month calendar views with a form to add, change and delete events.
+- Lists in Google Tasks: shopping list, home jobs, to-dos, on the Lists page, in conversation and in the
+  morning brief (new Google permission: sign in again).
+- Voice in the desktop app with OpenAI's realtime model and your own OpenAI API key: talk, and hear the
+  reply. Spoken words aren't checked by the privacy guard; the app says so.
 
 ## 0.1.0 — developer preview
 

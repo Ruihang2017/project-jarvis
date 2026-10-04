@@ -19,9 +19,8 @@ import { backupData, listBackups } from "../../src/data/backup.js";
 import { exportAll, sizeOf } from "../../src/data/export.js";
 import { wipeData } from "../../src/data/wipe.js";
 import { describeRemoved, redact } from "../../src/privacy/guard.js";
-import { CALENDAR_SCOPES, CalendarClient, dayLabel, dayStart, freeSlots, hasCalendarAccess, localDate, nextDate, resolveTimes, type CalendarEvent, type EventInput } from "../../src/google/calendar.js";
+import { CalendarClient, dayLabel, dayStart, freeSlots, hasCalendarAccess, localDate, nextDate, resolveTimes, type CalendarEvent, type EventInput } from "../../src/google/calendar.js";
 import {
-  GMAIL_SCOPES,
   GmailClient,
   GmailWriter,
   addressOf,
@@ -35,7 +34,10 @@ import {
   type Outgoing,
 } from "../../src/google/gmail.js";
 import { startFrom, WRITE_INSTRUCTIONS } from "../../src/google/compose.js";
-import { missingFeatures } from "../../src/google/instructions.js";
+import { STARTER_LISTS, TasksClient } from "../../src/google/tasks.js";
+import { DEFAULT_MODEL, DEFAULT_VOICE, hasVoiceKey, looksLikeKey, removeVoiceKey, saveVoiceKey, speakable, VOICES } from "../../src/voice/voice.js";
+import { answerCall, checkKey } from "./voice.js";
+import { ALL_SCOPES, missingFeatures } from "../../src/google/instructions.js";
 import { shortScope } from "../../src/google/auth.js";
 import { clientPath, hasClient, loadClient, GoogleAuthError } from "../../src/google/oauth.js";
 import type { Account } from "../../src/accounts/accounts.js";
@@ -207,9 +209,14 @@ export class EdwardService implements A.EdwardApi {
     this.push({ kind: "user", id: randomUUID(), text: redact(line).text, images: images.filter((p) => p !== this.session.lastGeneratedImage).map(attachment) });
     this.pushState();
     let reply: Extract<A.ChatEntry, { kind: "assistant" }> | null = null;
+    // A voice turn (V) gets its reply read aloud: the text of the last message.
+    const voice = this.voiceTurn;
+    this.voiceTurn = false;
+    let said = "";
     const finishReply = () => {
       if (reply) {
         reply.streaming = false;
+        if (reply.text.trim()) said = reply.text;
         this.emit({ type: "entry", entry: reply });
       }
       reply = null;
@@ -268,7 +275,60 @@ export class EdwardService implements A.EdwardApi {
     } finally {
       this.emit({ type: "turn", busy: false });
       this.pushState();
+      if (voice) this.emit({ type: "voiceSay", text: said ? speakable(said) : "Sorry, that didn't work. The details are on the screen." });
     }
+  }
+
+  // ---------------------------------------------------------------- voice (V)
+
+  /** Set by voiceHeard for the turn it starts. */
+  private voiceTurn = false;
+
+  async voiceInfo(): Promise<A.VoiceInfo> {
+    const s = loadSettings();
+    return { hasKey: hasVoiceKey(), voice: s.voice && (VOICES as readonly string[]).includes(s.voice) ? s.voice : DEFAULT_VOICE, voices: [...VOICES], model: s.voiceModel || DEFAULT_MODEL };
+  }
+
+  async voiceSaveKey(key: string): Promise<A.Result> {
+    const k = String(key ?? "").trim();
+    if (!looksLikeKey(k)) return { ok: false, message: "That doesn't look like an OpenAI API key (it starts with sk-)." };
+    try {
+      await checkKey(k);
+      await saveVoiceKey(k);
+      return ok("Saved. Edward can talk now.");
+    } catch (e) {
+      return fail(e);
+    }
+  }
+
+  async voiceRemoveKey(): Promise<A.Result> {
+    removeVoiceKey();
+    return ok("Removed from this computer");
+  }
+
+  async voiceSetVoice(voice: string): Promise<A.Result> {
+    if (!(VOICES as readonly string[]).includes(voice)) return { ok: false, message: "Unknown voice" };
+    updateSettings({ voice });
+    return ok("");
+  }
+
+  async voiceConnect(offer: string): Promise<A.Result & { sdp?: string }> {
+    try {
+      const s = loadSettings();
+      return { ...ok(""), sdp: await answerCall(String(offer ?? ""), { voice: s.voice, model: s.voiceModel }) };
+    } catch (e) {
+      return fail(e);
+    }
+  }
+
+  async voiceHeard(text: string): Promise<void> {
+    const line = stripControl(String(text ?? "")).trim();
+    if (!line) return;
+    if (this.session.busy) return this.emit({ type: "voiceSay", text: "One moment, I'm still on the last one." });
+    // Typed and spoken text go the same way: through the privacy guard into the conversation.
+    this.voiceTurn = true;
+    await this.send(line);
+    this.voiceTurn = false; // a command ("/…") doesn't start a turn
   }
 
   /** The window has pages for most commands; a few still work typed. */
@@ -276,7 +336,7 @@ export class EdwardService implements A.EdwardApi {
     const [name = "", ...rest] = line.split(/\s+/);
     const arg = rest.join(" ");
     const pages: Record<string, string> = {
-      "/brief": "today", "/calendar": "calendar", "/mail": "mail", "/bills": "bills", "/remind": "reminders", "/memory": "memory", "/images": "pictures",
+      "/brief": "today", "/calendar": "calendar", "/mail": "mail", "/bills": "bills", "/remind": "reminders", "/lists": "lists", "/memory": "memory", "/images": "pictures",
       "/settings": "settings", "/model": "settings", "/effort": "settings", "/usage": "settings", "/region": "settings", "/web": "settings", "/background": "settings",
       "/doctor": "doctor", "/data": "data", "/google": "google", "/connect": "google", "/disconnect": "google", "/resume": "history", "/help": "commands", "/start": "commands",
     };
@@ -496,7 +556,7 @@ export class EdwardService implements A.EdwardApi {
   }
 
   /** Open mail lists ("load more" continues one); the oldest are dropped. */
-  private readonly lists = new Map<string, MergedList<MessageSummary>>();
+  private readonly mailLists = new Map<string, MergedList<MessageSummary>>();
 
   /** One page of the Inbox (30 days), Unread or a search, from every mail account, newest first. */
   async mailList(o: { view: A.MailListView; query?: string; cursor?: string }): Promise<A.MailPage> {
@@ -504,7 +564,7 @@ export class EdwardService implements A.EdwardApi {
     const accounts = acc.for("mail");
     if (!accounts.length) return { connected: false, items: [] };
     let id = o.cursor;
-    let list = id ? this.lists.get(id) : undefined;
+    let list = id ? this.mailLists.get(id) : undefined;
     if (!list) {
       const query = o.view === "inbox" ? INBOX_QUERY : o.view === "unread" ? UNREAD_QUERY : (o.query ?? "").trim();
       if (!query) return { connected: true, items: [], manyAccounts: accounts.length > 1 };
@@ -517,11 +577,11 @@ export class EdwardService implements A.EdwardApi {
       });
       list = new MergedList<MessageSummary>(accounts.map(source), (m) => m.date.getTime());
       id = randomUUID();
-      this.lists.set(id, list);
-      while (this.lists.size > 6) this.lists.delete(this.lists.keys().next().value!);
+      this.mailLists.set(id, list);
+      while (this.mailLists.size > 6) this.mailLists.delete(this.mailLists.keys().next().value!);
     }
     const items = (await list.next(PAGE_SIZE)).map(({ key, item }) => this.mailSummary(item, acc.get(key)!));
-    if (!list.more) this.lists.delete(id!);
+    if (!list.more) this.mailLists.delete(id!);
     const problem = list.problems.map((p) => (accounts.length > 1 ? `${acc.label(acc.get(p.key)!)}: ${googleProblem(p.error)}` : googleProblem(p.error))).join(" · ");
     return { connected: true, items, cursor: list.more ? id : undefined, problem: problem || undefined, manyAccounts: accounts.length > 1 };
   }
@@ -658,6 +718,97 @@ export class EdwardService implements A.EdwardApi {
 
   private eventInfo({ e, a }: { e: CalendarEvent; a: Account }): A.EventInfo {
     return { ...eventInfo(e), id: packId(a.id, e.calendarId, e.id), ...this.from(a) };
+  }
+
+  // ------------------------------------------------ lists (F3): Google Tasks, the user's own edits
+
+  private tasks(): TasksClient | null {
+    const a = this.session.accounts.primary("tasks");
+    return a ? new TasksClient(this.session.accounts.auth(a)) : null;
+  }
+
+  async lists(listId?: string): Promise<A.ListsView> {
+    const acc = this.session.accounts;
+    const a = acc.primary("tasks");
+    const empty = { lists: [], items: [], suggested: [] };
+    if (!a) return { connected: acc.connected().length > 0, needsPermission: acc.connected().length > 0, ...empty };
+    try {
+      const c = new TasksClient(acc.auth(a));
+      const lists = await c.lists();
+      const all = await Promise.all(lists.map(async (l) => ({ l, items: await c.tasks(l.id) })));
+      const selected = all.find((x) => x.l.id === listId) ?? all.find((x) => x.l.title.toLowerCase() === "shopping") ?? all[0];
+      const day = localDate(new Date());
+      return {
+        connected: true,
+        needsPermission: false,
+        account: this.from(a),
+        lists: all.map(({ l, items }) => ({ id: l.id, title: clean(l.title), open: items.filter((t) => !t.done).length })),
+        selected: selected?.l.id,
+        items: (selected?.items ?? []).map((t) => ({
+          id: t.id,
+          title: clean(t.title),
+          notes: t.notes ? clean(t.notes) : undefined,
+          due: t.due,
+          dueLabel: t.due ? niceDay(t.due, day).split(" · ")[0] : undefined,
+          overdue: Boolean(t.due && t.due < day && !t.done),
+          done: t.done,
+        })),
+        suggested: STARTER_LISTS.filter((s) => !lists.some((l) => l.title.toLowerCase() === s.toLowerCase())),
+      };
+    } catch (e) {
+      return { connected: true, needsPermission: false, problem: googleProblem(e), account: this.from(a), ...empty };
+    }
+  }
+
+  async listCreate(title: string): Promise<A.Result & { id?: string }> {
+    const c = this.tasks();
+    const name = stripControl(String(title ?? "")).trim().slice(0, 100);
+    if (!c || !name) return { ok: false, message: c ? "Give the list a name." : "Lists need Google." };
+    try {
+      return { ...ok(`Made ${name}`), id: (await c.findList(name, true))!.id };
+    } catch (e) {
+      return fail(e);
+    }
+  }
+
+  async listAdd(listId: string, item: { title: string; due?: string }): Promise<A.Result> {
+    const c = this.tasks();
+    const title = stripControl(String(item?.title ?? "")).trim().slice(0, 500);
+    if (!c || !title) return { ok: false, message: c ? "Type something to add." : "Lists need Google." };
+    try {
+      await c.add(String(listId), { title, due: /^\d{4}-\d{2}-\d{2}$/.test(String(item.due ?? "")) ? item.due : undefined });
+      return ok("");
+    } catch (e) {
+      return fail(e);
+    }
+  }
+
+  async listUpdate(listId: string, itemId: string, patch: { title?: string; done?: boolean; due?: string | null; notes?: string }): Promise<A.Result> {
+    const c = this.tasks();
+    if (!c) return { ok: false, message: "Lists need Google." };
+    try {
+      const due = patch.due === null || patch.due === "" ? null : typeof patch.due === "string" && /^\d{4}-\d{2}-\d{2}$/.test(patch.due) ? patch.due : undefined;
+      await c.update(String(listId), String(itemId), {
+        title: typeof patch.title === "string" && patch.title.trim() ? stripControl(patch.title).trim() : undefined,
+        done: typeof patch.done === "boolean" ? patch.done : undefined,
+        notes: typeof patch.notes === "string" ? stripControl(patch.notes) : undefined,
+        due,
+      });
+      return ok("");
+    } catch (e) {
+      return fail(e);
+    }
+  }
+
+  async listRemove(listId: string, itemId: string): Promise<A.Result> {
+    const c = this.tasks();
+    if (!c) return { ok: false, message: "Lists need Google." };
+    try {
+      await c.remove(String(listId), String(itemId));
+      return ok("Removed");
+    } catch (e) {
+      return fail(e);
+    }
   }
 
   // ------------------------------------------------ calendar by hand (F2b): the user's own form, no model
@@ -1148,6 +1299,8 @@ export class EdwardService implements A.EdwardApi {
         checkedAt: g.checkedAt ? new Date(g.checkedAt).toLocaleString("en-AU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : undefined,
         sendsMail: acc!.primary("mail")?.id === a.id,
         getsEvents: acc!.primary("calendar")?.id === a.id,
+        keepsLists: acc!.primary("tasks")?.id === a.id,
+        listsWork: acc!.usable(a, "tasks"),
       };
     });
     const first = list[0];
@@ -1180,7 +1333,7 @@ export class EdwardService implements A.EdwardApi {
 
   async connectGoogle(account?: string): Promise<A.Result> {
     try {
-      const r = await this.session.accounts.connect([...CALENDAR_SCOPES, ...GMAIL_SCOPES], (url) => void shell.openExternal(url), { account });
+      const r = await this.session.accounts.connect(ALL_SCOPES, (url) => void shell.openExternal(url), { account });
       await this.session.reloadThread().catch(() => {}); // the conversation learns about the account
       this.pushState();
       return ok(`${r.added && this.session.accounts.list().length > 1 ? "Added" : "Connected as"} ${r.state.email ?? "your Google account"}`);
@@ -1235,13 +1388,13 @@ export class EdwardService implements A.EdwardApi {
     }
   }
 
-  async setDefaultAccount(feature: "mail" | "calendar", account: string): Promise<A.Result> {
-    if (feature !== "mail" && feature !== "calendar") return { ok: false, message: "Unknown feature" };
+  async setDefaultAccount(feature: "mail" | "calendar" | "tasks", account: string): Promise<A.Result> {
+    if (feature !== "mail" && feature !== "calendar" && feature !== "tasks") return { ok: false, message: "Unknown feature" };
     try {
       this.session.accounts.setDefault(feature, account);
       await this.session.reloadThread().catch(() => {});
       this.pushState();
-      return ok(feature === "mail" ? "New emails will go from this account" : "New events will go into this account");
+      return ok(feature === "mail" ? "New emails will go from this account" : feature === "calendar" ? "New events will go into this account" : "Lists will be kept in this account");
     } catch (e) {
       return fail(e);
     }
@@ -1363,6 +1516,7 @@ function activityIcon(item: ThreadItem): string {
     if (t.startsWith("bill")) return "bill";
     if (t.startsWith("reminder")) return "bell";
     if (t.startsWith("memory")) return "book";
+    if (t.startsWith("tasks")) return "check";
   }
   return "spark";
 }

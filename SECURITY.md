@@ -101,8 +101,10 @@ DPAPI (one per account, in `accounts\<id>\`) and never logged.
 
 ## Google
 
-Edward asks for: reading and writing calendar events, reading the calendar list, reading Gmail, and
-creating and sending drafts. It cannot delete, archive or label mail. Sign-in uses the loopback redirect
+Edward asks for: reading and writing calendar events, reading the calendar list, reading Gmail,
+creating and sending drafts, and your lists in Google Tasks (shopping list, to-dos). It cannot delete,
+archive or label mail. List items the model adds are checked like memories: card, account and ID numbers
+and passwords are refused. Sign-in uses the loopback redirect
 with PKCE on `127.0.0.1`.
 
 - **Several accounts.** You can connect more than one personal Google account. Edward reads mail and
@@ -117,6 +119,22 @@ with PKCE on `127.0.0.1`.
   Google treats installed apps as public clients, and anyone could take it out of the installer. What
   protects your data is that each person signs in with their own account and the tokens stay on their
   own computer.
+
+## Voice (desktop app)
+
+Voice is off until you add your own OpenAI API key (Settings → Voice). It uses OpenAI's realtime model
+directly, billed to that key.
+
+- **What you say goes to OpenAI as sound, before the privacy guard can see it.** The guard works on text,
+  so it can't take a card number out of your voice. The app says so in Settings and on the bar shown while
+  voice is on. Don't say card or account numbers or passwords.
+- The realtime model only hears and speaks. What you said comes back as text and goes into the
+  conversation like typed text, through the guard, to Codex; Edward's answer is then read aloud. The
+  realtime model never answers on its own and has no tools.
+- The key is encrypted with Windows DPAPI on your computer, never shown again, never logged and never sent
+  to Codex. The window never has it: the main process makes the connection. `edward delete-data` deletes it.
+- The microphone is allowed only for Edward's own page and only for sound (no camera); the email frame
+  can't use it. A call stops after five quiet minutes.
 
 ## The desktop app
 

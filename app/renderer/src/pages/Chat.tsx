@@ -7,14 +7,14 @@ import { Button, Card, Icon, IconButton, Loading, Spot, Tag } from "../ui";
 
 const GROUPS: [string, [string, string][]][] = [
   ["Conversation", [["/new", "Start a new conversation"], ["/resume", "Continue an earlier one"], ["/mode", "What Codex may do here"], ["/settings", "Model, effort and limits"]]],
-  ["What Edward looks after", [["/brief", "Today at a glance"], ["/calendar", "Your calendar"], ["/mail", "Unread mail"], ["/bills", "Bills found in your email"], ["/remind", "Reminders"], ["/memory", "What Edward remembers"], ["/images", "Pictures Edward made"]]],
+  ["What Edward looks after", [["/brief", "Today at a glance"], ["/calendar", "Your calendar"], ["/mail", "Unread mail"], ["/bills", "Bills found in your email"], ["/remind", "Reminders"], ["/lists", "Shopping list, home jobs, to-dos"], ["/memory", "What Edward remembers"], ["/images", "Pictures Edward made"]]],
   ["Setup and care", [["/google", "Google connection"], ["/region", "Dates and currency"], ["/web", "Web search on or off"], ["/background", "Reminders when closed"], ["/data", "Back up and export"], ["/doctor", "Check everything works"]]],
 ];
 const CYCLE = ["chat", "manual", "semi-auto"] as const;
 
 /** The message box: Enter sends, Shift+Enter is a new line, / lists commands, Shift+Tab changes mode. */
 export function Composer({ onSent, placeholder = "Ask Edward, or type / for commands", palette: forcePalette }: { onSent?: () => void; placeholder?: string; palette?: boolean }) {
-  const { state, chat, setMode, refresh } = useApp();
+  const { state, chat, setMode, refresh, voice } = useApp();
   const [text, setText] = useState(forcePalette ? "/" : "");
   const [attached, setAttached] = useState<Attachment[]>(state.attachments);
   const [sel, setSel] = useState(0);
@@ -128,6 +128,13 @@ export function Composer({ onSent, placeholder = "Ask Edward, or type / for comm
           }}
         />
         <IconButton icon="clip" label="Attach a picture" onClick={() => void call("attachFiles").then(setAttached)} />
+        <IconButton
+          icon="mic"
+          label={voice.phase === "off" ? "Talk to Edward (voice)" : "Stop voice"}
+          aria-pressed={voice.phase !== "off"}
+          onClick={() => (voice.phase === "off" ? voice.start() : voice.stop())}
+          style={voice.phase !== "off" ? { background: "var(--blue)", color: "#fff" } : undefined}
+        />
         {chat.busy ? (
           <button type="button" className="send stop" aria-label="Stop the reply" title="Stop (Esc)" onClick={() => void call("interrupt")}>
             <Icon name="stop" size={16} />

@@ -3,13 +3,14 @@ import type { Account, Accounts, Feature } from "../src/accounts/accounts.js";
 import type { GoogleAuth } from "../src/google/auth.js";
 import { hasCalendarAccess } from "../src/google/calendar.js";
 import { hasGmailAccess } from "../src/google/gmail.js";
+import { hasTasksAccess } from "../src/google/tasks.js";
 
-export function fakeAccounts(entries: { auth: GoogleAuth; id?: string; email?: string; name?: string }[], defaults: { mail?: string; calendar?: string } = {}): Accounts {
+export function fakeAccounts(entries: { auth: GoogleAuth; id?: string; email?: string; name?: string }[], defaults: { mail?: string; calendar?: string; tasks?: string } = {}): Accounts {
   const list: Account[] = entries.map((e, i) => ({ id: e.id ?? `g${i + 1}`, provider: "google", email: e.email, name: e.name, color: "#2A52BE", mail: true, calendar: true, addedAt: "" }));
   const authOf = (a: Account | string) => entries[list.findIndex((x) => x.id === (typeof a === "string" ? a : a.id))]!.auth;
   const usable = (a: Account, f: Feature) => {
     const s = authOf(a).state();
-    return Boolean(s && !s.invalidAt && (f === "mail" ? hasGmailAccess(s.scopes) : hasCalendarAccess(s.scopes)));
+    return Boolean(s && !s.invalidAt && (f === "mail" ? hasGmailAccess(s.scopes) : f === "calendar" ? hasCalendarAccess(s.scopes) : hasTasksAccess(s.scopes)));
   };
   const self = {
     list: () => list,

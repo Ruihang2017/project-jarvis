@@ -128,6 +128,7 @@ export function Settings() {
                 <SettingsLink icon="heart" text="Health check" page="doctor" />
               </div>
             </Card>
+            <VoiceCard />
             <Card className="pad stack" style={{ gap: 6 }}>
               <h3>Pictures</h3>
               <Row name="Open pictures when they're made">
@@ -168,6 +169,7 @@ export function GooglePage() {
     "calendar.calendarlist.readonly": ["Calendar list", "Know which calendars you have", "Read only"],
     "gmail.readonly": ["Gmail", "Search and read your mail", "Read only"],
     "gmail.compose": ["Gmail drafts", "Write drafts, and send the ones you approve", "Write drafts"],
+    tasks: ["Google Tasks", "Your lists: shopping, home jobs, to-dos", "Read and change"],
   };
   const many = (data?.accounts.length ?? 0) > 1;
   const signIn = (
@@ -178,7 +180,7 @@ export function GooglePage() {
   return (
     <Shell
       title="Accounts"
-      sub="Your personal Google accounts: mail and calendar"
+      sub="Your personal Google accounts: mail, calendar and lists"
       actions={
         <Button kind="ghost" icon="left" onClick={() => go("settings")}>
           Settings
@@ -339,11 +341,21 @@ export function GooglePage() {
                           Put new events here
                         </Button>
                       ))}
+                    {a.listsWork &&
+                      (a.keepsLists ? (
+                        <Tag tone="blue" icon="check">
+                          Lists are kept here
+                        </Tag>
+                      ) : (
+                        <Button small kind="ghost" onClick={() => run("default", () => call("setDefaultAccount", "tasks", a.id))}>
+                          Keep lists here
+                        </Button>
+                      ))}
                   </div>
                 )}
                 {a.missing.length > 0 && (
                   <Note tone="apricot" icon="warn">
-                    {a.missing.join(" and ")} need{a.missing.length === 1 ? "s" : ""} one more permission. Sign in again to add it.
+                    One more permission is needed for {a.missing.join(" and ")}. Sign in again to give it.
                   </Note>
                 )}
                 <div className="row" style={{ gap: 8, flexWrap: "wrap", borderTop: "1px solid var(--line)", paddingTop: 12 }}>
@@ -608,5 +620,61 @@ export function Data() {
         </Confirm>
       )}
     </Shell>
+  );
+}
+
+/** Settings → Voice (V): the OpenAI key, the voice, and what voice means for privacy. */
+function VoiceCard() {
+  const { toast, voice } = useApp();
+  const { data, reload } = useData(() => call("voiceInfo"));
+  const [key, setKey] = useState("");
+  const [busy, setBusy] = useState(false);
+  if (!data) return null;
+  return (
+    <Card className="pad stack" style={{ gap: 10 }}>
+      <h3>Voice</h3>
+      <p className="muted pretty">
+        Talk to Edward with the microphone button next to the message box, and hear the reply. It uses OpenAI's realtime voice ({data.model}) with your own OpenAI API key, billed by OpenAI
+        separately from ChatGPT, a few cents a minute.
+      </p>
+      <Note tone="apricot" icon="warn">
+        What you say goes to OpenAI as sound and isn't checked by the privacy guard. Don't say card or account numbers or passwords. The words Edward hears still go through the guard before
+        Edward answers.
+      </Note>
+      {data.hasKey ? (
+        <Row name="OpenAI API key" help="Saved, encrypted on this computer. It isn't shown again and never goes to Codex.">
+          <Button kind="ghost" onClick={async () => (toast(await call("voiceRemoveKey")), voice.stop(), reload())}>
+            Remove
+          </Button>
+        </Row>
+      ) : (
+        <form
+          className="row"
+          style={{ gap: 8 }}
+          onSubmit={async (e) => {
+            e.preventDefault();
+            setBusy(true);
+            const r = await call("voiceSaveKey", key);
+            setBusy(false);
+            toast(r);
+            if (r.ok) (setKey(""), reload());
+          }}
+        >
+          <input className="input grow" type="password" autoComplete="off" placeholder="OpenAI API key (sk-…)" value={key} onChange={(e) => setKey(e.target.value)} aria-label="OpenAI API key" />
+          <Button kind="primary" type="submit" disabled={busy || !key.trim()}>
+            {busy ? "Checking…" : "Save"}
+          </Button>
+        </form>
+      )}
+      <Row name="Edward's voice" help="marin and cedar sound the most natural.">
+        <select className="input" value={data.voice} onChange={async (e) => (await call("voiceSetVoice", e.target.value), reload(), voice.phase !== "off" && toast("The new voice starts with the next call."))}>
+          {data.voices.map((v) => (
+            <option key={v} value={v}>
+              {v[0]!.toUpperCase() + v.slice(1)}
+            </option>
+          ))}
+        </select>
+      </Row>
+    </Card>
   );
 }

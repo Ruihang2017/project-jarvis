@@ -66,6 +66,9 @@ export interface AccountInfo {
   /** New emails go from here / new events go here. */
   sendsMail: boolean;
   getsEvents: boolean;
+  /** Lists (Google Tasks) are kept here / could be (permission given). */
+  keepsLists: boolean;
+  listsWork: boolean;
 }
 
 /** Which account something came from, for its label and colour. */
@@ -237,6 +240,33 @@ export interface MailPage {
   cursor?: string;
   problem?: string;
   manyAccounts?: boolean;
+}
+
+/** Lists in Google Tasks (F3). */
+export interface ListsView {
+  connected: boolean;
+  /** Google is connected but the lists permission hasn't been given yet: sign in again. */
+  needsPermission: boolean;
+  problem?: string;
+  /** The account that keeps the lists. */
+  account?: FromAccount;
+  lists: { id: string; title: string; open: number }[];
+  /** The list shown, and its items (open ones, then those ticked off this week). */
+  selected?: string;
+  items: TaskItem[];
+  /** Usual lists not made yet ("Shopping", "Home"). */
+  suggested: string[];
+}
+
+export interface TaskItem {
+  id: string;
+  title: string;
+  notes?: string;
+  /** YYYY-MM-DD */
+  due?: string;
+  dueLabel?: string;
+  overdue: boolean;
+  done: boolean;
 }
 
 export interface MailView {
@@ -449,6 +479,21 @@ export interface EdwardApi {
   /** Events from `from` up to (not including) `to`, YYYY-MM-DD, every calendar account (week and month views). */
   calendarRange(from: string, to: string): Promise<CalendarView>;
   calendarTargets(): Promise<CalendarTarget[]>;
+  voiceInfo(): Promise<VoiceInfo>;
+  /** Checks the key with OpenAI, then keeps it encrypted on this computer. */
+  voiceSaveKey(key: string): Promise<Result>;
+  voiceRemoveKey(): Promise<Result>;
+  voiceSetVoice(voice: string): Promise<Result>;
+  /** Answers the window's WebRTC offer (the key stays in the main process). */
+  voiceConnect(offer: string): Promise<Result & { sdp?: string }>;
+  /** What the user said, transcribed: goes into the conversation like typed text; the reply comes back as voiceSay. */
+  voiceHeard(text: string): Promise<void>;
+  /** The lists, and the items of one (the first when none is named). */
+  lists(listId?: string): Promise<ListsView>;
+  listCreate(title: string): Promise<Result & { id?: string }>;
+  listAdd(listId: string, item: { title: string; due?: string }): Promise<Result>;
+  listUpdate(listId: string, itemId: string, patch: { title?: string; done?: boolean; due?: string | null; notes?: string }): Promise<Result>;
+  listRemove(listId: string, itemId: string): Promise<Result>;
   /** Creates an event (no id) or changes one; the user filled in the form, so no second confirmation. */
   eventSave(form: EventForm, id?: string): Promise<Result>;
   eventDelete(id: string): Promise<Result>;
@@ -501,7 +546,7 @@ export interface EdwardApi {
   /** The only account when there is one. */
   disconnectGoogle(account?: string): Promise<Result>;
   updateAccount(account: string, patch: { name?: string; color?: string; mail?: boolean; calendar?: boolean }): Promise<Result>;
-  setDefaultAccount(feature: "mail" | "calendar", account: string): Promise<Result>;
+  setDefaultAccount(feature: "mail" | "calendar" | "tasks", account: string): Promise<Result>;
   openGuide(): Promise<void>;
   finishSetup(): Promise<void>;
 }
@@ -515,7 +560,18 @@ export type EdwardEvent =
   | { type: "ask"; ask: Ask }
   | { type: "askDone"; id: string }
   | { type: "notice"; lines: string[] }
-  | { type: "navigate"; to: string };
+  | { type: "navigate"; to: string }
+  /** Voice (V): read this reply aloud. */
+  | { type: "voiceSay"; text: string };
+
+/** Voice (V): what Settings and the mic button need to know. */
+export interface VoiceInfo {
+  /** An OpenAI API key is saved (it is never shown again). */
+  hasKey: boolean;
+  voice: string;
+  voices: string[];
+  model: string;
+}
 
 /** What preload puts on window.edward. */
 export interface Bridge {

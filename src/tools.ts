@@ -18,6 +18,7 @@ import { describeReminderCall, REMINDER_TOOLS } from "./reminders/tools.js";
 import type { Accounts } from "./accounts/accounts.js";
 import { CALENDAR_TOOLS, describeCalendarCall } from "./google/calendar-tools.js";
 import { describeGmailCall, GMAIL_TOOLS } from "./google/gmail-tools.js";
+import { describeTasksCall, TASKS_TOOLS } from "./google/tasks-tools.js";
 import type { BillStore } from "./bills/store.js";
 import { BILL_TOOLS, describeBillCall } from "./bills/tools.js";
 
@@ -59,6 +60,7 @@ const TOOLS: Tool[] = [
   ...REMINDER_TOOLS,
   ...CALENDAR_TOOLS,
   ...GMAIL_TOOLS,
+  ...TASKS_TOOLS,
   ...BILL_TOOLS,
   {
     name: "clipboard_read",
@@ -144,7 +146,7 @@ export function describeToolCall(tool: string, args: unknown, ok = true): string
     case "open":
       return `⚙ open ${truncate(String(a.target ?? ""), 80)}`;
     default:
-      return describeMemoryCall(tool, a, ok) ?? describeReminderCall(tool, a, ok) ?? describeCalendarCall(tool, a, ok) ?? describeGmailCall(tool, a, ok) ?? describeBillCall(tool, a, ok) ?? `⚙ ${tool}`;
+      return describeMemoryCall(tool, a, ok) ?? describeReminderCall(tool, a, ok) ?? describeCalendarCall(tool, a, ok) ?? describeGmailCall(tool, a, ok) ?? describeTasksCall(tool, a, ok) ?? describeBillCall(tool, a, ok) ?? `⚙ ${tool}`;
   }
 }
 
