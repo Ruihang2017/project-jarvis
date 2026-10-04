@@ -19,18 +19,33 @@ import { backupData, listBackups } from "../../src/data/backup.js";
 import { exportAll, sizeOf } from "../../src/data/export.js";
 import { wipeData } from "../../src/data/wipe.js";
 import { describeRemoved, redact } from "../../src/privacy/guard.js";
-import { CALENDAR_SCOPES, CalendarClient, dayLabel, dayStart, freeSlots, hasCalendarAccess, localDate, nextDate, type CalendarEvent } from "../../src/google/calendar.js";
-import { GMAIL_SCOPES, GmailClient, displayName, hasGmailAccess, UNREAD_QUERY, type Message, type MessageSummary } from "../../src/google/gmail.js";
+import { CALENDAR_SCOPES, CalendarClient, dayLabel, dayStart, freeSlots, hasCalendarAccess, localDate, nextDate, resolveTimes, type CalendarEvent, type EventInput } from "../../src/google/calendar.js";
+import {
+  GMAIL_SCOPES,
+  GmailClient,
+  GmailWriter,
+  addressOf,
+  buildRaw,
+  displayName,
+  hasGmailAccess,
+  splitAddresses,
+  UNREAD_QUERY,
+  type Message,
+  type MessageSummary,
+  type Outgoing,
+} from "../../src/google/gmail.js";
+import { startFrom, WRITE_INSTRUCTIONS } from "../../src/google/compose.js";
 import { missingFeatures } from "../../src/google/instructions.js";
 import { shortScope } from "../../src/google/auth.js";
 import { clientPath, hasClient, loadClient, GoogleAuthError } from "../../src/google/oauth.js";
 import type { Account } from "../../src/accounts/accounts.js";
+import { MergedList } from "../../src/google/merged.js";
 import { formatAmount, type Bill } from "../../src/bills/store.js";
 import { acceptBill, editBill, ignoreBill, markPaid } from "../../src/bills/actions.js";
 import { billSettings, runScan, scanSummary } from "../../src/bills/view.js";
 import { billsInMonth, monthCsv } from "../../src/bills/summary.js";
 import { daysUntil, noticeLine, noticeToast } from "../../src/bills/remind.js";
-import { describeRepeat, formatDue } from "../../src/reminders/schedule.js";
+import { describeRepeat, formatDue, toLocal } from "../../src/reminders/schedule.js";
 import type { Reminder } from "../../src/reminders/store.js";
 import { secretReason } from "../../src/memory/guard.js";
 import type { Memory } from "../../src/memory/store.js";
@@ -424,38 +439,51 @@ export class EdwardService implements A.EdwardApi {
   // ---------------------------------------------------------------- calendar and mail
 
   async calendar(days: number): Promise<A.CalendarView> {
+    const first = localDate(new Date());
+    return this.calendarBetween(first, nextDate(first, days));
+  }
+
+  async calendarRange(from: string, to: string): Promise<A.CalendarView> {
+    const date = /^\d{4}-\d{2}-\d{2}$/;
+    if (!date.test(String(from)) || !date.test(String(to)) || to <= from) throw new Error("bad range");
+    // A month view needs six weeks; nothing asks for more.
+    return this.calendarBetween(from, to < nextDate(from, 43) ? to : nextDate(from, 43));
+  }
+
+  /** Days `first` up to (not including) `last`, every calendar account, with free time from now on. */
+  private async calendarBetween(first: string, last: string): Promise<A.CalendarView> {
     const acc = this.session.accounts;
     const accounts = acc.for("calendar");
     const empty = { days: [], free: [], calendars: [] };
     if (!accounts.length) return { connected: false, ...empty };
-    const first = localDate(new Date());
+    const today = localDate(new Date());
     const from = dayStart(first);
-    const to = dayStart(nextDate(first, days));
+    const to = dayStart(last);
     const [{ events, problem }, calendars] = await Promise.all([
       this.eventsAcross(from, to),
       Promise.all(accounts.map(async (a) => (await new CalendarClient(acc.auth(a)).calendars().catch(() => [])).map((c) => ({ name: clean(c.name), primary: c.primary, ...this.from(a) })))),
     ]);
     if (problem && !events.length) return { connected: true, problem, ...empty };
     const list: A.CalendarView["days"] = [];
-    for (let d = first; dayStart(d) < to; d = nextDate(d)) {
+    for (let d = first; d < last; d = nextDate(d)) {
       list.push({
         date: d,
-        label: niceDay(d, first),
+        label: niceDay(d, today),
         events: events.filter(({ e }) => localDate(e.start) === d || (e.allDay && localDate(e.start) <= d && localDate(e.end) > d)).map((x) => this.eventInfo(x)),
       });
     }
     // Busy in any account is busy.
-    const slots = freeSlots(
+    const slots = to > new Date() ? freeSlots(
       events.map((x) => x.e),
-      new Date(),
+      from > new Date() ? from : new Date(),
       to,
       { minutes: 30, weekends: true },
-    );
+    ) : [];
     const free: A.CalendarView["free"] = [];
     for (const s of slots) {
       const d = localDate(s.start);
       let day = free.find((f) => f.date === d);
-      if (!day) free.push((day = { date: d, label: niceDay(d, first), slots: [] }));
+      if (!day) free.push((day = { date: d, label: niceDay(d, today), slots: [] }));
       day.slots.push(`${hhmm(s.start)} to ${hhmm(s.end)}`);
     }
     return { connected: true, problem, days: list, free: free.slice(0, 4), calendars: calendars.flat(), manyAccounts: accounts.length > 1 };
@@ -465,6 +493,123 @@ export class EdwardService implements A.EdwardApi {
     if (!this.session.accounts.for("mail").length) return { connected: false, unread: [] };
     const { unread, problem } = await this.unreadAcross();
     return { connected: true, problem, unread, manyAccounts: this.session.accounts.for("mail").length > 1 };
+  }
+
+  /** Open mail lists ("load more" continues one); the oldest are dropped. */
+  private readonly lists = new Map<string, MergedList<MessageSummary>>();
+
+  /** One page of the Inbox (30 days), Unread or a search, from every mail account, newest first. */
+  async mailList(o: { view: A.MailListView; query?: string; cursor?: string }): Promise<A.MailPage> {
+    const acc = this.session.accounts;
+    const accounts = acc.for("mail");
+    if (!accounts.length) return { connected: false, items: [] };
+    let id = o.cursor;
+    let list = id ? this.lists.get(id) : undefined;
+    if (!list) {
+      const query = o.view === "inbox" ? INBOX_QUERY : o.view === "unread" ? UNREAD_QUERY : (o.query ?? "").trim();
+      if (!query) return { connected: true, items: [], manyAccounts: accounts.length > 1 };
+      const source = (a: Account) => ({
+        key: a.id,
+        fetch: async (token?: string) => {
+          const page = await new GmailClient(acc.auth(a)).page(query, PAGE_SIZE, token);
+          return { items: page.messages, next: page.next };
+        },
+      });
+      list = new MergedList<MessageSummary>(accounts.map(source), (m) => m.date.getTime());
+      id = randomUUID();
+      this.lists.set(id, list);
+      while (this.lists.size > 6) this.lists.delete(this.lists.keys().next().value!);
+    }
+    const items = (await list.next(PAGE_SIZE)).map(({ key, item }) => this.mailSummary(item, acc.get(key)!));
+    if (!list.more) this.lists.delete(id!);
+    const problem = list.problems.map((p) => (accounts.length > 1 ? `${acc.label(acc.get(p.key)!)}: ${googleProblem(p.error)}` : googleProblem(p.error))).join(" · ");
+    return { connected: true, items, cursor: list.more ? id : undefined, problem: problem || undefined, manyAccounts: accounts.length > 1 };
+  }
+
+  // ------------------------------------------------ writing email (F1b): the user's own, no model
+
+  async mailCompose(start?: { id: string; mode: "reply" | "replyAll" | "forward" }): Promise<A.ComposeDraft> {
+    const acc = this.session.accounts;
+    if (!start) {
+      const from = acc.primary("mail");
+      if (!from) throw new Error("No mail account is connected.");
+      return { mode: "new", from: from.id, to: "", cc: "", subject: "", body: "" };
+    }
+    const slash = start.id.indexOf("/");
+    const account = slash > 0 ? acc.get(start.id.slice(0, slash)) : acc.for("mail")[0];
+    const { gmail, id } = this.message(start.id);
+    const m = this.opened.get(start.id) ?? (await gmail.message(id));
+    const f = startFrom(m, start.mode, account ? acc.state(account)?.email : undefined);
+    return { mode: start.mode, from: account!.id, to: f.to.join(", "), cc: f.cc.join(", "), subject: f.subject, body: f.body, threadId: f.threadId, inReplyTo: f.inReplyTo, references: f.references };
+  }
+
+  /** The account and the parsed message, or the reasons it can't go. */
+  private outgoing(d: A.ComposeDraft): { problems: string[]; account?: Account; out: Outgoing } {
+    const acc = this.session.accounts;
+    const account = acc.get(d.from);
+    const to = splitAddresses(d.to ?? "");
+    const cc = splitAddresses(d.cc ?? "");
+    const problems: string[] = [];
+    if (!account || !acc.usable(account, "mail")) problems.push("That account can't send mail right now.");
+    if (!to.length) problems.push("Add someone to send it to.");
+    const bad = [...to, ...cc].filter((e) => !addressOf(e));
+    if (bad.length) problems.push(`Not an email address: ${bad.join(", ")}`);
+    if (!String(d.subject ?? "").trim()) problems.push("Add a subject.");
+    if (!String(d.body ?? "").trim()) problems.push("The email is empty.");
+    return { problems, account, out: { to, cc, subject: String(d.subject ?? "").trim(), body: String(d.body ?? ""), inReplyTo: d.inReplyTo, references: d.references } };
+  }
+
+  async mailCheck(d: A.ComposeDraft): Promise<A.ComposeCheck> {
+    const { problems, account, out } = this.outgoing(d);
+    const from = account ? (this.session.accounts.state(account)?.email ?? this.session.accounts.label(account)) : "";
+    if (problems.length || !account) return { problems, firstTime: [], from };
+    const writer = new GmailWriter(this.session.accounts.auth(account));
+    const addresses = [...new Set([...out.to, ...out.cc].map(addressOf).filter((a): a is string => Boolean(a)))];
+    const firstTime = (await Promise.all(addresses.map(async (a) => ((await writer.emailedBefore(a).catch(() => true)) ? null : a)))).filter((a): a is string => Boolean(a));
+    return { problems, firstTime, from };
+  }
+
+  /** Saves (or updates) the Gmail draft; returns its id. */
+  private async saveDraft(d: A.ComposeDraft): Promise<{ writer: GmailWriter; draftId: string }> {
+    const { problems, account, out } = this.outgoing(d);
+    if (problems.length || !account) throw new Error(problems.join(" "));
+    const writer = new GmailWriter(this.session.accounts.auth(account));
+    const raw = buildRaw(out);
+    const { id } = d.draftId ? await writer.updateDraft(d.draftId, raw, d.threadId) : await writer.createDraft(raw, d.threadId);
+    return { writer, draftId: id };
+  }
+
+  async mailSaveDraft(d: A.ComposeDraft): Promise<A.Result & { draftId?: string }> {
+    try {
+      const { draftId } = await this.saveDraft(d);
+      return { ...ok("Saved in Gmail drafts"), draftId };
+    } catch (e) {
+      return fail(e);
+    }
+  }
+
+  async mailSend(d: A.ComposeDraft): Promise<A.Result> {
+    try {
+      const { writer, draftId } = await this.saveDraft(d);
+      await writer.sendDraft(draftId);
+      return ok("Sent");
+    } catch (e) {
+      return fail(e);
+    }
+  }
+
+  async mailWrite(d: A.ComposeDraft, notes: string): Promise<A.Result & { body?: string }> {
+    const what = String(notes ?? "").trim();
+    if (!what) return { ok: false, message: "Say what the email should say." };
+    try {
+      // Everything here goes to the model through the privacy guard, like any message.
+      const replyingTo = d.mode === "reply" || d.mode === "replyAll" || d.mode === "forward" ? String(d.body ?? "").slice(0, 8000) : "";
+      const input = [`To: ${d.to}`, `Subject: ${d.subject}`, "", `The user's notes: ${what}`, ...(replyingTo ? ["", "What is in the email so far (with the quoted email it answers):", replyingTo] : [])].join("\n");
+      const body = stripControl(await this.session.runEphemeral(WRITE_INSTRUCTIONS, input)).trim();
+      return { ...ok("Written. Read it through before sending."), body };
+    } catch (e) {
+      return fail(e);
+    }
   }
 
   /** Which account something is from, for the window's label and colour. */
@@ -512,7 +657,69 @@ export class EdwardService implements A.EdwardApi {
   }
 
   private eventInfo({ e, a }: { e: CalendarEvent; a: Account }): A.EventInfo {
-    return { ...eventInfo(e), id: `${a.id}/${e.id}`, ...this.from(a) };
+    return { ...eventInfo(e), id: packId(a.id, e.calendarId, e.id), ...this.from(a) };
+  }
+
+  // ------------------------------------------------ calendar by hand (F2b): the user's own form, no model
+
+  async calendarTargets(): Promise<A.CalendarTarget[]> {
+    const acc = this.session.accounts;
+    const def = acc.primary("calendar");
+    const lists = await Promise.all(
+      acc.for("calendar").map(async (a) =>
+        (await new CalendarClient(acc.auth(a)).calendars().catch(() => []))
+          .filter((c) => c.writable)
+          .map((c) => ({ id: packId(a.id, c.id), name: clean(c.name), primary: c.primary, isDefault: def?.id === a.id && c.primary, ...this.from(a) })),
+      ),
+    );
+    return lists.flat();
+  }
+
+  /** The account, calendar and (when changing) event an id names; refuses what Edward may not change (D22). */
+  private async eventTarget(calendarRef: [string, string], eventId?: string) {
+    const acc = this.session.accounts;
+    const account = acc.get(calendarRef[0]);
+    if (!account || !acc.usable(account, "calendar")) throw new Error("That calendar's account isn't connected any more.");
+    const client = new CalendarClient(acc.auth(account));
+    const calendar = (await client.calendars()).find((c) => c.id === calendarRef[1]);
+    if (!calendar) throw new Error("That calendar isn't shown any more.");
+    if (!calendar.writable) throw new Error(`The "${calendar.name}" calendar is read-only.`);
+    const event = eventId ? await client.getEvent(calendar, eventId) : null;
+    if (eventId && !event) throw new Error("That event no longer exists.");
+    if (event && event.guests > 0) throw new Error("This event has other guests. Change it in Google Calendar, so they are told.");
+    return { client, calendar, event };
+  }
+
+  async eventSave(form: A.EventForm, id?: string): Promise<A.Result> {
+    try {
+      const title = stripControl(String(form.title ?? "")).trim();
+      if (!title) return { ok: false, message: "Give it a title." };
+      const parts = id ? unpackId(id) : form.target ? unpackId(form.target) : null;
+      if (!parts || parts.length < 2) return { ok: false, message: "Choose a calendar." };
+      const { client, calendar, event } = await this.eventTarget([parts[0]!, parts[1]!], id ? parts[2] : undefined);
+      const times = resolveTimes(String(form.start ?? ""), String(form.end ?? "") || undefined, event ?? undefined);
+      const input: EventInput = { title, ...times, location: stripControl(String(form.location ?? "")).trim(), notes: stripControl(String(form.notes ?? "")).trim() };
+      if (event) {
+        await client.updateEvent(calendar, event.id, input);
+        return ok(event.recurring ? "Changed (this time only)" : "Changed");
+      }
+      await client.createEvent(calendar, { ...input, location: input.location || undefined, notes: input.notes || undefined });
+      return ok(`Added to ${calendar.name}`);
+    } catch (e) {
+      return fail(e);
+    }
+  }
+
+  async eventDelete(id: string): Promise<A.Result> {
+    try {
+      const parts = unpackId(id);
+      if (parts.length < 3) return { ok: false, message: "Unknown event." };
+      const { client, calendar, event } = await this.eventTarget([parts[0]!, parts[1]!], parts[2]);
+      await client.deleteEvent(calendar, event!.id);
+      return ok(event!.recurring ? "Deleted (this time only)" : "Deleted");
+    } catch (e) {
+      return fail(e);
+    }
   }
 
   /** "g2/abc123" → the account and Gmail's id. Ids from before A1 (no account) are the first account's. */
@@ -533,6 +740,7 @@ export class EdwardService implements A.EdwardApi {
       subject: clean(m.subject) || "(no subject)",
       snippet: clean(m.snippet),
       date: shortWhen(m.date),
+      unread: m.unread,
       looksLikeBill: Boolean(this.session.bills.byMessage(m.id)) || /\b(bill|invoice|statement|amount due|payment due)\b/i.test(`${m.subject} ${m.snippet}`),
     };
   }
@@ -1046,6 +1254,10 @@ export class EdwardService implements A.EdwardApi {
 
 // ---------------------------------------------------------------- conversions
 
+/** The mail page's Inbox: everything in the inbox from the last 30 days, read or not. */
+const INBOX_QUERY = "in:inbox newer_than:30d";
+const PAGE_SIZE = 25;
+
 function attachment(path: string): A.Attachment {
   allowImage(path);
   return { path, name: basename(path), url: imageUrl(path) };
@@ -1062,7 +1274,24 @@ function eventInfo(e: CalendarEvent): A.EventInfo {
     calendar: clean(e.calendarName),
     guests: e.guests,
     declined: e.declined,
+    date: localDate(e.start),
+    startAt: e.allDay ? localDate(e.start) : toLocal(e.start),
+    endAt: e.allDay ? nextDate(localDate(e.end), -1) : toLocal(e.end),
+    notes: e.description ? clean(e.description) : undefined,
+    recurring: e.recurring,
+    editable: e.writable && e.guests === 0,
   };
+}
+
+/** Ids the window gets for calendars and events: account, calendar and event in one opaque string. */
+const packId = (...parts: string[]) => Buffer.from(JSON.stringify(parts)).toString("base64url");
+function unpackId(id: string): string[] {
+  try {
+    const parts = JSON.parse(Buffer.from(String(id), "base64url").toString("utf8"));
+    return Array.isArray(parts) && parts.every((p) => typeof p === "string") ? parts : [];
+  } catch {
+    return [];
+  }
 }
 
 function billInfo(b: Bill): A.BillInfo {

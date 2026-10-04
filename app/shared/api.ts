@@ -128,6 +128,35 @@ export interface EventInfo extends Partial<FromAccount> {
   calendar: string;
   guests: number;
   declined: boolean;
+  /** Local day it starts, YYYY-MM-DD. */
+  date: string;
+  /** For the form and the week grid: "YYYY-MM-DDTHH:MM", or "YYYY-MM-DD" for all-day (end inclusive). */
+  startAt: string;
+  endAt: string;
+  notes?: string;
+  recurring: boolean;
+  /** Edward may change it: a calendar you can write to, and no other guests (D22). */
+  editable: boolean;
+}
+
+/** A calendar a new event can go into. */
+export interface CalendarTarget extends FromAccount {
+  id: string;
+  name: string;
+  primary: boolean;
+  /** The default for new events. */
+  isDefault: boolean;
+}
+
+/** The new-event / edit form. Times are local: "YYYY-MM-DDTHH:MM", or dates for all-day (end inclusive). */
+export interface EventForm {
+  /** CalendarTarget id (new events only). */
+  target?: string;
+  title: string;
+  start: string;
+  end: string;
+  location?: string;
+  notes?: string;
 }
 
 export interface CalendarView {
@@ -149,6 +178,7 @@ export interface MailSummary extends Partial<FromAccount> {
   snippet: string;
   date: string;
   looksLikeBill: boolean;
+  unread: boolean;
 }
 
 export interface MailMessage {
@@ -170,6 +200,43 @@ export interface MailOriginal {
   remote: boolean;
   /** Web content is shown (asked for, or the user chose to always show it). */
   shown: boolean;
+}
+
+export type MailListView = "inbox" | "unread" | "search";
+
+/** An email being written in the app (F1b). Addresses are comma-separated as typed. */
+export interface ComposeDraft {
+  mode: "new" | "reply" | "replyAll" | "forward";
+  /** Account id it goes from. */
+  from: string;
+  to: string;
+  cc: string;
+  subject: string;
+  body: string;
+  threadId?: string;
+  inReplyTo?: string;
+  references?: string;
+  /** Set once it has been saved as a Gmail draft. */
+  draftId?: string;
+}
+
+/** What to tell the user before sending. */
+export interface ComposeCheck {
+  /** Reasons it can't be sent as it is. */
+  problems: string[];
+  /** Addresses never emailed from this account before. */
+  firstTime: string[];
+  /** The address it goes from. */
+  from: string;
+}
+
+/** A page of a mail list; pass `cursor` back to get the next one. */
+export interface MailPage {
+  connected: boolean;
+  items: MailSummary[];
+  cursor?: string;
+  problem?: string;
+  manyAccounts?: boolean;
 }
 
 export interface MailView {
@@ -377,6 +444,22 @@ export interface EdwardApi {
   calendar(days: number): Promise<CalendarView>;
   mail(): Promise<MailView>;
   mailMessage(id: string): Promise<MailMessage>;
+  /** Inbox (30 days), Unread (24 hours, Primary) or a Gmail search, every account, a page at a time. */
+  mailList(o: { view: MailListView; query?: string; cursor?: string }): Promise<MailPage>;
+  /** Events from `from` up to (not including) `to`, YYYY-MM-DD, every calendar account (week and month views). */
+  calendarRange(from: string, to: string): Promise<CalendarView>;
+  calendarTargets(): Promise<CalendarTarget[]>;
+  /** Creates an event (no id) or changes one; the user filled in the form, so no second confirmation. */
+  eventSave(form: EventForm, id?: string): Promise<Result>;
+  eventDelete(id: string): Promise<Result>;
+  /** A new email, or a reply / reply all / forward of one (id from the list). */
+  mailCompose(start?: { id: string; mode: "reply" | "replyAll" | "forward" }): Promise<ComposeDraft>;
+  mailCheck(d: ComposeDraft): Promise<ComposeCheck>;
+  /** Sends what the user wrote (they confirmed in the window first). */
+  mailSend(d: ComposeDraft): Promise<Result>;
+  mailSaveDraft(d: ComposeDraft): Promise<Result & { draftId?: string }>;
+  /** "Ask Edward to write": a body from the user's notes (through the privacy guard). */
+  mailWrite(d: ComposeDraft, notes: string): Promise<Result & { body?: string }>;
   /** Null when the email has no HTML. `pictures` lets it load pictures and styles from the web. */
   mailOriginal(id: string, pictures: boolean): Promise<MailOriginal | null>;
   bills(): Promise<BillsView>;

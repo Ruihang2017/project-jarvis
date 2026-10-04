@@ -281,6 +281,18 @@ export class GmailClient {
     return msgs.map(toSummary).sort((a, b) => b.date.getTime() - a.date.getTime());
   }
 
+  /** One page of a query, newest first, with the token for the next page (none on the last). */
+  async page(query: string, max = 25, pageToken?: string): Promise<{ messages: MessageSummary[]; next?: string }> {
+    this.ensureAccess();
+    const q = new URLSearchParams({ q: query, maxResults: String(Math.min(Math.max(1, max), 50)) });
+    if (pageToken) q.set("pageToken", pageToken);
+    const list = await this.auth.api<{ messages?: { id: string }[]; nextPageToken?: string }>(`${API}/messages?${q}`);
+    const meta = new URLSearchParams({ format: "metadata" });
+    for (const h of ["From", "To", "Subject", "Date"]) meta.append("metadataHeaders", h);
+    const msgs = await Promise.all((list.messages ?? []).map((m) => this.auth.api<ApiMessage>(`${API}/messages/${encodeURIComponent(m.id)}?${meta}`)));
+    return { messages: msgs.map(toSummary).sort((a, b) => b.date.getTime() - a.date.getTime()), next: list.nextPageToken || undefined };
+  }
+
   /** Ids of messages matching a query, newest first (one page, up to 100). */
   async listIds(query: string, max = 50): Promise<string[]> {
     this.ensureAccess();

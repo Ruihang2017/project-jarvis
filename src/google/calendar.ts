@@ -33,6 +33,8 @@ export interface CalendarEvent {
   calendarId: string;
   calendarName: string;
   primaryCalendar: boolean;
+  /** Its calendar lets Edward change events (owner or writer). */
+  writable: boolean;
   title: string;
   start: Date;
   end: Date;
@@ -106,6 +108,7 @@ export function toEvent(e: ApiEvent, cal: CalendarInfo): CalendarEvent | null {
     calendarId: cal.id,
     calendarName: cal.name,
     primaryCalendar: cal.primary,
+    writable: cal.writable,
     title: stripControl(e.summary ?? "").trim() || "(no title)",
     start,
     end,

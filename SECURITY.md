@@ -58,6 +58,12 @@ The prompt always shows the mode when it is not `chat`. Entering `auto` asks fir
 | Read the clipboard, open a file or link | Asked. Programs and scripts are never "opened" |
 | Write a draft, save a memory or reminder, copy to the clipboard | Done without asking, and shown as it happens |
 
+The table is about what the model asks to do. In the desktop app you can also write and send email and
+add, change or delete events yourself, in forms. Those don't involve the model (unless you press "Ask
+Edward to write", which sends your notes through the guard): sending still shows a confirmation with the
+sender, recipients and a first-time-recipient warning, deleting an event asks first, and events with
+other guests stay read-only.
+
 ## Text from other people
 
 Emails and calendar events are written by others and may contain instructions aimed at the model
