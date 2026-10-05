@@ -10,3 +10,7 @@ app/renderer/public/
 
 # The Google client built into the installer (D37): never commit
 app/build-secrets/
+
+# Local only: internal working notes (their own local git repository) and Claude's pointer to them.
+/internal/
+CLAUDE.local.md
