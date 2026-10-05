@@ -16,7 +16,10 @@ const results: [string, boolean, string?][] = [];
 const ok = (name: string, cond: boolean, info = "") => results.push([name, cond, info]);
 const eq = (name: string, got: unknown, want: unknown) => ok(name, JSON.stringify(got) === JSON.stringify(want), `got ${JSON.stringify(got)}, want ${JSON.stringify(want)}`);
 
-const http = demoGoogle();
+// A fixed time of day: the made-up site visit is 40 minutes from "now", which is tomorrow after 23:05.
+const noon = new Date();
+noon.setHours(12, 0, 0, 0);
+const http = demoGoogle(() => noon);
 const get = async (url: string, init?: RequestInit) => {
   const r = await http(url, init);
   return { status: r.status, body: r.status === 204 ? null : await r.json() };
@@ -37,7 +40,7 @@ ok("a full message has its HTML with booking data", fromJsonLd(Buffer.from(full.
 
 const cal = await get("https://www.googleapis.com/calendar/v3/users/me/calendarList");
 eq("calendars", cal.body.items.map((c: { id: string }) => c.id)[0], DEMO_EMAIL);
-const { today } = demoData();
+const { today } = demoData(noon);
 const day = (n: number) => new Date(`${today}T00:00`).getTime() + n * 86_400_000;
 const events = async () => (await get(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(DEMO_EMAIL)}/events?timeMin=${new Date(day(0)).toISOString()}&timeMax=${new Date(day(1)).toISOString()}`)).body.items;
 ok("today's events include the site visit", (await events()).some((e: { summary: string }) => e.summary === "Kitchen renovation site visit"));
