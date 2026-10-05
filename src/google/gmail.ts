@@ -1,6 +1,7 @@
 /**
- * Gmail (N4a: reading). Personal Gmail only (D13). Nothing is cached locally; every call asks
- * Google. Scopes don't allow archiving, labelling or deleting mail (D23).
+ * Gmail (N4a: reading). Personal Gmail only (D13). Nothing is written to disk: messages read in the
+ * last few minutes are remembered in memory only, so the same email isn't fetched again and again
+ * (Gmail allows about 300 reads a minute). Scopes don't allow archiving, labelling or deleting mail (D23).
  */
 import { toLocal } from "../reminders/schedule.js";
 import { stripControl, truncate } from "../util.js";
@@ -260,8 +261,60 @@ export function summaryLine(m: MessageSummary, now = new Date()): string {
   return `${m.unread ? "● " : ""}${truncate(displayName(m.from), 30)} — ${truncate(m.subject, 80)} · ${shortDate(m.date, now)}`;
 }
 
+/** Gmail requests one account has in flight at once; a page of mail would otherwise ask for 50 together. */
+export const MAX_PARALLEL = 5;
+/** How long a message read from Gmail is remembered, and how many per account. In memory only. */
+export const REMEMBER_MS = 5 * 60_000;
+const REMEMBER_MAX = 200;
+
+interface Remembered {
+  at: number;
+  /** Fetched with format=full: good for a summary too. */
+  full: boolean;
+  msg: Promise<ApiMessage>;
+}
+
+/** What every GmailClient and GmailWriter of one account shares; gone when the account's sign-in object is. */
+interface Shared {
+  active: number;
+  waiting: (() => void)[];
+  remembered: Map<string, Remembered>;
+}
+
+const shared = new WeakMap<GoogleAuth, Shared>();
+
+function sharedFor(auth: GoogleAuth): Shared {
+  let s = shared.get(auth);
+  if (!s) shared.set(auth, (s = { active: 0, waiting: [], remembered: new Map() }));
+  return s;
+}
+
+/** A Gmail request, when one of the account's MAX_PARALLEL places is free. */
+async function call<T>(auth: GoogleAuth, url: string, init?: RequestInit): Promise<T> {
+  const s = sharedFor(auth);
+  if (s.active >= MAX_PARALLEL) await new Promise<void>((r) => s.waiting.push(r));
+  else s.active++;
+  try {
+    return await auth.api<T>(url, init);
+  } finally {
+    // The place goes straight to whoever waited longest.
+    const next = s.waiting.shift();
+    if (next) next();
+    else s.active--;
+  }
+}
+
+const METADATA = (() => {
+  const q = new URLSearchParams({ format: "metadata" });
+  for (const h of ["From", "To", "Subject", "Date"]) q.append("metadataHeaders", h);
+  return q.toString();
+})();
+
 export class GmailClient {
-  constructor(private readonly auth: GoogleAuth) {}
+  constructor(
+    private readonly auth: GoogleAuth,
+    private readonly now: () => number = Date.now,
+  ) {}
 
   ensureAccess() {
     const s = this.auth.state();
@@ -270,52 +323,78 @@ export class GmailClient {
     if (!hasGmailAccess(s.scopes)) throw new GoogleAuthError("no_scope", "Gmail access hasn't been granted yet — run /connect google to add it");
   }
 
+  /**
+   * One message as Gmail gives it, from memory when it was read in the last few minutes (a full one
+   * also serves when only the headers are wanted). Two callers asking at once share one request.
+   */
+  private raw(id: string, full: boolean): Promise<ApiMessage> {
+    const { remembered } = sharedFor(this.auth);
+    const at = this.now();
+    const had = remembered.get(id);
+    if (had && at - had.at < REMEMBER_MS && (had.full || !full)) return had.msg;
+    const msg = call<ApiMessage>(this.auth, `${API}/messages/${encodeURIComponent(id)}?${full ? "format=full" : METADATA}`);
+    this.remember(id, { at, full, msg });
+    return msg;
+  }
+
+  private remember(id: string, entry: Remembered) {
+    const { remembered } = sharedFor(this.auth);
+    remembered.delete(id); // newest last
+    remembered.set(id, entry);
+    while (remembered.size > REMEMBER_MAX) remembered.delete(remembered.keys().next().value!);
+    // A failed read isn't remembered.
+    entry.msg.catch(() => {
+      if (remembered.get(id) === entry) remembered.delete(id);
+    });
+  }
+
+  private async summaries(ids: string[]): Promise<MessageSummary[]> {
+    const msgs = await Promise.all(ids.map((id) => this.raw(id, false)));
+    return msgs.map(toSummary).sort((a, b) => b.date.getTime() - a.date.getTime());
+  }
+
+  /** Ids of one page of a query, newest first (up to 100), with the token for the next page (none on the last). */
+  async list(query: string, max = 50, pageToken?: string): Promise<{ ids: string[]; next?: string }> {
+    this.ensureAccess();
+    const q = new URLSearchParams({ q: query, maxResults: String(Math.min(Math.max(1, max), 100)) });
+    if (pageToken) q.set("pageToken", pageToken);
+    const list = await call<{ messages?: { id: string }[]; nextPageToken?: string }>(this.auth, `${API}/messages?${q}`);
+    return { ids: (list.messages ?? []).map((m) => m.id), next: list.nextPageToken || undefined };
+  }
+
   /** Gmail search syntax (from:, newer_than:7d, is:unread, has:attachment …); newest first. */
   async search(query: string, max = 10): Promise<MessageSummary[]> {
-    this.ensureAccess();
-    const q = new URLSearchParams({ q: query, maxResults: String(Math.min(Math.max(1, max), 20)) });
-    const list = await this.auth.api<{ messages?: { id: string }[] }>(`${API}/messages?${q}`);
-    const meta = new URLSearchParams({ format: "metadata" });
-    for (const h of ["From", "To", "Subject", "Date"]) meta.append("metadataHeaders", h);
-    const msgs = await Promise.all((list.messages ?? []).map((m) => this.auth.api<ApiMessage>(`${API}/messages/${encodeURIComponent(m.id)}?${meta}`)));
-    return msgs.map(toSummary).sort((a, b) => b.date.getTime() - a.date.getTime());
+    return this.summaries((await this.list(query, Math.min(max, 20))).ids);
   }
 
   /** One page of a query, newest first, with the token for the next page (none on the last). */
   async page(query: string, max = 25, pageToken?: string): Promise<{ messages: MessageSummary[]; next?: string }> {
-    this.ensureAccess();
-    const q = new URLSearchParams({ q: query, maxResults: String(Math.min(Math.max(1, max), 50)) });
-    if (pageToken) q.set("pageToken", pageToken);
-    const list = await this.auth.api<{ messages?: { id: string }[]; nextPageToken?: string }>(`${API}/messages?${q}`);
-    const meta = new URLSearchParams({ format: "metadata" });
-    for (const h of ["From", "To", "Subject", "Date"]) meta.append("metadataHeaders", h);
-    const msgs = await Promise.all((list.messages ?? []).map((m) => this.auth.api<ApiMessage>(`${API}/messages/${encodeURIComponent(m.id)}?${meta}`)));
-    return { messages: msgs.map(toSummary).sort((a, b) => b.date.getTime() - a.date.getTime()), next: list.nextPageToken || undefined };
+    const list = await this.list(query, Math.min(max, 50), pageToken);
+    return { messages: await this.summaries(list.ids), next: list.next };
   }
 
   /** Ids of messages matching a query, newest first (one page, up to 100). */
   async listIds(query: string, max = 50): Promise<string[]> {
-    this.ensureAccess();
-    const q = new URLSearchParams({ q: query, maxResults: String(Math.min(Math.max(1, max), 100)) });
-    const list = await this.auth.api<{ messages?: { id: string }[] }>(`${API}/messages?${q}`);
-    return (list.messages ?? []).map((m) => m.id);
+    return (await this.list(query, max)).ids;
   }
 
   async message(id: string): Promise<Message> {
     this.ensureAccess();
-    return toMessage(await this.auth.api<ApiMessage>(`${API}/messages/${encodeURIComponent(id)}?format=full`));
+    return toMessage(await this.raw(id, true));
   }
 
   /** An attachment's bytes (used for the pictures inside an email's HTML). */
   async attachment(messageId: string, attachmentId: string): Promise<Buffer> {
     this.ensureAccess();
-    const a = await this.auth.api<{ data?: string }>(`${API}/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}`);
+    const a = await call<{ data?: string }>(this.auth, `${API}/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}`);
     return Buffer.from(a.data ?? "", "base64url");
   }
 
   async thread(threadId: string): Promise<Message[]> {
     this.ensureAccess();
-    const t = await this.auth.api<{ messages?: ApiMessage[] }>(`${API}/threads/${encodeURIComponent(threadId)}?format=full`);
+    const t = await call<{ messages?: ApiMessage[] }>(this.auth, `${API}/threads/${encodeURIComponent(threadId)}?format=full`);
+    const at = this.now();
+    for (const m of t.messages ?? []) this.remember(m.id, { at, full: true, msg: Promise.resolve(m) });
     return (t.messages ?? []).map(toMessage);
   }
 }
@@ -432,11 +511,11 @@ export class GmailWriter {
   constructor(private readonly auth: GoogleAuth) {}
 
   async createDraft(raw: string, threadId?: string): Promise<{ id: string }> {
-    return this.auth.api<{ id: string }>(`${API}/drafts`, { method: "POST", body: JSON.stringify({ message: { raw, ...(threadId ? { threadId } : {}) } }) });
+    return call<{ id: string }>(this.auth, `${API}/drafts`, { method: "POST", body: JSON.stringify({ message: { raw, ...(threadId ? { threadId } : {}) } }) });
   }
 
   async updateDraft(id: string, raw: string, threadId?: string): Promise<{ id: string }> {
-    return this.auth.api<{ id: string }>(`${API}/drafts/${encodeURIComponent(id)}`, {
+    return call<{ id: string }>(this.auth, `${API}/drafts/${encodeURIComponent(id)}`, {
       method: "PUT",
       body: JSON.stringify({ id, message: { raw, ...(threadId ? { threadId } : {}) } }),
     });
@@ -445,7 +524,7 @@ export class GmailWriter {
   /** The draft as it is now in Gmail (the user may have edited it there). null if it's gone. */
   async getDraft(id: string): Promise<Message | null> {
     try {
-      const d = await this.auth.api<{ id: string; message: ApiMessage }>(`${API}/drafts/${encodeURIComponent(id)}?format=full`);
+      const d = await call<{ id: string; message: ApiMessage }>(this.auth, `${API}/drafts/${encodeURIComponent(id)}?format=full`);
       return toMessage(d.message);
     } catch (e) {
       if (e instanceof GoogleAuthError && e.code === "http_404") return null;
@@ -454,13 +533,13 @@ export class GmailWriter {
   }
 
   async sendDraft(id: string): Promise<{ id: string; threadId: string }> {
-    return this.auth.api<{ id: string; threadId: string }>(`${API}/drafts/send`, { method: "POST", body: JSON.stringify({ id }) });
+    return call<{ id: string; threadId: string }>(this.auth, `${API}/drafts/send`, { method: "POST", body: JSON.stringify({ id }) });
   }
 
   /** Whether the user has emailed this address before (for the first-time warning). */
   async emailedBefore(address: string): Promise<boolean> {
     const q = new URLSearchParams({ q: `in:sent to:${address}`, maxResults: "1" });
-    const res = await this.auth.api<{ messages?: unknown[] }>(`${API}/messages?${q}`);
+    const res = await call<{ messages?: unknown[] }>(this.auth, `${API}/messages?${q}`);
     return Boolean(res.messages?.length);
   }
 }

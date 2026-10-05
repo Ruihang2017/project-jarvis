@@ -13,7 +13,7 @@ import type { Toast } from "../background/notify.js";
 import type { BillStore } from "../bills/store.js";
 import { formatAmount } from "../bills/store.js";
 import { localDate } from "../google/calendar.js";
-import { displayName, GmailClient, stripQuoted, type MessageSummary } from "../google/gmail.js";
+import { displayName, GmailClient, stripQuoted, type Message } from "../google/gmail.js";
 import { memoryDbPath } from "../memory/store.js";
 import { redact, sensitiveReason } from "../privacy/guard.js";
 import { toLocal } from "../reminders/schedule.js";
@@ -125,14 +125,14 @@ export interface SummaryDeps {
 const after = (d: Date) => `after:${Math.floor(d.getTime() / 1000)}`;
 const INBOX = "in:inbox -category:promotions -category:forums";
 
-/** One account's new mail, adverts and forums only counted. */
+/** One account's new mail, newest first: only the ids (nothing is read yet); adverts and forums only counted. */
 async function readBox(gmail: GmailClient, since: Date) {
-  const [page, promotions, forums] = await Promise.all([
-    gmail.page(`${INBOX} ${after(since)}`, PER_ACCOUNT),
+  const [inbox, promotions, forums] = await Promise.all([
+    gmail.list(`${INBOX} ${after(since)}`, PER_ACCOUNT),
     gmail.listIds(`in:inbox category:promotions ${after(since)}`, 100),
     gmail.listIds(`in:inbox category:forums ${after(since)}`, 100),
   ]);
-  return { messages: page.messages, more: Boolean(page.next), promotions: promotions.length, forums: forums.length };
+  return { ids: inbox.ids, more: Boolean(inbox.next), promotions: promotions.length, forums: forums.length };
 }
 
 /** Checks one line from the model: cleaned, short, and nothing Edward would refuse to store. */
@@ -148,41 +148,53 @@ export async function summariseMail(deps: SummaryDeps, since: Date, now = new Da
   const from = new Date(Math.max(since.getTime(), now.getTime() - WINDOW_MS));
   const digest: MailDigest = { at: now.toISOString(), since: from.toISOString(), items: [], bills: [], quiet: 0, promotions: 0, forums: 0, more: 0, removed: 0, problems: [] };
   const boxes = accounts.for("mail");
-  const found: { account: Account; gmail: GmailClient; m: MessageSummary }[] = [];
-  await Promise.all(
+  const named = (account: Account, text: string) => (boxes.length > 1 ? `${accounts.label(account)}: ${text}` : text);
+  // Each account on its own, then put together in the accounts' order.
+  const perBox = await Promise.all(
     boxes.map(async (account) => {
       const gmail = new GmailClient(accounts.auth(account));
+      const out: { bills: MailDigest["bills"]; problems: string[]; found: { account: Account; m: Message }[] } = { bills: [], problems: [], found: [] };
       try {
         const box = await readBox(gmail, from);
         digest.promotions += box.promotions;
         digest.forums += box.forums;
         if (box.more) digest.more++;
-        for (const m of box.messages) found.push({ account, gmail, m });
+        // Bills Edward already found point to Bills; they aren't read, and don't need the model again.
+        const rest: string[] = [];
+        for (const id of box.ids) {
+          const bill = bills.byMessage(id);
+          if (bill) out.bills.push({ id: `${account.id}/${id}`, line: truncate(`${bill.payee} ${formatAmount(bill)}${bill.dueDate ? `, due ${bill.dueDate}` : ""}`, LINE_CHARS) });
+          else rest.push(id);
+        }
+        digest.more += Math.max(0, rest.length - MAX_EMAILS);
+        // Each email is read once, in full: sender, subject and date come with the text.
+        const read = await Promise.all(rest.slice(0, MAX_EMAILS).map((id) => gmail.message(id).catch(() => null)));
+        const failed = read.filter((m) => !m).length;
+        if (failed) {
+          digest.more += failed;
+          out.problems.push(named(account, `${failed} email${failed === 1 ? "" : "s"} couldn't be read`));
+        }
+        for (const m of read) if (m) out.found.push({ account, m });
       } catch (e) {
-        digest.problems.push(boxes.length > 1 ? `${accounts.label(account)}: ${e instanceof Error ? e.message : String(e)}` : e instanceof Error ? e.message : String(e));
+        out.problems.push(named(account, e instanceof Error ? e.message : String(e)));
       }
+      return out;
     }),
   );
+  digest.bills = perBox.flatMap((b) => b.bills);
+  digest.problems = perBox.flatMap((b) => b.problems);
+  const found = perBox.flatMap((b) => b.found);
   found.sort((a, b) => b.m.date.getTime() - a.m.date.getTime());
-
-  // Bills Edward already found point to Bills; they don't need the model again.
-  const rest: typeof found = [];
-  for (const f of found) {
-    const bill = bills.byMessage(f.m.id);
-    if (bill) digest.bills.push({ id: `${f.account.id}/${f.m.id}`, line: truncate(`${bill.payee} ${formatAmount(bill)}${bill.dueDate ? `, due ${bill.dueDate}` : ""}`, LINE_CHARS) });
-    else rest.push(f);
-  }
-  digest.more += Math.max(0, rest.length - MAX_EMAILS);
-  const sent = rest.slice(0, MAX_EMAILS);
+  digest.more += Math.max(0, found.length - MAX_EMAILS);
+  const sent = found.slice(0, MAX_EMAILS);
   if (!sent.length) return digest;
 
-  // Bodies, without the quoted history, and redacted here too so the count can be shown.
-  const bodies = await Promise.all(sent.map(async (f) => (await f.gmail.message(f.m.id).catch(() => null))?.body ?? f.m.snippet));
+  // Without the quoted history, and redacted here too so the count can be shown.
   const refs = new Map<string, (typeof sent)[number]>();
   const parts = sent.map((f, i) => {
     const ref = `e${i + 1}`;
     refs.set(ref, f);
-    const raw = [`=== EMAIL ${ref} ===`, `From: ${f.m.from}`, `Date: ${toLocal(f.m.date)}`, `Subject: ${f.m.subject}`, "", stripQuoted(bodies[i] ?? "").slice(0, BODY_CHARS)].join("\n");
+    const raw = [`=== EMAIL ${ref} ===`, `From: ${f.m.from}`, `Date: ${toLocal(f.m.date)}`, `Subject: ${f.m.subject}`, "", stripQuoted(f.m.body).slice(0, BODY_CHARS)].join("\n");
     const r = redact(raw);
     digest.removed += r.removed.length;
     return r.text;

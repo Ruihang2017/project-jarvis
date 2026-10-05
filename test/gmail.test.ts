@@ -300,6 +300,75 @@ for (const m of Object.values(store)) m.labelIds = ["INBOX"];
 eq("brief: no unread → nothing shown", (await briefGoogle(accounts, now)).mail, { lines: [], count: 0 });
 mem.close();
 rem.close();
+
+// --- pacing: a few requests at a time per account, and an email read once (Gmail counts per minute) ---
+let inFlight = 0;
+let peak = 0;
+let failing = false;
+const asked: string[] = [];
+const idOf = (url: string) => decodeURIComponent(new URL(url).pathname.split("/").pop()!);
+/** How one email was asked for since `asked` was emptied. */
+const reads = (id: string) => asked.filter((u) => new URL(u).pathname.endsWith(`/messages/${id}`)).map((u) => (u.includes("format=full") ? "full" : "metadata"));
+const slowAuth = {
+  state: () => state(GMAIL_SCOPES),
+  api: async (url: string) => {
+    asked.push(url);
+    peak = Math.max(peak, ++inFlight);
+    await new Promise((r) => setTimeout(r, 2));
+    inFlight--;
+    const u = new URL(url);
+    if (u.pathname.endsWith("/messages")) return { messages: Array.from({ length: Number(u.searchParams.get("maxResults")) }, (_, i) => ({ id: `m${i + 1}` })) };
+    if (u.pathname.includes("/threads/")) return { messages: [msg("t1", { from: "A <a@x.com>", subject: "Thread", date: now })] };
+    if (failing) throw new GoogleAuthError("rate_limited", "Google's per-minute limit for this account was reached; try again in a minute");
+    return msg(idOf(url), { from: "A <a@x.com>", subject: `Mail ${idOf(url)}`, date: now });
+  },
+} as unknown as GoogleAuth;
+let clock = 1_000_000;
+const paced = new g.GmailClient(slowAuth, () => clock);
+const firstPage = await paced.page("in:inbox", 50);
+eq("a page of 50: every email read", [firstPage.messages.length, asked.length], [50, 51]);
+eq(`never more than ${g.MAX_PARALLEL} requests at once`, peak, g.MAX_PARALLEL);
+
+// Another client for the same account shares the places and what was read.
+asked.length = 0;
+const other = new g.GmailClient(slowAuth, () => clock);
+await Promise.all([other.search("in:inbox", 20), paced.page("in:inbox", 50)]);
+eq("the same emails again: only the two lists are asked", asked.length, 2);
+const full = await Promise.all([other.message("m1"), paced.message("m1")]);
+eq("the full email: one request for two readers", [reads("m1"), full[0]!.body, full[1]!.body], [["full"], "Body of m1", "Body of m1"]);
+asked.length = 0;
+eq("a full email serves a summary too", [(await paced.search("in:inbox", 1))[0]!.subject, reads("m1")], ["Mail m1", []]);
+await other.thread("T9");
+asked.length = 0;
+eq("emails that came with a thread aren't read again", [(await paced.message("t1")).subject, asked.length], ["Thread", 0]);
+
+clock += g.REMEMBER_MS - 1;
+await paced.message("m1");
+eq("still remembered just before five minutes", asked.length, 0);
+clock += 1;
+await paced.message("m1");
+eq("read again after five minutes", reads("m1"), ["full"]);
+
+failing = true;
+await throws("a failed read is passed on", () => paced.message("m60"), "per-minute limit");
+failing = false;
+asked.length = 0;
+eq("…and not remembered", [(await paced.message("m60")).subject, reads("m60")], ["Mail m60", ["full"]]);
+
+// Another account has its own places and its own memory.
+asked.length = 0;
+peak = 0;
+const second = { ...slowAuth } as unknown as GoogleAuth;
+await Promise.all([new g.GmailClient(second, () => clock).page("in:inbox", 10), paced.page("in:inbox", 10)]);
+eq("two accounts: each its own five", [peak > g.MAX_PARALLEL, peak <= g.MAX_PARALLEL * 2], [true, true]);
+eq("…and its own memory (m1 is still remembered for the first)", [reads("m1"), reads("m2")], [["metadata"], ["metadata", "metadata"]]);
+
+// Writing waits for a place too.
+peak = 0;
+const writer = new g.GmailWriter(slowAuth);
+await Promise.all(Array.from({ length: 12 }, (_, i) => writer.emailedBefore(`p${i}@x.com`)));
+eq("drafts and checks share the limit", peak, g.MAX_PARALLEL);
+
 rmSync(dir, { recursive: true, force: true });
 
 console.log(results.map(([n, pass, info]) => `${pass ? "PASS" : "FAIL"}  ${n}${pass ? "" : "  → " + info}`).join("\n"));

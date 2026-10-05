@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+- Fixed: "Gmail's query quota is temporarily exceeded" on the morning Edward is opened. Gmail allows
+  about 300 emails a minute per account, and the mail summary, the daily bill and booking scans and the
+  Today page all started at once.
+  - When Google says "slow down" (429, or 403 with a rate-limit reason) Edward waits and tries again, up
+    to three times and 30 seconds, instead of passing the error on. The same for Calendar and Tasks.
+  - The mail summary reads each email once instead of twice, and doesn't read emails already known as bills.
+  - An email read in the last five minutes isn't fetched again (kept in memory only, never on disk), so
+    Today, Mail, the summary and the heads-ups share what they read. An unread dot can be up to five
+    minutes behind Gmail.
+  - At most five Gmail requests at a time per account.
+  - The automatic bill scan, booking scan and mail summary take turns, a minute apart. What you ask for
+    yourself still runs at once.
+- The mail summary says when an email couldn't be read, instead of summarising its preview line.
+
 ## 0.2.0 — 2026-10-05
 
 The desktop app, with a Windows installer.

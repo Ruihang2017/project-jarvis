@@ -1780,6 +1780,7 @@ function bytes(n: number): string {
 }
 
 function googleProblem(e: unknown): string {
+  if (e instanceof GoogleAuthError && e.code === "rate_limited") return "Google is limiting requests for this account right now. Try again in a minute.";
   if (e instanceof GoogleAuthError) return "The Google connection stopped working. Reconnect it in Settings.";
   return `Couldn't reach Google: ${clean(e instanceof Error ? e.message : String(e))}`;
 }

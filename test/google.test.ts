@@ -134,6 +134,83 @@ try {
   ok("api error surfaces Google's message", String(e).includes("403: Not allowed"), String(e));
 }
 
+// api(): Google's "slow down" (429, or 403 with a rate-limit reason) → wait and try again
+let time = 5_000_000;
+const sleeps: number[] = [];
+let sleep = async (ms: number) => {
+  sleeps.push(ms);
+  time += ms;
+};
+const paced = new GoogleAuth(http, undefined, { now: () => time, sleep: (ms) => sleep(ms) });
+const slow = (o: { status?: number; reason?: string; after?: string } = {}) =>
+  new Response(JSON.stringify({ error: { code: o.status ?? 429, message: "Quota exceeded", errors: [{ domain: "usageLimits", reason: o.reason ?? "rateLimitExceeded" }] } }), {
+    status: o.status ?? 429,
+    headers: { "content-type": "application/json", ...(o.after ? { "retry-after": o.after } : {}) },
+  });
+const GMAIL = "https://gmail.googleapis.com/gmail/v1/users/me/messages/m1";
+const sent = (url = GMAIL) => calls.filter((c) => c.url === url).length;
+const between = (n: number | undefined, low: number) => n !== undefined && n >= low && n <= low * 1.25;
+
+calls.length = 0;
+apiReplies = [slow({ after: "3" }), json({ id: "m1" })];
+eq("429 → tried again, and it works", await paced.api(GMAIL), { id: "m1" });
+eq("…after the time Google asked for", [sleeps, sent()], [[3000], 2]);
+
+sleeps.length = 0;
+calls.length = 0;
+apiReplies = [slow({ status: 403, reason: "userRateLimitExceeded" }), slow({ status: 403 }), json({ id: "m1" })];
+eq("403 with a rate-limit reason → tried again", await paced.api(GMAIL), { id: "m1" });
+ok("…waiting about 2 then 5 seconds", sleeps.length === 2 && between(sleeps[0], 2000) && between(sleeps[1], 5000) && sent() === 3, JSON.stringify(sleeps));
+
+sleeps.length = 0;
+calls.length = 0;
+apiReplies = [slow({ status: 403, reason: "insufficientPermissions" })];
+await rejects("403 for a missing permission is not tried again", paced.api(GMAIL), "http_403");
+apiReplies = [slow({ status: 403, reason: "dailyLimitExceeded" })];
+await rejects("…nor the daily limit", paced.api(GMAIL), "http_403");
+eq("…no waiting, one request each", [sleeps, sent()], [[], 2]);
+
+calls.length = 0;
+apiReplies = [slow(), slow(), slow(), slow(), json({ id: "never" })];
+await rejects("still limited after three more tries → a clear error", paced.api(GMAIL), "rate_limited");
+ok("…four requests, under 30 seconds of waiting", sent() === 4 && sleeps.length === 3 && sleeps.reduce((a, b) => a + b, 0) <= 30_000, JSON.stringify(sleeps));
+apiReplies = [];
+
+sleeps.length = 0;
+calls.length = 0;
+apiReplies = [slow({ after: "120" })];
+try {
+  await paced.api(GMAIL);
+  ok("a wait Google wants that is too long → the error at once", false);
+} catch (e) {
+  ok("a wait Google wants that is too long → the error at once", e instanceof GoogleAuthError && e.code === "rate_limited" && e.message.includes("try again in a minute") && sleeps.length === 0, String(e));
+}
+
+// While one request waits, the account's other requests to that API wait too; other APIs don't.
+let release = () => {};
+sleep = (ms) => {
+  sleeps.push(ms);
+  return new Promise<void>((r) => {
+    const before = release;
+    release = () => {
+      before();
+      time += ms;
+      r();
+    };
+  });
+};
+const settle = () => new Promise((r) => setTimeout(r, 5));
+calls.length = 0;
+apiReplies = [slow({ after: "4" })];
+const first = paced.api(GMAIL);
+await settle();
+const held = paced.api(`${GMAIL}?format=full`);
+const elsewhere = paced.api("https://www.googleapis.com/calendar/v3/x");
+await settle();
+eq("another Gmail request is held back, a calendar request isn't", [sleeps, calls.map((c) => new URL(c.url).host)], [[4000, 4000], ["gmail.googleapis.com", "www.googleapis.com"]]);
+release();
+eq("both go through after the wait", [await first, await held, await elsewhere, calls.length], [{ ok: true }, { ok: true }, { ok: true }, 4]);
+
 // --- background health check ---
 const toasts: string[] = [];
 const notify = async (t: { title: string }) => (toasts.push(t.title), true);

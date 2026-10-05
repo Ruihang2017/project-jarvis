@@ -74,14 +74,52 @@ export const shortScope = (s: string) => s.replace("https://www.googleapis.com/a
 
 const EARLY_REFRESH_MS = 60_000;
 
+/** Waits after Google says "slow down" (plus up to a quarter, at random), and the most one request waits in all. */
+const BACKOFF_MS = [2000, 5000, 12_000];
+const MAX_WAIT_MS = 30_000;
+const RATE_REASONS = ["rateLimitExceeded", "userRateLimitExceeded", "RATE_LIMIT_EXCEEDED"];
+
+/**
+ * Google's "too many requests for now": 429, or 403 with a rate-limit reason. Any other 403 is a
+ * permission problem (or the daily limit), which waiting a few seconds doesn't fix.
+ */
+export function isRateLimit(status: number, body: string): boolean {
+  if (status === 429) return true;
+  if (status !== 403) return false;
+  try {
+    const error = (JSON.parse(body) as { error?: { errors?: { reason?: string }[]; details?: { reason?: string }[] } }).error;
+    return [...(error?.errors ?? []), ...(error?.details ?? [])].some((x) => RATE_REASONS.includes(x.reason ?? ""));
+  } catch {
+    return false;
+  }
+}
+
+/** Retry-After in milliseconds: seconds or a date; undefined when absent or unreadable. */
+function retryAfterMs(value: string | null, now: number): number | undefined {
+  if (!value) return undefined;
+  const ms = /^\s*\d+(\.\d+)?\s*$/.test(value) ? Number(value) * 1000 : new Date(value).getTime() - now;
+  return Number.isFinite(ms) ? Math.max(0, ms) : undefined;
+}
+
+/** Time, so tests don't have to wait. */
+export interface Clock {
+  now: () => number;
+  sleep: (ms: number) => Promise<void>;
+}
+
+const realClock: Clock = { now: Date.now, sleep: (ms) => new Promise((r) => setTimeout(r, ms)) };
+
 export class GoogleAuth {
   private access?: { token: string; expiresAt: number };
   private client?: OAuthClient;
+  /** Per API host: no request before this time, after Google said "slow down" to one of them. */
+  private holds = new Map<string, number>();
 
   /** `dir` holds this account's token and state; the data folder itself for the pre-A1 single account. */
   constructor(
     private http: Http = fetch,
     readonly dir: string = appDataDir(),
+    private clock: Clock = realClock,
   ) {}
 
   /** null when never connected (or disconnected). */
@@ -173,18 +211,40 @@ export class GoogleAuth {
     return { revoked };
   }
 
-  /** Authorized JSON request to a Google API (used from N3 on). Retries once after a 401. */
+  /**
+   * Authorized JSON request to a Google API (used from N3 on). Retries once after a 401. When Google
+   * says "slow down" (see isRateLimit) it waits and tries again, up to three times and 30 seconds in
+   * all, and the account's other requests to that API wait too instead of each being refused.
+   */
   async api<T>(url: string, init: RequestInit = {}): Promise<T> {
-    for (let attempt = 0; ; attempt++) {
+    const host = new URL(url).host;
+    let refreshed = false;
+    let slowed = 0;
+    let waited = 0;
+    for (;;) {
+      const hold = (this.holds.get(host) ?? 0) - this.clock.now();
+      if (hold > 0) await this.clock.sleep(hold);
       const headers = new Headers(init.headers);
       headers.set("authorization", `Bearer ${await this.accessToken()}`);
       if (init.body && !headers.has("content-type")) headers.set("content-type", "application/json");
       const res = await this.http(url, { ...init, headers });
-      if (res.status === 401 && attempt === 0) {
+      if (res.status === 401 && !refreshed) {
+        refreshed = true;
         this.access = undefined;
         continue;
       }
       const text = await res.text();
+      if (isRateLimit(res.status, text)) {
+        const now = this.clock.now();
+        const wait = retryAfterMs(res.headers.get("retry-after"), now) ?? Math.round((BACKOFF_MS[slowed] ?? 0) * (1 + Math.random() / 4));
+        if (slowed >= BACKOFF_MS.length || waited + wait > MAX_WAIT_MS) {
+          throw new GoogleAuthError("rate_limited", "Google's per-minute limit for this account was reached; try again in a minute");
+        }
+        slowed++;
+        waited += wait;
+        this.holds.set(host, Math.max(this.holds.get(host) ?? 0, now + wait));
+        continue;
+      }
       if (!res.ok) {
         let msg = text;
         try {

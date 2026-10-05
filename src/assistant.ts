@@ -9,6 +9,7 @@ import type { ThreadItem } from "./protocol/v2/index.js";
 import { saveGeneratedImage, type ImageRecord } from "./images.js";
 import { loadSettings, updateSettings } from "./settings.js";
 import { briefDue, briefGoogle, composeBrief, markBriefShown, type Brief } from "./background/brief.js";
+import { Turns } from "./background/turns.js";
 import { scanDue } from "./bills/scan.js";
 import { runScan, scanSummary } from "./bills/view.js";
 import { claimDueNotices, type DueNotice } from "./bills/remind.js";
@@ -109,11 +110,18 @@ export function startBackgroundWork(session: Session, notify: (lines: string[]) 
     const codex = compareCodex(await codexVersion());
     if (codex.status !== "ok") notify([`Codex ${codex.detail} · the health check looks at everything`]);
     if (learner.enabled()) notify(await new MemoryTidier(session).runIfDue());
-    if (session.accounts.for("mail").length && scanDue(session.bills)) notify(scanSummary(await runScan(session)));
-    if (session.accounts.for("mail").length && tripScanDue(session.notices)) notify(tripScanLines(await scanTripsNow(session)));
+    if (session.accounts.for("mail").length && scanDue(session.bills)) notify(scanSummary(await mailTurns.run(() => runScan(session))));
+    if (session.accounts.for("mail").length && tripScanDue(session.notices)) notify(tripScanLines(await mailTurns.run(() => scanTripsNow(session))));
   })().catch(onError);
   return learner;
 }
+
+/**
+ * The automatic bill scan, booking scan and mail summary take turns, a minute apart: each reads a
+ * lot of mail, and Gmail counts requests per minute. What the user asks for runs at once.
+ */
+export const MAIL_GAP_MS = 60_000;
+const mailTurns = new Turns(MAIL_GAP_MS);
 
 /** Looks for new booking emails (H2); the model only reads those without booking data. */
 export const scanTripsNow = (session: Session): Promise<TripScanResult> =>
@@ -165,8 +173,10 @@ export function claimDueNow(session: Session, now = new Date()): DueNow {
     brief = briefGoogle(session.accounts, now).then((google) => composeBrief(session.memory, session.reminders, now, google, session.bills));
   }
   const meetings = claimHeadsUps(session.accounts, session.notices, session.memory, now).catch(() => []);
-  // A model call: not in screenshot checks (no background work there).
-  const mailDigest = !runtime.noBackgroundWork && session.accounts.for("mail").length && summaryDue(session.notices, now) ? summariseNow(session, now).catch(() => null) : null;
+  // A model call: not in screenshot checks (no background work there). It may wait for its turn, so
+  // it covers the mail up to when it runs.
+  const mailDigest =
+    !runtime.noBackgroundWork && session.accounts.for("mail").length && summaryDue(session.notices, now) ? mailTurns.run(() => summariseNow(session)).catch(() => null) : null;
   const week = weeklyDue(session.notices, now) ? composeWeek(session.accounts, session.reminders, session.bills, now) : null;
   const trips = claimTripNotices(session.trips, session.notices, now);
   return { reminders, bills, brief, meetings, mailDigest, week, trips };
