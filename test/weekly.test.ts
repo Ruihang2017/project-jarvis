@@ -17,7 +17,9 @@ const { fakeAccounts } = await import("./fake-accounts.js");
 const results: [string, boolean, string?][] = [];
 const ok = (name: string, cond: boolean, info = "") => results.push([name, cond, info]);
 const eq = (name: string, got: unknown, want: unknown) => ok(name, JSON.stringify(got) === JSON.stringify(want), `got ${JSON.stringify(got)}, want ${JSON.stringify(want)}`);
-const settings = (o: object) => writeFileSync(join(dir, "settings.json"), JSON.stringify(o));
+// The region is fixed, so amounts read the same on any machine (CI runs in the US).
+const settings = (o: object) => writeFileSync(join(dir, "settings.json"), JSON.stringify({ dateOrder: "dmy", currency: "AUD", ...o }));
+settings({});
 const at = (s: string) => new Date(`${s}+11:00`);
 
 // --- when (2026-10-11 is a Sunday) ---
