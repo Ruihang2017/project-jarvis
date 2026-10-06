@@ -6,8 +6,8 @@ import { execFile } from "node:child_process";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { styleText } from "node:util";
-import { taskStatus } from "./background/task.js";
-import { config, INSTALL_CODEX } from "./config.js";
+import { backgroundSupported, taskStatus } from "./background/task.js";
+import { codexEnv, config, INSTALL_CODEX } from "./config.js";
 import { DATA_VERSION, readDataVersion } from "./data/version.js";
 import { shortScope } from "./google/auth.js";
 import { missingFeatures } from "./google/instructions.js";
@@ -26,7 +26,7 @@ export interface Check {
 /** "0.159.3" from `codex --version`; null when Codex can't be run. */
 export function codexVersion(bin = config.codexBin): Promise<string | null> {
   return new Promise((resolve) => {
-    execFile(bin, ["--version"], { windowsHide: true, timeout: 15_000 }, (err, stdout) => {
+    execFile(bin, ["--version"], { windowsHide: true, timeout: 15_000, env: codexEnv({}, bin) }, (err, stdout) => {
       resolve(err ? null : (/(\d+\.\d+\.\d+)/.exec(stdout)?.[1] ?? null));
     });
   });
@@ -70,7 +70,7 @@ function dataVersionCheck(): Check {
 }
 
 async function backgroundCheck(): Promise<Check> {
-  if (process.platform !== "win32") return { name: "Background", status: "warn", detail: "background reminders are only available on Windows" };
+  if (!backgroundSupported()) return { name: "Background", status: "warn", detail: "background reminders need Windows or macOS" };
   const s = await taskStatus();
   if (!s.installed) return { name: "Background", status: "warn", detail: "off — reminders only appear while Edward is open; /background on" };
   if (s.problems.length) return { name: "Background", status: "fail", detail: s.problems.join("; ") };

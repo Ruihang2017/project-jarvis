@@ -211,7 +211,7 @@ export function App() {
             if (yes) void call("setMode", "auto").then((r) => (r.ok ? refresh() : toast(r)));
           }}
         >
-          Codex will run commands and change files without asking, with your full Windows permissions, and what it reads won't pass the privacy guard. Edward stays in Auto until you switch back.
+          Codex will run commands and change files without asking, with your full permissions on this computer, and what it reads won't pass the privacy guard. Edward stays in Auto until you switch back.
         </Confirm>
       )}
     </AppCtx.Provider>

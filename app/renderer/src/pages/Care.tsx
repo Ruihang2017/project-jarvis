@@ -3,6 +3,7 @@ import { useApp, Shell } from "../App";
 import { call, useData } from "../api";
 import type { AccountInfo } from "../../../shared/api";
 import { Button, Card, Confirm, Icon, IconButton, Loading, Note, Segmented, Spot, Tag, Toggle } from "../ui";
+import { backgroundTask, secretKeeper } from "../platform";
 
 const Row = ({ name, help, children }: { name: string; help?: React.ReactNode; children?: React.ReactNode }) => (
   <div className="between" style={{ minHeight: 52, gap: 16 }}>
@@ -87,7 +88,7 @@ export function Settings() {
           </Card>
           <Card className="pad stack">
             <h2>Your day</h2>
-            <Row name="Reminders when Edward is closed" help="A small Windows task, every minute.">
+            <Row name="Reminders when Edward is closed" help={`${backgroundTask}, every minute.`}>
               <Toggle on={data.background} label="Reminders when Edward is closed" onChange={(v) => set({ background: v })} />
             </Row>
             <Row name="Morning brief" help="Events, reminders, bills and mail at a glance.">
@@ -440,7 +441,7 @@ export function GooglePage() {
               <h2>How it's kept</h2>
               <div className="row" style={{ alignItems: "flex-start", fontSize: 13.5 }}>
                 <Icon name="lock" size={17} width={2} color="var(--sage-ink)" />
-                Each sign-in is encrypted by Windows for your user account, and never written to a log.
+                Each sign-in is encrypted {secretKeeper}, and never written to a log.
               </div>
               <div className="row" style={{ alignItems: "flex-start", fontSize: 13.5 }}>
                 <Icon name="check" size={17} width={2} color="var(--sage-ink)" />

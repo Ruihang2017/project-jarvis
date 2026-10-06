@@ -65,21 +65,55 @@ export function unregisterNotifications(aumid = AUMID): Promise<boolean> {
   });
 }
 
+/**
+ * A string literal for AppleScript. Backslash and the quote are escaped, a line break is written as
+ * \n, and other control characters (which would end the script line) become spaces.
+ */
+export function appleString(s: string): string {
+  const safe = [...s].map((ch) => {
+    const code = ch.codePointAt(0)!;
+    if (ch === "\n") return "\\n";
+    if (code < 0x20 || code === 0x7f || code === 0x2028 || code === 0x2029) return " ";
+    return ch === "\\" || ch === '"' ? `\\${ch}` : ch;
+  });
+  return `"${safe.join("")}"`;
+}
+
+/**
+ * The script for a Mac notification (exported for tests): the title, the first body line as the
+ * subtitle when there are more, then up to two lines. macOS has no snooze button to offer, so a
+ * reminder looks like any other notification there.
+ */
+export function appleNotification(t: Toast): string {
+  const [first = "", ...rest] = t.body.split("\n").filter(Boolean);
+  const body = rest.length ? rest.slice(0, 2).join("\n") : first;
+  return `display notification ${appleString(body)} with title ${appleString(t.title)}${rest.length ? ` subtitle ${appleString(first)}` : ""}`;
+}
+
 /** Shows a desktop notification. Resolves false (never throws) if it couldn't be shown. */
 export function showToast(t: Toast): Promise<boolean> {
   // Screenshot checks run the app with made-up data; nothing may pop up on the user's screen.
   if (runtime.silent) return Promise.resolve(false);
+  // The desktop app on a Mac shows it itself, so it carries Edward's name and icon.
+  if (runtime.notify) {
+    try {
+      if (runtime.notify(t)) return Promise.resolve(true);
+    } catch {
+      // the system's own way, below
+    }
+  }
   return new Promise((resolve) => {
     const [cmd, args] =
       process.platform === "win32"
         ? ["powershell.exe", ["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", PS_SHOW]]
         : process.platform === "darwin"
-          ? ["osascript", ["-e", `display notification ${JSON.stringify(t.body)} with title ${JSON.stringify(t.title)}`]]
+          ? // The script goes in on stdin: a command line can be seen by every user of the computer.
+            ["/usr/bin/osascript", ["-"]]
           : ["notify-send", [t.title, t.body]];
     const child = execFile(cmd, args as string[], { windowsHide: true, timeout: 15_000 }, (err) => resolve(!err));
     if (process.platform === "win32") {
       const icon = iconPath();
       child.stdin?.end(JSON.stringify({ xml: toastXml(t), tag: t.tag, icon: icon && existsSync(icon) ? icon : undefined }), "utf8");
-    }
+    } else if (process.platform === "darwin") child.stdin?.end(appleNotification(t), "utf8");
   });
 }

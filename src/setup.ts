@@ -77,7 +77,7 @@ export async function runSetup(io: SetupIO, env: SetupEnv): Promise<boolean> {
   io.say(`  Signed in${account ? ` as ${account}` : ""}.`);
 
   step(3, "Background reminders");
-  if (!env.background.supported) io.say("  Only available on Windows for now; reminders will appear while Edward is open.");
+  if (!env.background.supported) io.say("  Only available on Windows and macOS; reminders will appear while Edward is open.");
   else if (await env.background.installed()) io.say("  Already on.");
   else {
     io.say("  A small scheduled task checks once a minute, so reminders appear even when Edward is closed.");

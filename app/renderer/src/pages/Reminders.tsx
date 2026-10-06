@@ -3,6 +3,7 @@ import type { ReminderInfo } from "../../../shared/api";
 import { useApp, Shell } from "../App";
 import { call, useData } from "../api";
 import { Button, Card, Icon, IconButton, Loading, Segmented, Spot, Toggle } from "../ui";
+import { backgroundTask } from "../platform";
 
 export function Reminders() {
   const { chat, go, toast, state, refresh } = useApp();
@@ -123,7 +124,7 @@ export function Reminders() {
                 }}
               />
             </div>
-            <p className="muted pretty">A small Windows task checks every minute and shows a notification, even after a restart.</p>
+            <p className="muted pretty">{backgroundTask} checks every minute and shows a notification, even after a restart.</p>
           </Card>
           <Card className="pad stack" style={{ gap: 10 }}>
             <h2>Morning brief</h2>

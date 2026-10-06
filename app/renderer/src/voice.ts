@@ -5,6 +5,7 @@
  * to be read aloud.
  */
 import { call } from "./api";
+import { microphoneSettings } from "./platform";
 
 export type VoicePhase = "connecting" | "listening" | "hearing" | "thinking" | "speaking" | "off";
 
@@ -75,7 +76,7 @@ export class VoiceCall {
       await pc.setRemoteDescription({ type: "answer", sdp: r.sdp });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      this.on.problem(/Permission|NotAllowed/i.test(msg) ? "Edward can't use the microphone. Check Windows Settings → Privacy → Microphone." : msg);
+      this.on.problem(/Permission|NotAllowed/i.test(msg) ? `Edward can't use the microphone. Check ${microphoneSettings}.` : msg);
       this.stop();
     }
   }

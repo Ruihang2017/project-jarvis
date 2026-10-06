@@ -2,9 +2,11 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { testKeychain } from "./mac-keychain.js";
 
 const dir = mkdtempSync(join(tmpdir(), "edward-voice-test-"));
 process.env.EDWARD_DATA_DIR = dir;
+testKeychain(dir);
 
 const v = await import("../src/voice/voice.js");
 const { answerCall, checkKey } = await import("../app/main/voice.js");

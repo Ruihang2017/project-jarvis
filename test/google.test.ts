@@ -1,9 +1,11 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { testKeychain } from "./mac-keychain.js";
 
 const dir = mkdtempSync(join(tmpdir(), "edward-google-test-"));
 process.env.JARVIS_DATA_DIR = dir; // google-client.json, google.json and the token live here
+testKeychain(dir);
 
 const { authUrl, emailFromIdToken, loadClient, parseCallback, pkcePair, TOKEN_URL, REVOKE_URL, GoogleAuthError } = await import("../src/google/oauth.js");
 const { GoogleAuth, readState, tokenPath, updateState } = await import("../src/google/auth.js");
@@ -65,11 +67,11 @@ try {
 writeFileSync(clientFile, JSON.stringify({ installed: { client_id: client.clientId, client_secret: client.clientSecret, redirect_uris: ["http://localhost"] } }));
 eq("desktop client loaded", loadClient(clientFile), client);
 
-// --- DPAPI ---
+// --- secrets at rest (DPAPI on Windows, a keychain key on a Mac) ---
 const secret = "1//refresh-token-秘密";
 const blob = await protect(secret);
-ok("DPAPI output is not plaintext", !blob.includes(Buffer.from("refresh-token")), blob.toString("utf8").slice(0, 40));
-eq("DPAPI round-trip", await unprotect(blob), secret);
+ok("a saved secret is not plaintext", !blob.includes(Buffer.from("refresh-token")), blob.toString("utf8").slice(0, 40));
+eq("a saved secret opens again", await unprotect(blob), secret);
 
 // --- mock Google token endpoint ---
 type Call = { url: string; params: URLSearchParams; headers: Headers };

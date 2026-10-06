@@ -3,9 +3,11 @@
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { testKeychain } from "./mac-keychain.js";
 
 const dir = mkdtempSync(join(tmpdir(), "edward-accounts-test-"));
 process.env.EDWARD_DATA_DIR = dir;
+testKeychain(dir);
 
 const { Accounts, COLORS, accountDir, refusal } = await import("../src/accounts/accounts.js");
 const { TOKEN_URL, REVOKE_URL, GoogleAuthError } = await import("../src/google/oauth.js");

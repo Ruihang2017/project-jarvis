@@ -1,5 +1,7 @@
+import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { delimiter, join } from "node:path";
+import { homedir } from "node:os";
+import { join, posix, win32 } from "node:path";
 import { appDataDir, envVar } from "./settings.js";
 
 export const config = {
@@ -15,17 +17,69 @@ export const config = {
 };
 
 /** How to get Codex, for messages (D44: the website and the first start say the same). */
-export const INSTALL_CODEX = "winget install -e --id OpenAI.Codex";
+export const INSTALL_CODEX = process.platform === "win32" ? "winget install -e --id OpenAI.Codex" : "curl -fsSL https://chatgpt.com/codex/install.sh | sh";
+/** Where the user types it. */
+export const SHELL_NAME = process.platform === "win32" ? "PowerShell" : "Terminal";
 
 /**
- * "codex" from PATH; on Windows, where OpenAI's installer puts it when PATH doesn't have it (a program
- * started from the Start menu right after installing Codex may still have the old PATH).
+ * Folders a Mac's Codex is usually in. An app opened from the Dock or Finder gets a short PATH
+ * (/usr/bin:/bin:…) without them: OpenAI's installer, Homebrew on Apple silicon, Homebrew on Intel
+ * and npm, and a few places Node version managers use.
  */
-function findCodex(): string {
-  if (process.platform !== "win32") return "codex";
-  const onPath = (process.env.PATH ?? "").split(delimiter).some((d) => d && (existsSync(join(d, "codex.exe")) || existsSync(join(d, "codex.cmd"))));
-  const standalone = join(process.env.LOCALAPPDATA ?? "", "Programs", "OpenAI", "Codex", "bin", "codex.exe");
-  return !onPath && existsSync(standalone) ? standalone : "codex";
+export function macBinDirs(home = homedir()): string[] {
+  return [posix.join(home, ".local", "bin"), "/opt/homebrew/bin", "/usr/local/bin", posix.join(home, ".npm-global", "bin"), posix.join(home, ".volta", "bin"), posix.join(home, "bin")];
+}
+
+interface Lookup {
+  platform?: NodeJS.Platform;
+  env?: NodeJS.ProcessEnv;
+  exists?: (path: string) => boolean;
+  home?: string;
+  /** What the user's login shell says `codex` is; the last resort on a Mac. */
+  askShell?: (shell: string) => string | null;
+}
+
+function askLoginShell(shell: string): string | null {
+  try {
+    // -i and -l so the shell reads the same files as a new Terminal window does; they may print things too.
+    const out = execFileSync(shell, ["-ilc", "command -v codex"], { encoding: "utf8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"] });
+    return out.split("\n").map((l) => l.trim()).filter((l) => l.startsWith("/")).pop() ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * "codex" from PATH. When PATH doesn't have it: on Windows, where OpenAI's installer puts it (a
+ * program started from the Start menu right after installing Codex may still have the old PATH); on
+ * a Mac, the usual folders, then the login shell.
+ */
+export function findCodex(o: Lookup = {}): string {
+  const platform = o.platform ?? process.platform;
+  const env = o.env ?? process.env;
+  const exists = o.exists ?? existsSync;
+  const dirs = (env.PATH ?? "").split(platform === "win32" ? ";" : ":").filter(Boolean);
+  if (platform === "win32") {
+    const onPath = dirs.some((d) => exists(win32.join(d, "codex.exe")) || exists(win32.join(d, "codex.cmd")));
+    const standalone = win32.join(env.LOCALAPPDATA ?? "", "Programs", "OpenAI", "Codex", "bin", "codex.exe");
+    return !onPath && exists(standalone) ? standalone : "codex";
+  }
+  if (platform !== "darwin" || dirs.some((d) => exists(posix.join(d, "codex")))) return "codex";
+  const usual = macBinDirs(o.home).map((d) => posix.join(d, "codex")).find(exists);
+  if (usual) return usual;
+  const asked = (o.askShell ?? askLoginShell)(env.SHELL || "/bin/zsh");
+  return asked && exists(asked) ? asked : "codex";
+}
+
+/**
+ * The environment Codex runs in. On a Mac its own folder and the usual ones are added to PATH: an
+ * npm-installed Codex starts with `node`, which the short PATH of a Dock-started app doesn't have.
+ */
+export function codexEnv(extra: NodeJS.ProcessEnv = {}, bin = config.codexBin, platform = process.platform, env = process.env, home = homedir()): NodeJS.ProcessEnv {
+  if (platform !== "darwin") return { ...env, ...extra };
+  const have = (env.PATH ?? "").split(":").filter(Boolean);
+  const more = [...(bin.includes("/") ? [posix.dirname(bin)] : []), ...macBinDirs(home)].filter((d) => !have.includes(d));
+  return { ...env, PATH: [...have, ...new Set(more)].join(":"), ...extra };
 }
 
 export const PERSONA = `You are Edward, a personal assistant used from a terminal.

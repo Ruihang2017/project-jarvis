@@ -1,7 +1,25 @@
 # Changelog
 
-## 0.2.1 — 2026-10-06
+## 0.3.0 — 2026-10-07
 
+Edward for Mac.
+
+- macOS, Intel and Apple silicon, in one download (`Edward-0.3.0-mac.dmg`, macOS 12 or newer). The app
+  isn't signed with an Apple Developer ID yet: the first time, macOS asks you to allow it in System
+  Settings → Privacy & Security → Open Anyway. The Intel half has only been run by the automated tests.
+  - Google sign-ins and the OpenAI key are sealed with a key in your login keychain (AES-256-GCM files);
+    if the keychain can't be used, saving fails rather than writing them unprotected.
+  - Reminders while Edward is closed: a per-user launchd agent, every minute, like the scheduled task on
+    Windows.
+  - Edward finds Codex when it is started from the Dock (OpenAI's installer, Homebrew, npm), and Codex
+    gets a PATH it can run with.
+  - The usual Mac menu and shortcuts; closing the window keeps Edward in the Dock, Cmd+Q quits.
+  - Notifications say Edward while the app is open. While it is closed they come from the background
+    agent and are labelled "Script Editor". There is no snooze button on a Mac.
+  - The terminal version (`edward`) works on a Mac too.
+- Every push is now tested on Windows, macOS on Apple silicon and macOS on Intel, and both installers are
+  built and started once by GitHub Actions. A version tag puts them in a draft release.
+- Fixed: Edward stopping with an error when Codex isn't installed, instead of saying how to install it.
 - Fixed: "Gmail's query quota is temporarily exceeded" on the morning Edward is opened. Gmail allows
   about 300 emails a minute per account, and the mail summary, the daily bill and booking scans and the
   Today page all started at once.

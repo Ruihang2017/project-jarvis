@@ -4,7 +4,7 @@ import { createInterface } from "node:readline/promises";
 import { styleText } from "node:util";
 import { existsSync } from "node:fs";
 import { unregisterNotifications } from "./background/notify.js";
-import { installTask, removeTask, taskStatus } from "./background/task.js";
+import { backgroundSupported, installTask, removeTask, taskBelongsTo, taskStatus } from "./background/task.js";
 import { codexVersion, compareCodex } from "./doctor.js";
 import { ALL_SCOPES, missingFeatures } from "./google/instructions.js";
 import { clientPath, hasClient } from "./google/oauth.js";
@@ -70,12 +70,11 @@ export async function deleteDataCli(args: string[]): Promise<void> {
     disconnectGoogle: async () => {
       for (const a of accounts.list()) await accounts.disconnect(a.id);
     },
-    // The scheduled task is one per Windows user. Remove it only if it belongs to this data
+    // The scheduled task is one per user. Remove it only if it belongs to this data
     // folder — not when the folder was pointed elsewhere (tests, a second copy).
     removeTask: async () => {
-      if (process.platform !== "win32") return;
-      const task = await taskStatus();
-      if (task.installed && task.launcher && resolve(dirname(task.launcher)).toLowerCase() === resolve(dir).toLowerCase()) await removeTask();
+      if (!backgroundSupported()) return;
+      if (taskBelongsTo(await taskStatus(), dir)) await removeTask();
     },
   });
   for (const d of report.deleted) console.log(dim(`  deleted ${d}`));
@@ -122,7 +121,7 @@ export async function setupCli(): Promise<void> {
       });
     },
     background: {
-      supported: process.platform === "win32",
+      supported: backgroundSupported(),
       installed: async () => (await taskStatus()).installed,
       install: installTask,
     },
@@ -167,9 +166,8 @@ export async function uninstallCli(): Promise<void> {
     const { revoked } = await accounts.disconnect(a.id).catch(() => ({ revoked: false }));
     console.log(dim(revoked ? `  revoked Edward's access to ${a.email ?? a.id}` : `  removed the local token for ${a.email ?? a.id} (check myaccount.google.com/connections to confirm access is gone)`));
   }
-  if (process.platform === "win32") {
-    const task = await taskStatus();
-    if (task.installed && task.launcher && resolve(dirname(task.launcher)).toLowerCase() === resolve(dir).toLowerCase()) {
+  if (backgroundSupported()) {
+    if (taskBelongsTo(await taskStatus(), dir)) {
       const r = await removeTask();
       console.log(dim(r.ok ? "  removed the background task" : `  couldn't remove the background task: ${r.message}`));
     }

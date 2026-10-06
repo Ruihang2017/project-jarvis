@@ -38,7 +38,7 @@ import { DigestStore } from "./headsup/mailsummary.js";
 import { TripStore } from "./headsup/trips.js";
 import { BILL_INSTRUCTIONS } from "./bills/tools.js";
 import { googleInstructions } from "./google/instructions.js";
-import { config, PERSONA } from "./config.js";
+import { codexEnv, config, PERSONA } from "./config.js";
 import { guardOutgoing, type Source } from "./privacy/outgoing.js";
 import type { Category } from "./privacy/guard.js";
 import { relative, isAbsolute, resolve } from "node:path";
@@ -162,7 +162,7 @@ export class Session {
     const filter = guardOutgoing((source, removed, threadId) =>
       this.onRedacted?.(threadId && this.ephemeralThreads.has(threadId) ? "background" : source, removed),
     );
-    this.client = new CodexClient(config.codexBin, [], { ...process.env, CODEX_HOME: codexHome }, filter);
+    this.client = new CodexClient(config.codexBin, [], codexEnv({ CODEX_HOME: codexHome }), filter);
     this.client.onServerRequest((req) => this.handleServerRequest(req));
     this.client.on("serverRequestCancelled", () => this.interactions.cancelPending?.());
     this.client.on("notification", (n) => {
@@ -241,7 +241,7 @@ export class Session {
 
   async init(): Promise<GetAccountResponse> {
     await this.client.request<InitializeResponse>("initialize", {
-      clientInfo: { name: "edward", title: "Edward", version: "0.2.1" },
+      clientInfo: { name: "edward", title: "Edward", version: "0.3.0" },
       // Needed for dynamicTools (Edward tools); experimental fields may change across codex versions.
       capabilities: { experimentalApi: true, requestAttestation: false },
     });

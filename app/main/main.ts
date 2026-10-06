@@ -3,13 +3,13 @@
  * in this (main) process. The window is sandboxed: no Node, no remote content, and only the methods
  * in shared/api.ts through preload.
  */
-import { app, BrowserWindow, ipcMain, Menu, nativeImage, session as electronSession, shell, Tray } from "electron";
+import { app, BrowserWindow, ipcMain, Menu, nativeImage, Notification, session as electronSession, shell, systemPreferences, Tray } from "electron";
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, sep } from "node:path";
 import { AUMID } from "../../src/background/notify.js";
 import { runtime } from "../../src/runtime.js";
 import { envVar } from "../../src/settings.js";
-import { INSTALL_CODEX } from "../../src/config.js";
+import { INSTALL_CODEX, SHELL_NAME } from "../../src/config.js";
 import { demoGoogle } from "../../src/demo/google.js";
 import "./builtin.js";
 import { handleScheme, registerScheme } from "./images.js";
@@ -18,16 +18,21 @@ import { EdwardService } from "./service.js";
 import { record, type Step } from "./record.js";
 import type { EdwardApi, EdwardEvent } from "../shared/api.js";
 
+const MAC = process.platform === "darwin";
 const here = import.meta.dirname; // build/main
 const ICON = join(here, "..", "icon.png");
 const RENDERER = join(here, "..", "renderer", "index.html");
 const PRELOAD = join(here, "..", "preload", "preload.cjs");
-/** Packaged, these live in app.asar.unpacked: Windows (toasts) and plain Node (the tick) need real files. */
+/** Packaged, these live in app.asar.unpacked: notifications and plain Node (the tick) need real files. */
 const unpacked = (p: string) => p.replace(`app.asar${sep}`, `app.asar.unpacked${sep}`);
 
 // Background reminders run this same executable as plain Node with the bundled tick script.
 runtime.iconPath = unpacked(ICON);
 runtime.tick = { exe: process.execPath, args: [unpacked(join(here, "tick.js"))], env: { ELECTRON_RUN_AS_NODE: "1" } };
+
+// On a Mac Electron's own folder would be the same one as Edward's data (~/Library/Application
+// Support/Edward); the browser's caches go next to it instead, so backups and exports stay clean.
+if (MAC) app.setPath("userData", join(app.getPath("appData"), "Edward-app"));
 
 /** Test hook: EDWARD_SHOT="page=file.png;page2=file2.png" renders those pages hidden and saves pictures, then quits. */
 const SHOTS = (process.env.EDWARD_SHOT ?? "").split(";").filter(Boolean).map((s) => s.split("=") as [string, string]);
@@ -88,7 +93,7 @@ function createWindow() {
       spellcheck: true,
     },
   });
-  win.removeMenu();
+  if (!MAC) win.removeMenu();
   // Nothing navigates away from Edward's own page, and the email frame stays on the email it was
   // given (no refresh, no link that replaces it); links open in the browser, web addresses only.
   win.webContents.on("will-navigate", (e) => e.preventDefault());
@@ -100,7 +105,8 @@ function createWindow() {
     return { action: "deny" };
   });
   win.on("close", (e) => {
-    // Closing the window keeps Edward in the tray, so reminders still pop up; Quit is in the tray menu.
+    // Closing the window keeps Edward running, so reminders still pop up: in the tray on Windows (Quit
+    // is in its menu), in the Dock on a Mac (Cmd+Q quits).
     if (!quitting && !AUTOMATED) {
       e.preventDefault();
       win?.hide();
@@ -110,14 +116,48 @@ function createWindow() {
   void win.loadFile(RENDERER);
 }
 
+const openWindow = () => {
+  if (!win || win.isDestroyed()) createWindow();
+  win!.show();
+  win!.focus();
+};
+
+/**
+ * A Mac app has its menu at the top of the screen, and the usual shortcuts (copy, paste, undo, close,
+ * quit) only work through it.
+ */
+function createMacMenu() {
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate([
+      { role: "appMenu" },
+      { role: "editMenu" },
+      { label: "Window", submenu: [{ role: "minimize" }, { role: "zoom" }, { role: "close" }, { type: "separator" }, { label: "Edward", click: openWindow }] },
+    ]),
+  );
+}
+
+/** Notifications from the app itself on a Mac: they say Edward and open it when clicked. */
+function macNotifications() {
+  const showing = new Map<string, Notification>();
+  runtime.notify = (t) => {
+    if (!Notification.isSupported()) return false;
+    const [first = "", ...rest] = t.body.split("\n").filter(Boolean);
+    const n = new Notification({ title: t.title, subtitle: rest.length ? first : undefined, body: rest.length ? rest.slice(0, 2).join("\n") : first });
+    n.on("click", openWindow);
+    // One per tag, as on Windows; and kept until it is gone, or it could be collected before it is clicked.
+    const key = t.tag ?? `${Date.now()}-${showing.size}`;
+    showing.get(key)?.close();
+    showing.set(key, n);
+    n.on("close", () => showing.get(key) === n && showing.delete(key));
+    n.show();
+    return true;
+  };
+}
+
 function createTray() {
   tray = new Tray(nativeImage.createFromPath(ICON).resize({ width: 16, height: 16 }));
   tray.setToolTip("Edward");
-  const open = () => {
-    if (!win) createWindow();
-    win!.show();
-    win!.focus();
-  };
+  const open = openWindow;
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: "Open Edward", click: open },
@@ -143,6 +183,11 @@ app.on("second-instance", () => {
   win?.focus();
 });
 
+// Clicking the Dock icon brings the window back.
+app.on("activate", () => {
+  if (app.isReady() && !AUTOMATED) openWindow();
+});
+
 app.on("before-quit", () => {
   quitting = true;
   service?.close();
@@ -156,7 +201,10 @@ app.whenReady().then(async () => {
   const ownPage = (url: string | undefined) => Boolean(url?.startsWith("file://"));
   electronSession.defaultSession.setPermissionRequestHandler((wc, perm, done, details) => {
     const audioOnly = perm === "media" && "mediaTypes" in details && (details.mediaTypes ?? []).length > 0 && (details.mediaTypes ?? []).every((t) => t === "audio");
-    done(audioOnly && wc === win?.webContents && ownPage(details.requestingUrl) && details.isMainFrame !== false);
+    const allowed = audioOnly && wc === win?.webContents && ownPage(details.requestingUrl) && details.isMainFrame !== false;
+    // macOS asks the user itself, once, the first time (the reason shown is in the app's Info.plist).
+    if (allowed && MAC) void systemPreferences.askForMediaAccess("microphone").then(done, () => done(false));
+    else done(allowed);
   });
   electronSession.defaultSession.setPermissionCheckHandler((wc, perm, origin, details) => perm === "media" && details.mediaType !== "video" && wc === win?.webContents && (ownPage(origin) || origin === "file:///" || ownPage(details.requestingUrl)));
   service = new EdwardService(emit, () => win);
@@ -170,7 +218,7 @@ app.whenReady().then(async () => {
     const message = e instanceof Error ? e.message : String(e);
     // The usual first-start problem: Codex isn't installed yet.
     const lines = /ENOENT|not recognized|spawn codex/i.test(message)
-      ? ["Edward needs Codex, OpenAI's free app that connects to your ChatGPT account.", `Open PowerShell and run:  ${INSTALL_CODEX}  then open Edward again.`]
+      ? ["Edward needs Codex, OpenAI's free app that connects to your ChatGPT account.", `Open ${SHELL_NAME} and run:  ${INSTALL_CODEX}  then open Edward again.`]
       : [`Edward couldn't start: ${message}`];
     emit({ type: "notice", lines });
   });
@@ -178,12 +226,16 @@ app.whenReady().then(async () => {
   createWindow();
   if (RECORD) return makeRecording(RECORD);
   if (SHOTS.length) return takeShots();
-  createTray();
+  if (MAC) {
+    // No menu-bar icon: the Dock icon is there while Edward runs.
+    createMacMenu();
+    macNotifications();
+  } else createTray();
 });
 
 app.on("window-all-closed", () => {
   if (AUTOMATED) app.quit();
-  // otherwise stay in the tray
+  // otherwise stay in the tray (Windows) or the Dock (Mac)
 });
 
 async function makeRecording(stepsFile: string) {

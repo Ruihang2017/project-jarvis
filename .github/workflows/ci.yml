@@ -1,16 +1,33 @@
 name: CI
 
+# Every push and pull request: the tests on Windows and on both kinds of Mac, and the installers built
+# and started once. A version tag (v0.3.0) also puts the installers in a draft release; publishing it
+# is left to a person.
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
 jobs:
   test:
-    runs-on: windows-latest
+    name: Test (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: Windows, os: windows-latest }
+          - { name: macOS Apple silicon, os: macos-latest }
+          - { name: macOS Intel, os: macos-15-intel }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -21,3 +38,138 @@ jobs:
       - run: npm run typecheck
       # Unit tests need no network and no Codex: a fake Codex process stands in where one is needed.
       - run: npm test
+
+  package:
+    name: Package (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: Windows, os: windows-latest, id: windows }
+          # One app for Intel and Apple silicon, built on Apple silicon.
+          - { name: macOS, os: macos-latest, id: macos }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            app/package-lock.json
+      - run: npm ci
+      - run: npm ci
+        working-directory: app
+      - run: npm run typecheck
+        working-directory: app
+
+      # The Google client that ships inside the installer (it is not in the repository). Without the
+      # secret (a fork's pull request) the app is built without one and asks for the user's own.
+      - name: Built-in Google client
+        env:
+          GOOGLE_CLIENT_JSON: ${{ secrets.GOOGLE_CLIENT_JSON }}
+        run: |
+          if [ -n "$GOOGLE_CLIENT_JSON" ]; then
+            mkdir -p app/build-secrets
+            printf '%s' "$GOOGLE_CLIENT_JSON" > app/build-secrets/google-client.json
+          else
+            echo "::notice::No GOOGLE_CLIENT_JSON secret: this build has no built-in Google client."
+          fi
+
+      - name: Build the Windows installer
+        if: matrix.id == 'windows'
+        working-directory: app
+        run: npm run dist
+
+      # With an Apple Developer ID certificate in the secrets the app is signed and notarized. Without
+      # one it gets an ad-hoc signature (Apple silicon refuses unsigned code) and macOS asks the user
+      # to allow it the first time.
+      - name: Build the macOS app
+        if: matrix.id == 'macos'
+        working-directory: app
+        env:
+          MAC_CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          MAC_CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ -n "$MAC_CSC_LINK" ]; then
+            export CSC_LINK="$MAC_CSC_LINK" CSC_KEY_PASSWORD="$MAC_CSC_KEY_PASSWORD"
+            npm run dist:mac
+          else
+            echo "::notice::No Apple certificate: ad-hoc signature, not notarized."
+            # An ad-hoc signature uses no secret, so it is fine on a pull request too.
+            export CSC_FOR_PULL_REQUEST=true
+            npm run dist:mac -- -c.mac.identity=- -c.mac.hardenedRuntime=false -c.mac.notarize=false
+          fi
+
+      - name: What was built
+        if: matrix.id == 'macos'
+        run: |
+          app="$(ls -d app/dist/mac*/Edward.app | head -1)"
+          lipo -archs "$app/Contents/MacOS/Edward"
+          codesign -dv "$app" 2>&1 | grep -E "Signature|Authority|TeamIdentifier|flags" || true
+          ls -la app/dist/*.dmg
+
+      # Starts the packaged app hidden, on made-up data, and saves pictures of two pages.
+      - name: Start it once
+        working-directory: app
+        run: npm run smoke
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: smoke-${{ matrix.id }}
+          path: app/dist/smoke/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: installer-${{ matrix.id }}
+          path: |
+            app/dist/Edward-Setup-*.exe
+            app/dist/Edward-*-mac.dmg
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+  release:
+    name: Draft release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [test, package]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: installer-*
+          merge-multiple: true
+          path: installers
+      - name: Draft the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="${TAG#v}"
+          if [ "$(node -p "require('./package.json').version")" != "$version" ] || [ "$(node -p "require('./app/package.json').version")" != "$version" ]; then
+            echo "::error::Tag $TAG doesn't match the version in package.json and app/package.json."
+            exit 1
+          fi
+          # This version's section of the changelog is the release's text.
+          awk -v v="$version" 'index($0, "## " v " ") == 1 { on = 1; next } /^## / { on = 0 } on' CHANGELOG.md > notes.md
+          ls -la installers
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" installers/* --clobber
+          else
+            gh release create "$TAG" installers/* --draft --verify-tag --title "Edward $version" --notes-file notes.md
+          fi

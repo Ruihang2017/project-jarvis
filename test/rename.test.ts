@@ -38,6 +38,20 @@ function makeOldData() {
   writeFileSync(join(oldDir, "codex-home", "sessions", "rollout-1.jsonl"), "{}");
 }
 
+const finish = () => {
+  rmSync(local, { recursive: true, force: true });
+  console.log(results.map(([n, pass, info]) => `${pass ? "PASS" : "FAIL"}  ${n}${pass ? "" : "  → " + info}`).join("\n"));
+  if (results.some(([, pass]) => !pass)) process.exitCode = 1;
+};
+
+// There was never a Jarvis on a Mac: no old folder to look for, so nothing is ever moved.
+if (process.platform !== "win32") {
+  makeOldData();
+  eq("not Windows: an old folder is never looked for", [renamePending(), (await moveFromJarvis(fakeSystem("<Task>old</Task>").system)).status, existsSync(join(oldDir, "settings.json"))], [false, "not-needed", true]);
+  finish();
+  process.exit();
+}
+
 // --- nothing to move ---
 eq("fresh computer: nothing pending", renamePending(), false);
 eq("fresh computer: data goes to Edward", appDataDir(), newDir);
@@ -90,6 +104,4 @@ eq("chosen folder: not-needed", (await moveFromJarvis(fakeSystem(null).system)).
 ok("…and the old folder is left alone", existsSync(join(oldDir, "settings.json")) && !existsSync(newDir));
 eq("EDWARD_DATA_DIR wins over JARVIS_DATA_DIR", ((process.env.EDWARD_DATA_DIR = join(local, "new-name")), appDataDir()), join(local, "new-name"));
 
-rmSync(local, { recursive: true, force: true });
-console.log(results.map(([n, pass, info]) => `${pass ? "PASS" : "FAIL"}  ${n}${pass ? "" : "  → " + info}`).join("\n"));
-if (results.some(([, pass]) => !pass)) process.exitCode = 1;
+finish();

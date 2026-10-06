@@ -6,6 +6,7 @@ import { existsSync, readdirSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join, relative, resolve } from "node:path";
 import { config } from "../config.js";
+import { forgetKey } from "../google/keychain.js";
 import { appDataDir, envVar } from "../settings.js";
 
 /** Files and folders in the data directory that hold the user's data. */
@@ -67,12 +68,19 @@ export async function wipeData(o: WipeOptions = {}): Promise<WipeReport> {
     }
   };
 
+  // On a Mac the key that sealed the sign-ins goes too, now that they are gone. Only for Edward's own
+  // data folder: a folder an environment variable chose (a test, a second copy) shares the key with it.
+  const forget = async () => {
+    if (process.platform === "darwin" && !envVar("DATA_DIR")) await attempt("removing Edward's key from the keychain", forgetKey);
+  };
+
   if (o.all) {
     if (!looksLikeDataDir(dir)) {
       report.problems.push(`${dir} doesn't look like Edward's data directory; nothing was deleted`);
       return report;
     }
     remove(dir, dir);
+    await forget();
     return report;
   }
 
@@ -86,5 +94,6 @@ export async function wipeData(o: WipeOptions = {}): Promise<WipeReport> {
     report.kept.push(`${home} (conversations: outside the Edward data directory, not touched)`);
   }
   for (const k of KEPT) if (existsSync(join(dir, k))) report.kept.push(k);
+  await forget();
   return report;
 }

@@ -59,7 +59,8 @@ If you stay in **Testing** and forget to add yourself as a test user, sign-in fa
 ## 7. Put the file where Edward looks for it
 
 Rename the downloaded file to `google-client.json` and move it to `%LOCALAPPDATA%\Edward` (paste that
-into the File Explorer address bar). `edward setup` prints the exact path.
+into the File Explorer address bar). On a Mac the folder is `~/Library/Application Support/Edward` (in
+Finder: Go → Go to Folder). `edward setup` prints the exact path.
 
 This file identifies your app. Don't share it and don't commit it to a repository.
 

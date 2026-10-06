@@ -3,6 +3,7 @@ import type { Check, GoogleInfo, Settings } from "../../../shared/api";
 import { useApp } from "../App";
 import { call } from "../api";
 import { art, Button, Card, Icon, Loading, Note, Segmented, Spot, Tag, Toggle } from "../ui";
+import { backgroundTask } from "../platform";
 
 const STEPS = [
   ["This computer", "Codex and what Edward needs"],
@@ -186,7 +187,7 @@ export function Setup() {
         );
       case 2:
         return (
-          <Section title="Reminders in the background" lead="A small Windows task checks once a minute, so reminders, bill notices and the morning brief arrive even when Edward is closed.">
+          <Section title="Reminders in the background" lead={`${backgroundTask} checks once a minute, so reminders, bill notices and the morning brief arrive even when Edward is closed.`}>
             <Card className="pad between">
               <div>
                 <b>Reminders when Edward is closed</b>

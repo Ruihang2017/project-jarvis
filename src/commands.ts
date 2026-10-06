@@ -12,7 +12,7 @@ import { describe as describeMemory } from "./memory/store.js";
 import { MemoryTidier } from "./memory/tidy.js";
 import { parseDuration } from "./reminders/schedule.js";
 import { describeReminder } from "./reminders/tools.js";
-import { installTask, removeTask, TASK_NAME, taskStatus } from "./background/task.js";
+import { installTask, removeTask, taskLabel, taskStatus } from "./background/task.js";
 import { briefGoogle, briefSchedule, composeBrief, nextBriefAt } from "./background/brief.js";
 import { GmailClient, summaryLine, UNREAD_QUERY } from "./google/gmail.js";
 import { ALL_SCOPES } from "./google/instructions.js";
@@ -40,7 +40,7 @@ const MODE_HELP: Record<Mode, string> = {
   chat: "Codex can't run commands or read files; everything it sees passes the privacy guard",
   manual: "Codex may run commands and edit files, asking before every action",
   "semi-auto": "like manual, but edits inside the Edward workspace go ahead without asking",
-  auto: "Codex runs commands and edits files without asking (no sandbox on Windows)",
+  auto: "Codex runs commands and edits files without asking (no sandbox)",
 };
 
 /** Shown when leaving chat: Codex's own reads bypass the guard (D24). */
@@ -266,7 +266,7 @@ const COMMANDS: Record<string, Command> = {
       if (next === "auto" && session.mode !== "auto") {
         const ok = await session.interactions.approveTool(
           "auto mode",
-          "Codex will run commands and change files without asking, with your full Windows permissions.",
+          "Codex will run commands and change files without asking, with your full permissions on this computer.",
           UNGUARDED_WARNING,
           false,
         );
@@ -693,8 +693,8 @@ const COMMANDS: Record<string, Command> = {
         const r = await installTask();
         updateSettings({ backgroundSuggested: true });
         if (!r.ok) return console.log(dim(`[couldn't turn on background reminders: ${r.message}]`));
-        console.log(dim(`[background reminders on — task ${TASK_NAME} checks every minute, even when Edward is closed]`));
-        return console.log(dim("  /background off removes it · notifications may be muted by Windows Focus / Do Not Disturb"));
+        console.log(dim(`[background reminders on — task ${taskLabel()} checks every minute, even when Edward is closed]`));
+        return console.log(dim("  /background off removes it · notifications may be muted by Focus / Do Not Disturb"));
       }
       if (args === "off") {
         const r = await removeTask();
@@ -703,7 +703,7 @@ const COMMANDS: Record<string, Command> = {
       if (args) return console.log(dim("[usage: /background on|off]"));
       const s = await taskStatus();
       if (!s.installed) return console.log(`background: ${bold("off")} ${dim("— reminders only fire while Edward is open; /background on")}`);
-      console.log(`background: ${bold(s.enabled ? "on" : "disabled")} ${dim(`(${TASK_NAME})`)}`);
+      console.log(`background: ${bold(s.enabled ? "on" : "disabled")} ${dim(`(${taskLabel()})`)}`);
       const beat = s.heartbeat && !Number.isNaN(s.heartbeat.getTime()) ? `${Math.round((Date.now() - s.heartbeat.getTime()) / 1000)}s ago` : "never";
       console.log(dim(`  last tick: ${beat} · last run: ${s.lastRun ?? "?"} (result ${s.lastResult ?? "?"}) · next: ${s.nextRun ?? "?"}`));
       for (const p of s.problems) console.log(styleText("yellow", `  ⚠ ${p}`));

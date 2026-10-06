@@ -16,6 +16,8 @@ if (!only) rmSync(join(app, "build"), { recursive: true, force: true });
 mkdirSync(join(app, "build"), { recursive: true });
 copyFileSync(join(repo, "assets", "icon.png"), join(app, "build", "icon.png"));
 copyFileSync(join(repo, "assets", "icon.ico"), join(app, "build", "icon.ico"));
+// The Mac's icon is made from a bigger picture (512 pixels) when the app is packaged.
+copyFileSync(join(repo, "assets", "icon-source.png"), join(app, "build", "icon-mac.png"));
 
 // The Google client built into the app (D37), from a git-ignored file; none when it isn't there.
 const secretFile = process.env.EDWARD_GOOGLE_CLIENT_FILE ?? join(app, "build-secrets", "google-client.json");

@@ -46,6 +46,7 @@ export class CodexClient extends EventEmitter<{
   serverRequestCancelled: [RequestId];
 }> {
   private proc: ChildProcessWithoutNullStreams;
+  private startError?: Error;
   private nextId = 1;
   private pending = new Map<RequestId, Pending>();
   /** Server→client requests we haven't answered yet. */
@@ -67,6 +68,15 @@ export class CodexClient extends EventEmitter<{
     this.proc.stderr.on("data", (d) => {
       if (envVar("DEBUG")) process.stderr.write(d);
     });
+    // Codex couldn't be started at all (not installed, or not where Edward looks): every request
+    // fails with that reason ("spawn codex ENOENT") instead of the whole program stopping.
+    this.proc.on("error", (e) => {
+      this.startError = e;
+      for (const p of this.pending.values()) p.reject(e);
+      this.pending.clear();
+      this.emit("exit", null);
+    });
+    this.proc.stdin.on("error", () => {}); // a write after it has gone
     this.proc.on("exit", (code) => {
       for (const p of this.pending.values()) p.reject(new Error(`codex app-server exited (${code}) during ${p.method}`));
       this.pending.clear();
@@ -79,6 +89,7 @@ export class CodexClient extends EventEmitter<{
   }
 
   request<R = unknown, M extends Method = Method>(method: M, params: ParamsOf<M>): Promise<R> {
+    if (this.startError) return Promise.reject(this.startError);
     const id = this.nextId++;
     return new Promise<R>((resolve, reject) => {
       this.pending.set(id, { method, resolve: resolve as (v: unknown) => void, reject });

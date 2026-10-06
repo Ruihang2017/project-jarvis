@@ -1,6 +1,6 @@
 {
   "name": "edward-app",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "private": true,
   "description": "Edward desktop app (Electron). The assistant itself is the core in ../src.",
   "type": "module",
@@ -10,8 +10,10 @@
     "start": "node scripts/build.mjs && electron .",
     "typecheck": "tsc -p tsconfig.json",
     "seed": "tsx scripts/seed.ts",
-    "dist": "node scripts/build.mjs && electron-builder --win nsis",
-    "dist:dir": "node scripts/build.mjs && electron-builder --win --dir"
+    "dist": "node scripts/build.mjs && electron-builder --win nsis --publish never",
+    "dist:dir": "node scripts/build.mjs && electron-builder --win --dir --publish never",
+    "dist:mac": "node scripts/build.mjs && electron-builder --mac --universal --publish never",
+    "smoke": "node scripts/smoke.mjs"
   },
   "devDependencies": {
     "@fontsource-variable/bricolage-grotesque": "^5.3.0",
@@ -48,6 +50,23 @@
     "win": {
       "target": "nsis",
       "icon": "build/icon.ico"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "build/icon-mac.png",
+      "category": "public.app-category.productivity",
+      "artifactName": "Edward-${version}-mac.${ext}",
+      "minimumSystemVersion": "12.0",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "entitlements.mac.plist",
+      "entitlementsInherit": "entitlements.mac.plist",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "Edward listens when you talk to it with the microphone button."
+      }
+    },
+    "dmg": {
+      "title": "Edward ${version}"
     },
     "nsis": {
       "artifactName": "Edward-Setup-${version}.${ext}",

@@ -1,6 +1,6 @@
 # Security and privacy
 
-Edward is a personal assistant that runs on your own Windows computer. It talks to an AI model through
+Edward is a personal assistant that runs on your own computer (Windows or macOS). It talks to an AI model through
 the Codex CLI and your own ChatGPT account, and — if you connect them — to your own Google Calendar,
 Gmail and Google Tasks. Two more only when used: OpenAI's realtime voice service (with your own API key)
 and Open-Meteo for the weather where a trip goes (a place name and a date). There is no Edward server:
@@ -46,7 +46,7 @@ paying is up to you.
 | `chat` (default) | Answer, search the web, use Edward's tools. Its own shell, file reading, local image viewing and browser are switched off | Fully effective |
 | `manual` | Run commands and edit files, asking before every action | Does not cover what commands print or files contain |
 | `semi-auto` | As `manual`, but edits inside the Edward workspace are not asked about | As `manual` |
-| `auto` | Run commands and edit files without asking. Windows has no effective sandbox, so this is your full user account | As `manual` |
+| `auto` | Run commands and edit files without asking. Edward doesn't put Codex in a sandbox in this mode (Windows has no effective one), so this is your full user account | As `manual` |
 
 The prompt always shows the mode when it is not `chat`. Entering `auto` asks first.
 
@@ -114,13 +114,29 @@ is discarded.
 
 ## Where your data is
 
-Everything is in `%LOCALAPPDATA%\Edward` on your computer: memories, reminders, bills, mail summaries and trips (`memory.db`),
+Everything is in one folder on your computer, `%LOCALAPPDATA%\Edward` on Windows and
+`~/Library/Application Support/Edward` on a Mac: memories, reminders, bills, mail summaries and trips (`memory.db`),
 settings, generated images, and Codex's conversation history (`codex-home`). These files are not
-encrypted; they are protected by your Windows account. Each Google sign-in token is encrypted with Windows
-DPAPI (one per account, in `accounts\<id>\`) and never logged.
+encrypted; they are protected by your user account on the computer.
+
+Each Google sign-in token (one per account, in `accounts\<id>\`) and the OpenAI key for voice are
+encrypted, and never logged:
+
+- **Windows:** with Windows DPAPI, for your Windows account on this computer.
+- **macOS:** with a random key that Edward keeps in your login keychain (the item is called "Edward"). The
+  files themselves are AES-256-GCM. If the keychain can't be used, saving fails; the token is never
+  written unprotected.
+
+Both protect against someone copying the files, a backup that leaks, or another user of the computer.
+Neither protects against a program running as you: it can ask Windows, or the keychain, the same way
+Edward does.
+
+Reminders while Edward is closed come from a small per-user background job that runs every minute and
+then ends: a scheduled task on Windows, a launchd agent on a Mac (`~/Library/LaunchAgents/com.edward.tick.plist`).
+Neither needs administrator rights, and "Reminders when Edward is closed" in Settings removes it.
 
 - `/data export` writes everything Edward stores as readable files.
-- `edward delete-data` deletes it; `edward uninstall` also removes the scheduled task and revokes Google access.
+- `edward delete-data` deletes it (on a Mac, the key in the keychain too); `edward uninstall` also removes the background job and revokes Google access.
 - `/disconnect google <account>` revokes Edward's access to one Google account.
 
 ## Google
@@ -155,7 +171,7 @@ directly, billed to that key.
 - The realtime model only hears and speaks. What you said comes back as text and goes into the
   conversation like typed text, through the guard, to Codex; Edward's answer is then read aloud. The
   realtime model never answers on its own and has no tools.
-- The key is encrypted with Windows DPAPI on your computer, never shown again, never logged and never sent
+- The key is encrypted on your computer like the Google sign-ins (see "Where your data is"), never shown again, never logged and never sent
   to Codex. The window never has it: the main process makes the connection. `edward delete-data` deletes it.
 - What voice costs is estimated from the token counts OpenAI reports during a call; only those numbers are
   kept (`voice_spend` in `memory.db`), never what was said. Edward doesn't ask for an OpenAI admin key.
@@ -187,7 +203,15 @@ On top of that:
   the main process put them on its list; the window can't ask for any other file.
 - **What you typed is shown as it was sent:** if the guard removed a number from your message, the
   conversation shows "card number removed" in its place, not the number.
-- Closing the window keeps Edward in the tray so reminders still appear; Quit is in the tray menu.
+- Closing the window keeps Edward running so reminders still appear: in the tray on Windows (Quit is in
+  the tray menu), in the Dock on a Mac (Cmd+Q quits).
+- **Notifications.** On Windows, and on a Mac while the app is open, they come from Edward. On a Mac
+  while the app is closed, the background job shows them through macOS's own script runner, so they are
+  labelled "Script Editor"; their text is handed to it directly, not on a command line that other users
+  of the computer could read.
+- **The macOS app isn't signed with an Apple Developer ID yet.** macOS therefore asks you to allow it the
+  first time (System Settings → Privacy & Security → Open Anyway). The download is built from this
+  repository by GitHub Actions; the build log is public.
 
 ## Demo mode
 

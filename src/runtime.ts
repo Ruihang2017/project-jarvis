@@ -17,6 +17,8 @@ export const runtime: {
   tick?: TickCommand;
   /** No desktop notifications (automated checks). */
   silent?: boolean;
+  /** Shows a notification itself (the desktop app on a Mac, so it carries Edward's name and icon); false when it couldn't. */
+  notify?: (toast: { title: string; body: string; tag?: string; kind?: "reminder" | "info" }) => boolean;
   /** No background work at start (memory learning, tidying, bill scan): automated checks only look. */
   noBackgroundWork?: boolean;
   /** Google desktop client built into the app at packaging time (D37); a google-client.json in the data folder wins. */
