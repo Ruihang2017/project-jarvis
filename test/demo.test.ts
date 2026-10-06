@@ -54,6 +54,16 @@ await get(`https://tasks.googleapis.com/tasks/v1/lists/L1/tasks/${added.id}`, { 
 const shopping = (await get("https://tasks.googleapis.com/tasks/v1/lists/L1/tasks")).body.items;
 ok("an item added and ticked", shopping.some((t: { title: string; status: string }) => t.title === "Avocados" && t.status === "completed"));
 
+// The site visit is about 40 minutes away, and still today late in the evening.
+const visitAt = (h: number, m: number) => {
+  const t = new Date();
+  t.setHours(h, m, 0, 0);
+  const d = demoData(t);
+  const start = d.events.find((e: { summary: string }) => e.summary === "Kitchen renovation site visit")!.start;
+  return [start.slice(0, 10) === d.today, start.slice(11)];
+};
+eq("the site visit: 40 minutes on, at a quarter hour", [visitAt(12, 0), visitAt(9, 20)], [[true, "12:45"], [true, "10:00"]]);
+eq("…and never tomorrow", [visitAt(23, 0), visitAt(23, 14), visitAt(23, 55)], [[true, "23:45"], [true, "23:45"], [true, "23:45"]]);
 ok("only made-up addresses", demoData().mail.every((m) => /\.example>?$|@gmail\.com>?$/.test(m.from.replace(/>$/, "")) || m.from.includes(DEMO_EMAIL)));
 
 rmSync(dir, { recursive: true, force: true });

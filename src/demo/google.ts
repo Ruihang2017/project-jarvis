@@ -33,7 +33,9 @@ const ld = (o: unknown) => `<html><head><script type="application/ld+json">${JSO
 export function demoData(now = new Date()) {
   const today = localDate(now);
   const at = (day: number, hhmm: string) => `${nextDate(today, day)}T${hhmm}`;
-  const visit = new Date(Math.ceil((now.getTime() + 40 * 60_000) / (15 * 60_000)) * 15 * 60_000);
+  // About 40 minutes from now, on a quarter hour; never past today, because its email says "today".
+  const soon = Math.ceil((now.getTime() + 40 * 60_000) / (15 * 60_000)) * 15 * 60_000;
+  const visit = new Date(Math.min(soon, new Date(`${today}T23:45`).getTime()));
   const visitAt = toLocal(visit).slice(11, 16);
   const flightDay = nextDate(today, 2);
   const zone = (() => {
