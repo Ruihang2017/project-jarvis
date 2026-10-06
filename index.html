@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Edward: your personal assistant for Windows</title>
-<meta name="description" content="Edward is a personal assistant for Windows. It looks after your calendar, mail, bills and lists, reminds you in time, and asks before it acts. It runs on your own computer with your own ChatGPT account.">
-<meta property="og:title" content="Edward: your personal assistant for Windows">
+<title>Edward: your personal assistant for Windows and Mac</title>
+<meta name="description" content="Edward is a personal assistant for Windows and Mac. It looks after your calendar, mail, bills and lists, reminds you in time, and asks before it acts. It runs on your own computer with your own ChatGPT account.">
+<meta property="og:title" content="Edward: your personal assistant for Windows and Mac">
 <meta property="og:description" content="Calendar, mail, bills, lists and reminders, on your own computer, with a privacy guard that keeps card and account numbers away from the AI.">
 <meta property="og:image" content="https://ruihang2017.github.io/project-jarvis/art/hero-welcome.jpg">
 <link rel="icon" href="icon.png">
@@ -28,14 +28,15 @@
 
 <header class="hero">
   <div class="hero-text">
-    <p class="eyebrow">Personal assistant for Windows · free beta</p>
+    <p class="eyebrow">Personal assistant for Windows and Mac · free beta</p>
     <h1>Someone to keep an eye on things.</h1>
     <p class="lede">Edward looks after your calendar, mail, bills and lists. It tells you what needs you, reminds you in time, and asks before it does anything on your behalf. It runs on your own computer, with your own ChatGPT account.</p>
     <div class="cta">
-      <a class="btn primary" href="https://github.com/Ruihang2017/project-jarvis/releases/download/v0.2.0/Edward-Setup-0.2.0.exe">Download for Windows</a>
+      <a class="btn primary" href="https://github.com/Ruihang2017/project-jarvis/releases/download/v0.3.0/Edward-Setup-0.3.0.exe">Download for Windows</a>
+      <a class="btn primary" href="https://github.com/Ruihang2017/project-jarvis/releases/download/v0.3.0/Edward-0.3.0-mac.dmg">Download for Mac</a>
       <a class="btn" href="#install">How to install</a>
     </div>
-    <p class="small">Version 0.2.0 · Windows 10 or 11 · about 120 MB · <a href="https://github.com/Ruihang2017/project-jarvis/releases">all versions</a></p>
+    <p class="small">Version 0.3.0 · Windows 10 or 11 (about 120 MB) · macOS 12 or newer, Intel and Apple silicon (about 200 MB, new) · <a href="https://github.com/Ruihang2017/project-jarvis/releases">all versions</a></p>
   </div>
   <img class="hero-art" src="art/hero-welcome.jpg" alt="A watercolour of an open front door onto a sunny garden">
 </header>
@@ -111,17 +112,21 @@
 
 <section id="install" class="install">
   <h2>Install</h2>
-  <p class="need">You need Windows 10 or 11 and a ChatGPT account that includes Codex. Google is optional but makes Edward much more useful.</p>
+  <p class="need">You need Windows 10 or 11, or a Mac with macOS 12 or newer, and a ChatGPT account that includes Codex. Google is optional but makes Edward much more useful.</p>
   <ol class="steps">
     <li>
       <h3>Install Codex</h3>
-      <p>Codex is OpenAI's free app that connects Edward to your ChatGPT account. Open <b>PowerShell</b> and run:</p>
+      <p>Codex is OpenAI's free app that connects Edward to your ChatGPT account. On Windows, open <b>PowerShell</b> and run:</p>
       <pre><code>winget install -e --id OpenAI.Codex</code></pre>
+      <p>On a Mac, open <b>Terminal</b> and run:</p>
+      <pre><code>curl -fsSL https://chatgpt.com/codex/install.sh | sh</code></pre>
       <p class="small">Or see <a href="https://developers.openai.com/codex">OpenAI's Codex page</a> for other ways.</p>
     </li>
     <li>
       <h3>Install Edward</h3>
-      <p><a href="https://github.com/Ruihang2017/project-jarvis/releases/download/v0.2.0/Edward-Setup-0.2.0.exe">Download Edward Setup</a> and run it. While Edward is in beta the installer isn't signed, so Windows says <i>"Windows protected your PC"</i>: click <b>More info</b>, then <b>Run anyway</b>.</p>
+      <p><b>Windows:</b> <a href="https://github.com/Ruihang2017/project-jarvis/releases/download/v0.3.0/Edward-Setup-0.3.0.exe">download Edward Setup</a> and run it. While Edward is in beta the installer isn't signed, so Windows says <i>"Windows protected your PC"</i>: click <b>More info</b>, then <b>Run anyway</b>.</p>
+      <p><b>Mac:</b> <a href="https://github.com/Ruihang2017/project-jarvis/releases/download/v0.3.0/Edward-0.3.0-mac.dmg">download Edward for Mac</a> (one file for Intel and Apple silicon), open it and drag Edward to Applications. The app isn't signed by Apple yet, so the first time you open it macOS says it <i>"can't be opened"</i> or <i>"could not verify"</i>: click <b>Done</b>, open <b>System Settings → Privacy &amp; Security</b>, scroll down and click <b>Open Anyway</b>. You do this once.</p>
+      <p class="small">The Mac version is new. The videos above were recorded on Windows; the pages are the same.</p>
     </li>
     <li>
       <h3>Sign in to ChatGPT</h3>
@@ -141,11 +146,11 @@
 <section id="faq" class="faq">
   <h2>Questions</h2>
   <details><summary>Is it free?</summary><p>Edward is free and open source (MIT). It uses your ChatGPT plan's Codex allowance, so there is no extra subscription. Voice is billed by OpenAI to your own API key, usually a few cents a minute.</p></details>
-  <details><summary>Where is my data?</summary><p>In <code>%LOCALAPPDATA%\Edward</code> on your computer. Google sign-ins are encrypted with Windows. Settings → Your data can back it up, export it or delete it.</p></details>
+  <details><summary>Where is my data?</summary><p>On your computer: <code>%LOCALAPPDATA%\Edward</code> on Windows, <code>~/Library/Application Support/Edward</code> on a Mac. Google sign-ins are encrypted by Windows, or with a key in your Mac's keychain. Settings → Your data can back it up, export it or delete it.</p></details>
   <details><summary>Can Edward send email or change my calendar by itself?</summary><p>No. Every email is shown to you before it is sent, and every change to your calendar asks first. Edward never invites people or deletes mail.</p></details>
   <details><summary>Outlook, iCloud, WeChat, WhatsApp?</summary><p>Personal Google accounts work today; personal Microsoft accounts are planned. Work accounts are never supported. WeChat and WhatsApp have no way to connect a personal account safely, but their email notifications show up in the mail summary.</p></details>
-  <details><summary>Mac or phone?</summary><p>Windows only for now. Lists and events live in Google, so you see them on your phone.</p></details>
-  <details><summary>Why the warnings when installing?</summary><p>Signing the installer and Google's app review cost time and money that a free beta doesn't have yet. Both warnings are expected; the source code is on GitHub for anyone to check.</p></details>
+  <details><summary>Mac or phone?</summary><p>Windows and Mac (Intel and Apple silicon). There is no phone app; lists and events live in Google, so you see them on your phone.</p></details>
+  <details><summary>Why the warnings when installing?</summary><p>Signing the installers (Windows and Apple) and Google's app review cost time and money that a free beta doesn't have yet. Both warnings are expected; the source code is on GitHub for anyone to check.</p></details>
 </section>
 
 <footer>
