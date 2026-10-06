@@ -1,6 +1,6 @@
 {
   "name": "edward-app",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "Edward desktop app (Electron). The assistant itself is the core in ../src.",
   "type": "module",

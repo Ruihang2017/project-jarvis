@@ -1,6 +1,6 @@
 {
   "name": "edward-assistant",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "A personal terminal assistant on the Codex CLI: calendar, Gmail, bills and reminders, with a privacy guard that removes account numbers and passwords before anything reaches the model",
   "type": "module",
   "private": true,

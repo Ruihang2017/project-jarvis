@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.1 — 2026-10-06
 
 - Fixed: "Gmail's query quota is temporarily exceeded" on the morning Edward is opened. Gmail allows
   about 300 emails a minute per account, and the mail summary, the daily bill and booking scans and the
@@ -15,6 +15,7 @@
   - The automatic bill scan, booking scan and mail summary take turns, a minute apart. What you ask for
     yourself still runs at once.
 - The mail summary says when an email couldn't be read, instead of summarising its preview line.
+- Demo mode: the made-up site visit stays on today when the demo is started late in the evening.
 
 ## 0.2.0 — 2026-10-05
 

@@ -241,7 +241,7 @@ export class Session {
 
   async init(): Promise<GetAccountResponse> {
     await this.client.request<InitializeResponse>("initialize", {
-      clientInfo: { name: "edward", title: "Edward", version: "0.2.0" },
+      clientInfo: { name: "edward", title: "Edward", version: "0.2.1" },
       // Needed for dynamicTools (Edward tools); experimental fields may change across codex versions.
       capabilities: { experimentalApi: true, requestAttestation: false },
     });

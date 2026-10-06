@@ -62,7 +62,7 @@ before you rely on Edward.
 
 ## Install
 
-**Desktop app (Windows):** download `Edward-Setup-0.2.0.exe` from the
+**Desktop app (Windows):** download `Edward-Setup-0.2.1.exe` from the
 [releases](https://github.com/Ruihang2017/project-jarvis/releases) and follow the
 [install steps](https://ruihang2017.github.io/project-jarvis/#install) (Codex first:
 `winget install -e --id OpenAI.Codex`).
