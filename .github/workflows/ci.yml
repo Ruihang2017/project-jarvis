@@ -77,6 +77,10 @@ jobs:
           if [ -n "$GOOGLE_CLIENT_JSON" ]; then
             mkdir -p app/build-secrets
             printf '%s' "$GOOGLE_CLIENT_JSON" > app/build-secrets/google-client.json
+          elif [ "${GITHUB_REF#refs/tags/}" != "$GITHUB_REF" ]; then
+            # A release without it would make everyone bring their own Google Cloud project.
+            echo "::error::A release needs the GOOGLE_CLIENT_JSON secret (the built-in Google client)."
+            exit 1
           else
             echo "::notice::No GOOGLE_CLIENT_JSON secret: this build has no built-in Google client."
           fi
