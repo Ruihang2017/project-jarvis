@@ -91,8 +91,26 @@ export type ChatEntry =
   | { kind: "user"; id: string; text: string; images: Attachment[] }
   | { kind: "assistant"; id: string; text: string; streaming: boolean }
   | { kind: "activity"; id: string; icon: string; text: string; detail?: string[] }
+  | ({ kind: "draft"; id: string } & DraftCard)
   | { kind: "image"; id: string; url: string; path: string; prompt: string; revised?: string }
   | { kind: "notice"; id: string; tone: "guard" | "info" | "warn" | "error"; text: string };
+
+/** An email draft Edward wrote in the conversation, shown whole so it can be read, edited and sent here. */
+export interface DraftCard {
+  /** The handle the model knows it by ("d2"). */
+  ref: string;
+  from: string;
+  to: string;
+  cc: string;
+  subject: string;
+  body: string;
+  /**
+   * "account/draftId": what mailDraftOpen takes. Only while the draft can still be opened from here:
+   * not in a conversation reopened later, and not once it was sent or replaced by a newer version.
+   */
+  draftKey?: string;
+  state?: "sent" | "replaced";
+}
 
 export interface ThreadInfo {
   id: string;
@@ -231,6 +249,35 @@ export interface ComposeCheck {
   firstTime: string[];
   /** The address it goes from. */
   from: string;
+}
+
+/** A draft in Gmail's Drafts, in the Mail page's list. */
+export interface DraftSummary extends Partial<FromAccount> {
+  /** "account/draftId": what mailDraftOpen takes. */
+  id: string;
+  to: string;
+  subject: string;
+  snippet: string;
+  date: string;
+  /** False when it has formatting or attachments from Gmail that Edward's plain-text form would lose. */
+  editable: boolean;
+}
+
+export interface DraftsView {
+  connected: boolean;
+  items: DraftSummary[];
+  problem?: string;
+  manyAccounts?: boolean;
+}
+
+/** A Gmail draft opened in the app. */
+export interface OpenedDraft {
+  /** For the form; its draftId is set, so saving and sending change this same draft. */
+  draft: ComposeDraft;
+  editable: boolean;
+  /** The address it goes from, and where to open it in Gmail when it can't be edited here. */
+  from: string;
+  gmailUrl: string;
 }
 
 /** A page of a mail list; pass `cursor` back to get the next one. */
@@ -586,8 +633,16 @@ export interface EdwardApi {
   /** Sends what the user wrote (they confirmed in the window first). */
   mailSend(d: ComposeDraft): Promise<Result>;
   mailSaveDraft(d: ComposeDraft): Promise<Result & { draftId?: string }>;
-  /** "Ask Edward to write": a body from the user's notes (through the privacy guard). */
-  mailWrite(d: ComposeDraft, notes: string): Promise<Result & { body?: string }>;
+  /**
+   * "Ask Edward to write": the email from the user's notes. The model also gets what Edward remembers
+   * about the user and may look up related mail, all through the privacy guard. `fill` is what to put
+   * in the form: the text, and a recipient and subject where the user left them empty.
+   */
+  mailWrite(d: ComposeDraft, notes: string): Promise<Result & { fill?: { to?: string; subject?: string; body: string } }>;
+  /** The drafts in Gmail, from every mail account, newest first. */
+  mailDrafts(): Promise<DraftsView>;
+  /** Opens a Gmail draft (from the Drafts list, or a draft card in the conversation) as it is now. */
+  mailDraftOpen(key: string): Promise<Result & { opened?: OpenedDraft }>;
   /** Null when the email has no HTML. `pictures` lets it load pictures and styles from the web. */
   mailOriginal(id: string, pictures: boolean): Promise<MailOriginal | null>;
   /** Trips (H2): add to the calendar, not a trip, the details are right, make a packing list. */

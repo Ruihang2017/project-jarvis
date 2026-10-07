@@ -153,6 +153,7 @@ function draftsApi(u: URL, init: RequestInit) {
     sent.push(d);
     return { id: `sent-${sent.length}`, threadId: d.threadId ?? "new" };
   }
+  if (u.pathname.endsWith("/drafts") && method === "GET") return { drafts: [...gDrafts.keys()].map((id) => ({ id })) };
   if (u.pathname.endsWith("/drafts") && method === "POST") {
     const id = `D${gDrafts.size + sent.length + 1}`;
     gDrafts.set(id, { raw: body.message.raw, threadId: body.message.threadId });
@@ -280,7 +281,57 @@ ok("draft handles are never reused after sending", after.startsWith("Draft [d4]"
 gDrafts.delete(newId); // deleted in Gmail
 await throws("draft deleted in Gmail", () => tool("gmail_send").prepare({ draft: newRef }, ctx), "no longer exists");
 
+// --- a draft is shown to the user: the card in the conversation, the lines in the terminal ---
+const { parseDraftResult, draftHandle, draftChanged } = await import("../src/google/gmail-tools.js");
+const { draftOf, activityNotes } = await import("../src/activity.js");
+eq("a draft's result reads back as the draft", parseDraftResult(d1), { ref: "d1", from: "me@gmail.com", to: "Alice <alice@x.com>", cc: "", subject: "Re: Contract", body: "Friday works for me." });
+const withCc = await (await tool("gmail_draft").prepare({ to: "Bo <bo@x.com>", cc: "cy@x.com", subject: "Plan", body: "Line one\n\nLine two\n\nTo send it, call me." }, ctx)).execute();
+const card = parseDraftResult(withCc)!;
+eq("…with Cc, and blank lines in the text kept", [card.cc, card.body], ["cy@x.com", "Line one\n\nLine two\n\nTo send it, call me."]);
+eq("anything else isn't a draft", [parseDraftResult("Failed: no recipient"), parseDraftResult("")], [null, null]);
+const toolItem = (text: string, good = true) => ({ type: "dynamicToolCall", id: "i", tool: "gmail_draft", arguments: { to: "Bo <bo@x.com>" }, status: good ? "completed" : "failed", success: good, contentItems: [{ type: "inputText", text }] }) as never;
+eq("a finished gmail_draft call carries its draft", draftOf(toolItem(withCc))?.ref, card.ref);
+eq("a failed one doesn't", draftOf(toolItem("Invalid call: no recipient", false)), null);
+const shownLines = activityNotes(toolItem(withCc));
+ok("the terminal prints the draft under its line", shownLines[0]!.includes("drafted email to Bo") && shownLines.includes("   To: Bo <bo@x.com>") && shownLines.includes("   Subject: Plan") && shownLines.includes("   Line two"), shownLines.join("|"));
+
+const handle = draftHandle(card.ref)!;
+ok("the card can find the draft in Gmail", handle.account === "g1" && gDrafts.has(handle.draftId), JSON.stringify(handle));
+eq("no handle for a draft that isn't this session's", draftHandle("d99"), undefined);
+// The user changes it in the app: the next revision starts from what they have.
+draftChanged(handle.draftId, { to: ["Bo <bo@x.com>"], cc: [], subject: "Plan B", body: "Mine now" });
+const revised = parseDraftResult(await (await tool("gmail_draft").prepare({ draft: card.ref, body: "Shorter" }, ctx)).execute())!;
+eq("a revision after the user's change keeps their subject and recipients", [revised.subject, revised.cc, revised.body], ["Plan B", "", "Shorter"]);
+
+// --- Gmail's Drafts, for the Mail page ---
+const draftsWriter = new g.GmailWriter(fakeAuth);
+const listed = await draftsWriter.listDrafts();
+ok("Gmail's drafts, as they are now", listed.length === gDrafts.size && listed.some((x) => x.draftId === handle.draftId && x.message.body === "Shorter" && x.message.subject === "Plan B"), JSON.stringify(listed.map((x) => [x.draftId, x.message.subject])));
+ok("Edward's drafts are plain text, so the app can change them", listed.every((x) => g.isPlainText(x.message)));
+eq("a message with formatting or an attachment is left to Gmail", g.isPlainText(g.toMessage(store.a1 as never)), false);
+await (await tool("gmail_draft").prepare({ reply_to: "m2", body: "Yes." }, ctx)).execute();
+eq("a reply draft knows what it answers", (await draftsWriter.listDrafts()).find((x) => x.message.body === "Yes.")?.message.inReplyTo, "<a1@mail>");
+
+// The user sends it from the app: it isn't the model's to send any more.
+draftChanged(handle.draftId, null);
+await throws("a draft the user sent can't be sent by the model", () => tool("gmail_send").prepare({ draft: card.ref }, ctx), "only drafts Edward wrote");
+
+// --- a background helper only reaches the tools it was given ---
+const draftCall = (threadId: string) => ({ threadId, turnId: "u", callId: "c", tool: "gmail_draft", arguments: { to: "a@x.com", subject: "s", body: "b" } }) as never;
+runner.limit("helper", ["gmail_search", "gmail_read"]);
+const before = gDrafts.size;
+const fenced = await runner.call(draftCall("helper"), answer("accept"));
+ok("a tool it wasn't given is refused, and nothing happens", fenced.success === false && JSON.stringify(fenced).includes("isn't available here") && gDrafts.size === before, JSON.stringify(fenced));
+ok("…a tool it was given works", (await runner.call({ threadId: "helper", turnId: "u", callId: "c", tool: "gmail_search", arguments: { query: "is:unread" } } as never, answer("accept"))).success === true);
+const elsewhere = await runner.call(draftCall("t"), answer("accept"));
+ok("…and other conversations are not affected", elsewhere.success === true, JSON.stringify(elsewhere).slice(0, 200));
+runner.limit("none", []);
+ok("a helper with no tools reaches none", (await runner.call({ threadId: "none", turnId: "u", callId: "c", tool: "gmail_search", arguments: { query: "x" } } as never, answer("accept"))).success === false);
+runner.unlimit("helper");
+ok("when the helper is done its thread is ordinary again", (await runner.call(draftCall("helper"), answer("accept"))).success === true);
+
 // --- instructions & notices ---
+ok("instructions: a draft is shown by Edward, not read in Gmail", instructionsFor(state(GMAIL_SCOPES)).includes("Edward shows the user every draft itself") && !instructionsFor(state(GMAIL_SCOPES)).includes("tell them it's in Gmail drafts"));
 ok("instructions: Gmail granted", instructionsFor(state([...CALENDAR_SCOPES, ...GMAIL_SCOPES])).includes("gmail_search"));
 ok("instructions: draft then send, can't delete", /gmail_draft[\s\S]*gmail_send[\s\S]*can't archive, label, mark read or delete/.test(instructionsFor(state(GMAIL_SCOPES))));
 ok("instructions: Gmail not granted", instructionsFor(state(CALENDAR_SCOPES)).includes("Gmail access hasn't been granted"));

@@ -28,6 +28,17 @@ function recentContext(store: MemoryStore): string {
 }
 
 /**
+ * What Edward knows about the user, for a background helper that has no memory rules of its own:
+ * the long-term core and what's going on lately. Empty when there is nothing.
+ */
+export function aboutUser(store: MemoryStore): string {
+  const core = store.core();
+  const recent = recentContext(store);
+  if (!core.length && !recent) return "";
+  return `What you know about the user (today is ${today()}; treat as true):\n${core.length ? core.map((m) => `- ${m.text}`).join("\n") : "- (nothing yet)"}\n${recent}`;
+}
+
+/**
  * Memory section appended to the persona at thread start/resume: the long-term core
  * (profile + preferences) plus rules for the memory tools.
  */

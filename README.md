@@ -62,7 +62,7 @@ before you rely on Edward.
 
 ## Install
 
-**Desktop app:** download `Edward-Setup-0.3.0.exe` (Windows) or `Edward-0.3.0-mac.dmg` (macOS, one file
+**Desktop app:** download `Edward-Setup-0.3.1.exe` (Windows) or `Edward-0.3.1-mac.dmg` (macOS, one file
 for Intel and Apple silicon) from the [releases](https://github.com/Ruihang2017/project-jarvis/releases)
 and follow the [install steps](https://ruihang2017.github.io/project-jarvis/#install). Codex first:
 `winget install -e --id OpenAI.Codex` on Windows, `curl -fsSL https://chatgpt.com/codex/install.sh | sh`

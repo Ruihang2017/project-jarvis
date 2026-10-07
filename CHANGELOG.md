@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.3.1 — 2026-10-07
+
+Writing email.
+
+- A draft Edward writes in a conversation is shown there, whole, with **Edit** (opens it in the Mail form,
+  the same Gmail draft) and **Send** (asks first, like the form). Before, the conversation only said
+  "drafted email to …" and you had to open Gmail to read it. Tell Edward what to change and the new
+  version appears below the old one. The terminal prints the draft too.
+- "Ask Edward to write" in the email form now writes as well as a conversation does: it knows what
+  Edward remembers about you and looks in your mail for the person and what was last said. It fills in
+  the recipient and subject when you left them empty (the recipient only if you have exchanged email with
+  that address), and signs with your name.
+- Mail → **Drafts**: the drafts in Gmail, yours and Edward's. Plain-text drafts open in the form; one with
+  formatting or attachments from Gmail is shown and left for Gmail to change.
+
 ## 0.3.0 — 2026-10-07
 
 Edward for Mac.

@@ -1,16 +1,17 @@
 import { useEffect, useRef, useState } from "react";
-import type { ComposeCheck, ComposeDraft, DigestView, MailListView, MailMessage, MailOriginal, MailPage, MailSummary } from "../../../shared/api";
+import type { ComposeCheck, ComposeDraft, DigestView, DraftsView, MailListView, MailMessage, MailOriginal, MailPage, MailSummary, OpenedDraft } from "../../../shared/api";
 import { useApp, Shell } from "../App";
 import { call, useData } from "../api";
-import { AccountChip, Button, Card, Confirm, Icon, IconButton, Loading, Note, Segmented, Spot, Tag } from "../ui";
+import { AccountChip, Button, Card, Icon, IconButton, Loading, Note, Segmented, SendConfirm, Spot, Tag } from "../ui";
 import { NotConnected } from "./Calendar";
 
-type View = MailListView | "summary";
+type View = MailListView | "summary" | "drafts";
 
 const VIEWS: { value: View; label: string; sub: string }[] = [
   { value: "summary", label: "Summary", sub: "What needs you in your new mail" },
   { value: "inbox", label: "Inbox", sub: "Your inbox, the last 30 days" },
   { value: "unread", label: "Unread", sub: "Unread in your Primary tab from the last 24 hours" },
+  { value: "drafts", label: "Drafts", sub: "Waiting in Gmail to be sent" },
   { value: "search", label: "Search", sub: "Search all your mail" },
 ];
 
@@ -18,6 +19,12 @@ const VIEWS: { value: View; label: string; sub: string }[] = [
 let wanted: MailSummary | null = null;
 export const openMailLater = (m: MailSummary) => {
   wanted = m;
+};
+
+/** A draft another page wants opened in the form (a draft card in the conversation): taken by the Mail page when it opens. */
+let wantedDraft: ComposeDraft | null = null;
+export const composeLater = (d: ComposeDraft) => {
+  wantedDraft = d;
 };
 
 export function Mail() {
@@ -57,7 +64,33 @@ export function Mail() {
   const [view, setView] = useState<"original" | "text">("original");
   const [pictures, setPictures] = useState(false);
   const [original, setOriginal] = useState<MailOriginal | null>(null);
-  const [compose, setCompose] = useState<ComposeDraft | null>(null);
+  const [compose, setCompose] = useState<ComposeDraft | null>(() => {
+    const d = wantedDraft;
+    wantedDraft = null;
+    return d;
+  });
+  // Drafts in Gmail: listed when asked for; one that can't be edited here is only shown.
+  const [drafts, setDrafts] = useState<DraftsView | null>(null);
+  const [shownDraft, setShownDraft] = useState<OpenedDraft | null>(null);
+  useEffect(() => {
+    if (listView !== "drafts") return;
+    let live = true;
+    setDrafts(null);
+    call("mailDrafts").then(
+      (v) => live && setDrafts(v),
+      (e: unknown) => live && setDrafts({ connected: true, items: [], problem: e instanceof Error ? e.message : String(e) }),
+    );
+    return () => {
+      live = false;
+    };
+  }, [listView, round]);
+  const openDraft = async (key: string) => {
+    const r = await call("mailDraftOpen", key);
+    if (!r.ok || !r.opened) return toast(r);
+    setShownDraft(r.opened.editable ? null : r.opened);
+    setCompose(r.opened.editable ? r.opened.draft : null);
+  };
+  const draftIdOf = (key: string) => key.slice(key.indexOf("/") + 1);
   const startCompose = async (from?: { id: string; mode: "reply" | "replyAll" | "forward" }) => {
     try {
       setCompose(await call("mailCompose", from));
@@ -71,7 +104,7 @@ export function Mail() {
     setItems([]);
     setPage(null);
     setListProblem(null);
-    if ((listView === "search" && !searched) || listView === "summary") return;
+    if ((listView === "search" && !searched) || listView === "summary" || listView === "drafts") return;
     setLoading(true);
     call("mailList", { view: listView, query: searched }).then(
       (p) => {
@@ -122,8 +155,8 @@ export function Mail() {
     go("chat");
   };
   const many = Boolean(page?.manyAccounts);
-  const connected = page ? page.connected : true;
-  const problemText = listProblem ?? page?.problem;
+  const connected = listView === "drafts" ? (drafts?.connected ?? true) : page ? page.connected : true;
+  const problemText = listView === "drafts" ? drafts?.problem : (listProblem ?? page?.problem);
   return (
     <Shell
       title="Mail"
@@ -169,8 +202,35 @@ export function Mail() {
                 {problemText}
               </Note>
             )}
+            {listView === "drafts" && !drafts && <Loading />}
+            {listView === "drafts" && drafts && !drafts.items.length && !drafts.problem && (
+              <div className="empty">
+                <Spot name="spot-rest" size={140} alt="An armchair with a blanket" />
+                <h2>No drafts</h2>
+                <p>Emails you save here, and the ones Edward writes for you, wait in Gmail's Drafts until you send them.</p>
+              </div>
+            )}
+            {listView === "drafts" &&
+              drafts?.items.map((m) => (
+                <button type="button" key={m.id} className="list-btn" aria-pressed={(compose?.draftId ?? shownDraft?.draft.draftId) === draftIdOf(m.id)} onClick={() => void openDraft(m.id)}>
+                  <span className="between">
+                    <span className="ellipsis" style={{ fontWeight: 500 }}>To {m.to}</span>
+                    <span className="muted" style={{ flexShrink: 0 }}>
+                      {m.date}
+                    </span>
+                  </span>
+                  <span className="ellipsis">{m.subject}</span>
+                  <span className="muted ellipsis">{m.snippet}</span>
+                  {drafts.manyAccounts && m.accountLabel && <AccountChip label={m.accountLabel} color={m.color} />}
+                  {!m.editable && (
+                    <span style={{ marginTop: 4 }}>
+                      <Tag icon="eye">Edit in Gmail</Tag>
+                    </span>
+                  )}
+                </button>
+              ))}
             {!items.length && loading && <Loading />}
-            {!items.length && !loading && !problemText && listView !== "summary" && (listView !== "search" || searched) && (
+            {!items.length && !loading && !problemText && listView !== "summary" && listView !== "drafts" && (listView !== "search" || searched) && (
               <div className="empty">
                 <Spot name="spot-rest" size={140} alt="An armchair with a blanket" />
                 <h2>{listView === "search" ? "Nothing found" : listView === "unread" ? "No unread mail" : "Your inbox is empty"}</h2>
@@ -205,12 +265,46 @@ export function Mail() {
             {page?.cursor && (
               <LoadMore loading={loading} onVisible={loadMore} />
             )}
-            <div style={{ marginTop: "auto", paddingTop: 8, display: listView === "summary" ? "none" : undefined }}>
+            <div style={{ marginTop: "auto", paddingTop: 8, display: listView === "summary" || listView === "drafts" ? "none" : undefined }}>
               <Note icon="eye">Edward can read and search your mail and write drafts. It can't delete, archive or mark anything, so opening an email here leaves it unread in Gmail.</Note>
             </div>
           </Card>
           {compose ? (
-            <Compose key={`${compose.mode}-${compose.inReplyTo ?? ""}`} start={compose} onClose={() => setCompose(null)} />
+            <Compose
+              key={`${compose.mode}-${compose.inReplyTo ?? ""}-${compose.draftId ?? ""}`}
+              start={compose}
+              onClose={() => {
+                setCompose(null);
+                // Sent or saved: the Drafts list is no longer what Gmail has.
+                if (listView === "drafts") setRound((n) => n + 1);
+              }}
+            />
+          ) : listView === "drafts" ? (
+            <Card className="stack" style={{ padding: 24, gap: 14, overflow: "auto" }}>
+              {!shownDraft ? (
+                <p className="muted">Pick a draft to read it, change it or send it.</p>
+              ) : (
+                <>
+                  <div>
+                    <div style={{ fontFamily: "var(--disp)", fontSize: 24, fontWeight: 600, letterSpacing: "-0.015em" }}>{shownDraft.draft.subject || "(no subject)"}</div>
+                    <div className="muted">
+                      From {shownDraft.from} · To {shownDraft.draft.to || "(no recipient yet)"}
+                    </div>
+                  </div>
+                  <Note tone="apricot" icon="eye">
+                    This draft was written in Gmail and has formatting or attachments. Edward writes plain text, so saving it from here would lose them: change and send it in Gmail.
+                  </Note>
+                  <div className="pretty" style={{ fontSize: 15, whiteSpace: "pre-wrap", maxWidth: 680, overflowWrap: "anywhere" }}>
+                    {shownDraft.draft.body.trim() || "(This draft has no text.)"}
+                  </div>
+                  <div className="row" style={{ marginTop: "auto", paddingTop: 16, borderTop: "1px solid var(--line)" }}>
+                    <Button kind="primary" icon="mail" onClick={() => window.open(shownDraft.gmailUrl)}>
+                      Open Gmail drafts
+                    </Button>
+                  </div>
+                </>
+              )}
+            </Card>
           ) : (
           <Card className="stack" style={{ padding: 24, gap: 16, overflow: asSent ? "hidden" : "auto" }}>
             {!picked ? (
@@ -338,9 +432,9 @@ function Compose({ start, onClose }: { start: ComposeDraft; onClose: () => void 
     const r = await call("mailWrite", d, notes ?? "");
     setBusy("");
     toast(r);
-    if (!r.ok || !r.body) return;
-    // A new email gets the text; a reply or forward keeps what it quotes below it.
-    set({ body: d.mode === "new" ? r.body : `${r.body}${d.body.startsWith("\n") ? d.body : `\n\n${d.body}`}` });
+    if (!r.ok || !r.fill) return;
+    // The text; and a recipient and subject where they were left empty (Edward looked them up).
+    set(r.fill);
     setNotes(null);
   };
   return (
@@ -384,9 +478,9 @@ function Compose({ start, onClose }: { start: ComposeDraft; onClose: () => void 
             void write();
           }}
         >
-          <input className="input grow" autoFocus placeholder="What should it say? e.g. thanks, Friday 3pm works, ask about parking" value={notes} onChange={(e) => setNotes(e.target.value)} />
+          <input className="input grow" autoFocus placeholder={d.to.trim() ? "What should it say? e.g. thanks, Friday 3pm works, ask about parking" : "Who is it to, and what should it say? e.g. ask Sam at Carter Building for a quote"} value={notes} onChange={(e) => setNotes(e.target.value)} />
           <Button kind="primary" type="submit" disabled={busy === "write"}>
-            {busy === "write" ? "Writing…" : "Write"}
+            {busy === "write" ? "Looking things up and writing…" : "Write"}
           </Button>
         </form>
       )}
@@ -411,13 +505,13 @@ function Compose({ start, onClose }: { start: ComposeDraft; onClose: () => void 
         </Button>
         <span className="grow" />
         <span className="muted" style={{ fontSize: 12.5 }}>
-          Only "Ask Edward to write" sends anything to the model.
+          Only "Ask Edward to write" involves the model: it gets your notes and may look in your mail and memories to write it.
         </span>
       </div>
       {check && (
-        <Confirm
-          title="Send this email?"
-          yes="Send"
+        <SendConfirm
+          draft={d}
+          check={check}
           onAnswer={async (yes) => {
             setCheck(null);
             if (!yes) return;
@@ -427,19 +521,7 @@ function Compose({ start, onClose }: { start: ComposeDraft; onClose: () => void 
             toast(r);
             if (r.ok) onClose();
           }}
-        >
-          <div className="stack" style={{ gap: 4 }}>
-            <span>From: {check.from}</span>
-            <span>To: {d.to}</span>
-            {d.cc.trim() && <span>Cc: {d.cc}</span>}
-            <span>Subject: {d.subject}</span>
-            {check.firstTime.map((a) => (
-              <span key={a} style={{ color: "var(--apricot-ink)" }}>
-                ⚠ First email to {a}
-              </span>
-            ))}
-          </div>
-        </Confirm>
+        />
       )}
     </Card>
   );

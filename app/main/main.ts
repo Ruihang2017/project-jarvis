@@ -171,7 +171,7 @@ function createTray() {
 const METHODS = new Set<keyof EdwardApi>([
   "state", "signIn", "send", "interrupt", "newConversation", "conversations", "openConversation", "transcript", "setMode", "answer",
   "attachFiles", "attachClipboard", "removeAttachment", "today", "calendar", "mail", "mailMessage", "mailOriginal", "mailDigest", "tripAction", "tripBuffer", "tripScan",
-  "mailSummarize", "mailList", "calendarRange", "calendarTargets", "voiceInfo", "voiceSaveKey", "voiceRemoveKey", "voiceSetVoice", "voiceConnect", "voiceHeard", "voiceUsage", "lists", "listCreate", "listAdd", "listUpdate", "listRemove", "eventSave", "eventDelete", "mailCompose", "mailCheck", "mailSend", "mailSaveDraft", "mailWrite", "bills", "billHistory", "billAction",
+  "mailSummarize", "mailList", "calendarRange", "calendarTargets", "voiceInfo", "voiceSaveKey", "voiceRemoveKey", "voiceSetVoice", "voiceConnect", "voiceHeard", "voiceUsage", "lists", "listCreate", "listAdd", "listUpdate", "listRemove", "eventSave", "eventDelete", "mailCompose", "mailCheck", "mailSend", "mailSaveDraft", "mailWrite", "mailDrafts", "mailDraftOpen", "bills", "billHistory", "billAction",
   "billEdit", "billScan", "billMonth", "billExport", "forgetBills", "reminders", "reminderAction", "memory", "memoryAdd", "memoryEdit",
   "memoryForget", "memoryReview", "memoryUndo", "memoryExport", "pictures", "pictureAction", "settings", "updateSettings", "chooseImagesFolder",
   "doctor", "data", "backup", "exportAll", "openDataFolder", "deleteEverything", "google", "chooseGoogleClient", "connectGoogle", "checkGoogle",

@@ -1,6 +1,6 @@
 /** Shared pieces of Edward's design language (design/gen/lib.mjs is the board version of the same). */
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import type { Mode } from "../../shared/api";
+import type { ComposeCheck, Mode } from "../../shared/api";
 
 const PATHS: Record<string, string> = {
   sun: "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2.5V5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8",
@@ -199,6 +199,35 @@ export function ModeBar({ mode, onChange }: { mode: Mode; onChange: (m: Mode) =>
 }
 
 /** Small confirmation dialog. */
+/**
+ * "Send this email?": who it goes from and to, and a warning for an address never written to before.
+ * The one confirmation for every email the user sends themselves, from the form or from a draft card.
+ * `changed` shows the text too, when it isn't what the user has just been looking at.
+ */
+export function SendConfirm({ draft, check, changed, onAnswer }: { draft: { to: string; cc: string; subject: string; body: string }; check: ComposeCheck; changed?: boolean; onAnswer: (yes: boolean) => void }) {
+  return (
+    <Confirm title="Send this email?" yes="Send" onAnswer={onAnswer}>
+      <div className="stack" style={{ gap: 4 }}>
+        <span>From: {check.from}</span>
+        <span>To: {draft.to}</span>
+        {draft.cc.trim() && <span>Cc: {draft.cc}</span>}
+        <span>Subject: {draft.subject}</span>
+        {check.firstTime.map((a) => (
+          <span key={a} style={{ color: "var(--apricot-ink)" }}>
+            ⚠ First email to {a}
+          </span>
+        ))}
+        {changed && (
+          <>
+            <span style={{ marginTop: 8 }}>It was changed since Edward wrote it. This is what will be sent:</span>
+            <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", maxHeight: 220, overflow: "auto", border: "1px solid var(--line)", borderRadius: 10, padding: 10, color: "var(--ink)" }}>{draft.body}</div>
+          </>
+        )}
+      </div>
+    </Confirm>
+  );
+}
+
 export function Confirm({ title, children, yes, no = "Cancel", danger, onAnswer }: { title: string; children: ReactNode; yes: string; no?: string; danger?: boolean; onAnswer: (yes: boolean) => void }) {
   useEffect(() => {
     const esc = (e: KeyboardEvent) => e.key === "Escape" && onAnswer(false);

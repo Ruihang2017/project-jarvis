@@ -61,10 +61,23 @@ The prompt always shows the mode when it is not `chat`. Entering `auto` asks fir
 | Write a draft, save a memory or reminder, copy to the clipboard | Done without asking, and shown as it happens |
 
 The table is about what the model asks to do. In the desktop app you can also write and send email and
-add, change or delete events yourself, in forms. Those don't involve the model (unless you press "Ask
-Edward to write", which sends your notes through the guard): sending still shows a confirmation with the
-sender, recipients and a first-time-recipient warning, deleting an event asks first, and events with
-other guests stay read-only.
+add, change or delete events yourself, in forms. Those don't involve the model unless you press "Ask
+Edward to write" (below): sending still shows a confirmation with the sender, recipients and a
+first-time-recipient warning, deleting an event asks first, and events with other guests stay read-only.
+
+- **A draft the model wrote** is shown whole in the conversation, with Edit and Send. Send is you sending
+  it: the same confirmation as the form, for the draft as it is in Gmail at that moment (if it changed
+  since Edward wrote it, the confirmation shows the text).
+- **"Ask Edward to write"** in the email form gives the model your notes, what Edward remembers about
+  you, and three tools that only read: search your mail, read an email, search memory. It uses them to
+  find the person and what was last said, as it would in a conversation, and everything it reads passes
+  the guard. It has no tool that writes, sends or changes anything, and Edward's code refuses any other
+  tool it might ask for. A recipient it proposes is put in the form only if you have exchanged email with
+  that address (it is in the From, To or Cc of your mail) or typed it yourself; an address that appears
+  only inside some email's text is left out.
+- **Drafts** (Mail → Drafts) lists the drafts in Gmail as they are now. Edward keeps no copy. A draft
+  with formatting or attachments from Gmail is shown but not changed here, because Edward writes plain
+  text and saving it would lose them.
 
 ## Text from other people
 

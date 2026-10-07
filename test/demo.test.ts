@@ -38,6 +38,27 @@ eq("plain words", await gmail("benchtop"), ["d01"]);
 const full = (await get("https://gmail.googleapis.com/gmail/v1/users/me/messages/d03?format=full")).body;
 ok("a full message has its HTML with booking data", fromJsonLd(Buffer.from(full.payload.parts[1].body.data, "base64url").toString()).length === 1);
 
+
+// Drafts: one waiting, new ones kept as written, read back like Gmail does, gone once sent.
+const { GmailWriter, buildRaw, isPlainText } = await import("../src/google/gmail.js");
+const { GoogleAuthError } = await import("../src/google/oauth.js");
+// As GoogleAuth.api answers: the JSON, or an error that carries the status.
+const draftsOf = new GmailWriter({
+  api: async (url: string, init?: RequestInit) => {
+    const res = await http(url, init);
+    if (!res.ok) throw new GoogleAuthError(`http_${res.status}`, `Google API ${res.status}`);
+    return res.json();
+  },
+} as never);
+eq("a draft is waiting", (await draftsOf.listDrafts()).map((d) => [d.message.to, d.message.subject]), [["Priya Shah <priya.shah@mailbox.example>", "Weekend at the coast?"]]);
+const madeDraft = await draftsOf.createDraft(buildRaw({ to: ["Sam Carter <sam@carterbuilding.example>"], cc: [], subject: "Benchtop", body: "Hi Sam,\n\nSnow White please.\n\nAlex" }));
+const readBack = (await draftsOf.getDraft(madeDraft.id))!;
+eq("a new draft reads back as it was written", [readBack.to, readBack.subject, readBack.body, isPlainText(readBack)], ["Sam Carter <sam@carterbuilding.example>", "Benchtop", "Hi Sam,\n\nSnow White please.\n\nAlex", true]);
+await draftsOf.updateDraft(madeDraft.id, buildRaw({ to: ["Sam Carter <sam@carterbuilding.example>"], cc: [], subject: "Benchtop colour", body: "Ash Grey." }));
+eq("…changed, and the newest first", (await draftsOf.listDrafts()).map((d) => d.message.subject), ["Benchtop colour", "Weekend at the coast?"]);
+await draftsOf.sendDraft(madeDraft.id);
+eq("…and gone from Drafts once sent", [(await draftsOf.listDrafts()).length, await draftsOf.getDraft(madeDraft.id)], [1, null]);
+
 const cal = await get("https://www.googleapis.com/calendar/v3/users/me/calendarList");
 eq("calendars", cal.body.items.map((c: { id: string }) => c.id)[0], DEMO_EMAIL);
 const { today } = demoData(noon);

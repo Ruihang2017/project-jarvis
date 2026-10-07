@@ -2,8 +2,16 @@
 import type { ThreadItem } from "./protocol/v2/index.js";
 import { describeChange } from "./prompts.js";
 import { describeToolCall } from "./tools.js";
+import { parseDraftResult, type DraftText } from "./google/gmail-tools.js";
 import { RELATED_CHECK } from "./memory/tools.js";
 import { displayCommand, truncate } from "./util.js";
+
+/** The email draft a finished gmail_draft call saved, as it reported it; null for anything else. */
+export function draftOf(item: ThreadItem): DraftText | null {
+  if (item.type !== "dynamicToolCall" || item.tool !== "gmail_draft" || item.success === false || item.status === "failed") return null;
+  const text = item.contentItems?.find((c) => c.type === "inputText");
+  return text?.type === "inputText" ? parseDraftResult(text.text) : null;
+}
 
 /** Indicator text while a tool item runs; null for items that aren't tool activity. */
 export function activityLabel(item: ThreadItem): string | null {
@@ -54,7 +62,10 @@ export function activityNotes(item: ThreadItem): string[] {
         return ["🧠 checking related memories before saving…"];
       }
       const suffix = failed ? ` · ${reason && reason.type === "inputText" ? truncate(reason.text, 80) : "failed"}` : "";
-      return [`${describeToolCall(item.tool, item.arguments, !failed)}${suffix}`];
+      // A draft is shown whole: the user shouldn't have to open Gmail to read what Edward wrote.
+      const draft = draftOf(item);
+      const shown = draft ? [`From: ${draft.from}`, `To: ${draft.to}`, ...(draft.cc ? [`Cc: ${draft.cc}`] : []), `Subject: ${draft.subject}`, "", ...draft.body.split("\n")].map((l) => `   ${l}`) : [];
+      return [`${describeToolCall(item.tool, item.arguments, !failed)}${suffix}`, ...shown];
     }
     default:
       return [];
