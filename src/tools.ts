@@ -55,7 +55,7 @@ export interface Tool {
   prepare(args: Record<string, unknown>, ctx: ToolContext): Promise<PreparedCall>;
 }
 
-const TOOLS: Tool[] = [
+export const TOOLS: Tool[] = [
   ...MEMORY_TOOLS,
   ...REMINDER_TOOLS,
   ...CALENDAR_TOOLS,
@@ -164,10 +164,24 @@ export class ToolRunner {
     private readonly bills: BillStore,
   ) {}
 
+  /** Threads that may use only these tools: a background helper gets a few that read, or none. */
+  private limited = new Map<string, Set<string>>();
+
+  limit(threadId: string, tools: string[]) {
+    this.limited.set(threadId, new Set(tools));
+  }
+
+  unlimit(threadId: string) {
+    this.limited.delete(threadId);
+  }
+
   async call(req: DynamicToolCallParams, ui: Interactions): Promise<DynamicToolCallResponse> {
     const fail = (text: string): DynamicToolCallResponse => ({ success: false, contentItems: [{ type: "inputText", text }] });
     const tool = TOOLS.find((t) => t.name === req.tool && !req.namespace);
     if (!tool) return fail(`Unknown tool: ${req.tool}`);
+    // Whatever the model was told it has: a helper thread can't reach a tool it wasn't given.
+    const only = this.limited.get(req.threadId);
+    if (only && !only.has(tool.name)) return fail(`${tool.name} isn't available here.`);
 
     const args = req.arguments && typeof req.arguments === "object" && !Array.isArray(req.arguments) ? req.arguments : {};
     let call: PreparedCall;

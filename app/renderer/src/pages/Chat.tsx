@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Ask, Attachment, ChatEntry, ThreadInfo } from "../../../shared/api";
+import type { Ask, Attachment, ChatEntry, ComposeCheck, ComposeDraft, ThreadInfo } from "../../../shared/api";
 import { useApp, Shell } from "../App";
 import { call, useData } from "../api";
 import { Markdown } from "../markdown";
-import { Button, Card, Icon, IconButton, Loading, Spot, Tag } from "../ui";
+import { Button, Card, Icon, IconButton, Loading, SendConfirm, Spot, Tag } from "../ui";
+import { composeLater } from "./Mail";
 
 const GROUPS: [string, [string, string][]][] = [
   ["Conversation", [["/new", "Start a new conversation"], ["/resume", "Continue an earlier one"], ["/mode", "What Codex may do here"], ["/settings", "Model, effort and limits"]]],
@@ -230,6 +231,122 @@ export function Chat({ palette }: { palette?: boolean }) {
   );
 }
 
+const sameText = (a: string, b: string) => a.replace(/\s+/g, " ").trim() === b.replace(/\s+/g, " ").trim();
+
+/**
+ * An email draft Edward wrote, whole, where it was asked for. Edit opens it in the Mail form; Send
+ * asks first, like the form does. Both read the draft from Gmail again, so they act on what is there
+ * now. A draft from a reopened conversation can only be read here (it is still in Mail → Drafts).
+ */
+function DraftEntry({ e }: { e: Extract<ChatEntry, { kind: "draft" }> }) {
+  const { go, toast } = useApp();
+  const [busy, setBusy] = useState("");
+  const [sending, setSending] = useState<{ draft: ComposeDraft; check: ComposeCheck; changed: boolean } | null>(null);
+  const open = async () => {
+    const r = await call("mailDraftOpen", e.draftKey ?? "");
+    if (!r.ok || !r.opened) {
+      toast(r);
+      return null;
+    }
+    if (!r.opened.editable) {
+      toast({ ok: false, message: "This draft now has formatting or attachments from Gmail. Change and send it in Gmail." });
+      return null;
+    }
+    return r.opened.draft;
+  };
+  const edit = async () => {
+    setBusy("edit");
+    const d = await open();
+    setBusy("");
+    if (!d) return;
+    composeLater(d);
+    go("mail");
+  };
+  const send = async () => {
+    setBusy("send");
+    const d = await open();
+    const check = d ? await call("mailCheck", d).catch((x: unknown) => ({ problems: [x instanceof Error ? x.message : String(x)], firstTime: [], from: "" })) : null;
+    setBusy("");
+    if (!d || !check) return;
+    if (check.problems.length) return toast({ ok: false, message: check.problems.join(" ") });
+    setSending({ draft: d, check, changed: !sameText(d.body, e.body) || !sameText(d.to, e.to) || !sameText(d.subject, e.subject) });
+  };
+  const line = (label: string, value: string) =>
+    value ? (
+      <div className="row" style={{ gap: 10, alignItems: "baseline" }}>
+        <span className="muted" style={{ width: 58, flexShrink: 0, fontSize: 13 }}>
+          {label}
+        </span>
+        <span style={{ overflowWrap: "anywhere" }}>{value}</span>
+      </div>
+    ) : null;
+  return (
+    <div className="draft-card">
+      <div className="between">
+        <span className="row" style={{ gap: 8, fontWeight: 650 }}>
+          <Icon name="pencil" size={16} color="var(--blue)" />
+          Email draft
+        </span>
+        {e.state === "sent" ? (
+          <Tag tone="sage" icon="check">
+            Sent
+          </Tag>
+        ) : e.state === "replaced" ? (
+          <span className="muted" style={{ fontSize: 13 }}>
+            An earlier version
+          </span>
+        ) : (
+          <span className="muted" style={{ fontSize: 13 }}>
+            Not sent
+          </span>
+        )}
+      </div>
+      <div className="stack" style={{ gap: 2 }}>
+        {line("From", e.from)}
+        {line("To", e.to)}
+        {line("Cc", e.cc)}
+        {line("Subject", e.subject)}
+      </div>
+      <div className="draft-body">{e.body}</div>
+      {e.draftKey ? (
+        <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+          <Button kind="primary" icon="send" disabled={Boolean(busy)} onClick={() => void send()}>
+            {busy === "send" ? "Checking…" : "Send"}
+          </Button>
+          <Button icon="pencil" disabled={Boolean(busy)} onClick={() => void edit()}>
+            Edit
+          </Button>
+          <span className="muted" style={{ fontSize: 12.5 }}>
+            Saved in Gmail drafts. Or tell Edward what to change.
+          </span>
+        </div>
+      ) : (
+        !e.state && (
+          <span className="muted" style={{ fontSize: 12.5 }}>
+            From an earlier session. If it wasn't sent, it is in Mail → Drafts.
+          </span>
+        )
+      )}
+      {sending && (
+        <SendConfirm
+          draft={sending.draft}
+          check={sending.check}
+          changed={sending.changed}
+          onAnswer={async (yes) => {
+            const d = sending.draft;
+            setSending(null);
+            if (!yes) return;
+            setBusy("send");
+            const r = await call("mailSend", d);
+            setBusy("");
+            toast(r);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
 function Entry({ e }: { e: ChatEntry }) {
   switch (e.kind) {
     case "user":
@@ -255,6 +372,8 @@ function Entry({ e }: { e: ChatEntry }) {
           </div>
         </div>
       );
+    case "draft":
+      return <DraftEntry e={e} />;
     case "activity":
       return (
         <div className="activity">

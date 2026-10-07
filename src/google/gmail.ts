@@ -69,6 +69,8 @@ export interface Message extends MessageSummary {
   replyTo?: string;
   messageId?: string;
   references?: string;
+  /** The Message-ID this one answers (a reply's own header). */
+  inReplyTo?: string;
   body: string;
   attachments: Attachment[];
   /** The email's own HTML, for the desktop app's original view only; never sent to the model. */
@@ -236,12 +238,19 @@ export function toMessage(m: ApiMessage): Message {
     replyTo: decodeWords(header(h, "Reply-To")) || undefined,
     messageId: header(h, "Message-ID") || header(h, "Message-Id") || undefined,
     references: header(h, "References") || undefined,
+    inReplyTo: header(h, "In-Reply-To") || undefined,
     body,
     attachments,
     html,
     inline,
   };
 }
+
+/**
+ * A message that is text and nothing else, like the drafts Edward writes. A draft written in Gmail has
+ * formatting (HTML) and maybe attachments, which Edward's plain-text form would drop when saving it.
+ */
+export const isPlainText = (m: Message) => !m.html && m.attachments.length === 0 && m.inline.length === 0;
 
 /** "Alice Smith" from "Alice Smith <alice@x.com>"; the address when there's no name. */
 export function displayName(from: string): string {
@@ -530,6 +539,15 @@ export class GmailWriter {
       if (e instanceof GoogleAuthError && e.code === "http_404") return null;
       throw e;
     }
+  }
+
+  /** The newest drafts in Gmail (up to `max`, 50 at most), as they are now, newest first. */
+  async listDrafts(max = 30): Promise<{ draftId: string; message: Message }[]> {
+    const q = new URLSearchParams({ maxResults: String(Math.min(Math.max(1, max), 50)) });
+    const list = await call<{ drafts?: { id: string }[] }>(this.auth, `${API}/drafts?${q}`);
+    const found = await Promise.all((list.drafts ?? []).map(async (d) => ({ draftId: d.id, message: await this.getDraft(d.id) })));
+    // One deleted between the list and the read is simply not there.
+    return found.filter((d): d is { draftId: string; message: Message } => d.message !== null).sort((a, b) => (b.message.date.getTime() || 0) - (a.message.date.getTime() || 0));
   }
 
   async sendDraft(id: string): Promise<{ id: string; threadId: string }> {

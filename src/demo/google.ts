@@ -5,6 +5,7 @@
  * unchanged. Only used when the desktop app is started with EDWARD_DEMO set; never otherwise.
  */
 import { localDate, nextDate } from "../google/calendar.js";
+import { buildRaw } from "../google/gmail.js";
 import { toLocal } from "../reminders/schedule.js";
 
 export const DEMO_EMAIL = "alex.morgan.demo@gmail.com";
@@ -248,6 +249,22 @@ function message(m: Mail, now: Date, full: boolean) {
   return { ...base, payload: { mimeType: "multipart/alternative", headers, parts } };
 }
 
+interface DemoDraft {
+  /** The email as Edward built it (base64url RFC 2822, plain text). */
+  raw: string;
+  threadId: string;
+  at: number;
+}
+
+/** A kept draft, read back as a message: its headers and its text. */
+function draftMessage(id: string, d: DemoDraft) {
+  const text = Buffer.from(d.raw, "base64url").toString("utf8");
+  const split = text.indexOf("\r\n\r\n");
+  const headers = (split < 0 ? text : text.slice(0, split)).split("\r\n").filter(Boolean).map((l) => ({ name: l.slice(0, l.indexOf(":")), value: l.slice(l.indexOf(":") + 1).trim() }));
+  const body = split < 0 ? "" : Buffer.from(text.slice(split + 4).replace(/\r\n/g, ""), "base64").toString("utf8");
+  return { id: `m-${id}`, threadId: d.threadId, labelIds: ["DRAFT"], snippet: body.slice(0, 120).replace(/\s+/g, " "), internalDate: String(d.at), payload: { mimeType: "text/plain", headers, body: { data: b64(body) } } };
+}
+
 /**
  * A fetch that answers Google's endpoints from the made-up data (and refuses anything else, so
  * nothing leaves the computer by mistake). Changes (new events, ticked items, drafts) last until quit.
@@ -255,7 +272,17 @@ function message(m: Mail, now: Date, full: boolean) {
 export function demoGoogle(now = () => new Date()): typeof fetch {
   const data = demoData(now());
   let n = 100;
-  const drafts = new Map<string, unknown>();
+  // One draft waiting from earlier, so the Drafts list has something to show.
+  const drafts = new Map<string, DemoDraft>([
+    [
+      "dr1",
+      {
+        raw: buildRaw({ to: ["Priya Shah <priya.shah@mailbox.example>"], cc: [], subject: "Weekend at the coast?", body: "Hi Priya,\n\nAre you free the weekend of the 24th? I was thinking of the coast house again.\n\nAlex" }),
+        threadId: "t-dr1",
+        at: now().getTime() - 26 * 3_600_000,
+      },
+    ],
+  ]);
   return (async (input: string | URL | Request, init: RequestInit = {}) => {
     const u = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
     const method = (init.method ?? "GET").toUpperCase();
@@ -282,15 +309,25 @@ export function demoGoogle(now = () => new Date()): typeof fetch {
         const m = data.mail.find((x) => x.id === decodeURIComponent(thread[1]!));
         return m ? json({ id: `t-${m.id}`, messages: [message(m, t, true)] }) : json({ error: { message: "Not found" } }, 404);
       }
+      // Drafts are kept as they were given (the raw email) and read back the way Gmail's format=full does.
+      if (rest === "/drafts" && method === "GET") return json({ drafts: [...drafts.keys()].reverse().map((id) => ({ id })) });
       if (rest === "/drafts" && method === "POST") {
         const id = `dr${++n}`;
-        drafts.set(id, body);
-        return json({ id, message: { id: `m${n}`, threadId: body.message?.threadId ?? `t${n}` } });
+        drafts.set(id, { raw: String(body.message?.raw ?? ""), threadId: body.message?.threadId ?? `t${n}`, at: t.getTime() });
+        return json({ id, message: { id: `m-${id}`, threadId: drafts.get(id)!.threadId } });
+      }
+      if (rest === "/drafts/send") {
+        drafts.delete(String(body.id));
+        return json({ id: `m${++n}`, threadId: `t${n}`, labelIds: ["SENT"] });
       }
       const draft = /^\/drafts\/([^/]+)$/.exec(rest);
-      if (draft && method === "PUT") return json({ id: draft[1], message: { id: `m${++n}` } });
-      if (draft) return json({ id: draft[1], message: { id: `m${n}`, raw: (drafts.get(draft[1]!) as { message?: { raw?: string } })?.message?.raw ?? "" } });
-      if (rest === "/drafts/send") return json({ id: `m${++n}`, threadId: `t${n}`, labelIds: ["SENT"] });
+      const kept = draft ? drafts.get(draft[1]!) : undefined;
+      if (draft && !kept) return json({ error: { message: "Not found" } }, 404);
+      if (draft && kept && method === "PUT") {
+        drafts.set(draft[1]!, { ...kept, raw: String(body.message?.raw ?? ""), at: t.getTime() });
+        return json({ id: draft[1], message: { id: `m-${draft[1]}`, threadId: kept.threadId } });
+      }
+      if (draft && kept) return json({ id: draft[1], message: draftMessage(draft[1]!, kept) });
       return json({});
     }
 

@@ -233,6 +233,8 @@ a { color: var(--blue-ink); }
 .picture { margin-left: 40px; display: flex; flex-direction: column; gap: 10px; }
 .picture .frame { align-self: flex-start; padding: 8px; border: 1px solid var(--line); border-radius: 20px; background: var(--surface); box-shadow: var(--shadow); }
 .picture .frame img { display: block; width: 340px; max-height: 340px; object-fit: cover; border-radius: 14px; }
+.draft-card { margin-left: 40px; max-width: 660px; display: flex; flex-direction: column; gap: 12px; padding: 18px; border: 1px solid var(--line); border-radius: 18px; background: var(--surface); box-shadow: var(--shadow); }
+.draft-card .draft-body { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 15px; line-height: 1.5; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); max-height: 420px; overflow: auto; }
 .ask { margin-left: 40px; max-width: 660px; display: flex; flex-direction: column; gap: 12px; padding: 18px; border: 1px solid var(--blue-line); border-radius: 18px; background: var(--surface); box-shadow: var(--shadow); }
 .ask.risky { border-color: var(--apricot-line); }
 .ask pre { margin: 0; padding: 12px 14px; border-radius: 12px; background: var(--bg); font-family: var(--body); font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 320px; overflow: auto; }

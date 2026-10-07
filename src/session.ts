@@ -241,7 +241,7 @@ export class Session {
 
   async init(): Promise<GetAccountResponse> {
     await this.client.request<InitializeResponse>("initialize", {
-      clientInfo: { name: "edward", title: "Edward", version: "0.3.0" },
+      clientInfo: { name: "edward", title: "Edward", version: "0.3.1" },
       // Needed for dynamicTools (Edward tools); experimental fields may change across codex versions.
       capabilities: { experimentalApi: true, requestAttestation: false },
     });
@@ -334,8 +334,13 @@ export class Session {
   /**
    * One-off background turn on a throwaway (ephemeral) thread, e.g. memory extraction.
    * Returns the final assistant message; with `outputSchema` that's JSON matching it.
+   *
+   * It has none of Edward's tools unless `help.tools` names some (ones that only read: it runs
+   * without the user watching, so nothing that asks for approval belongs here). `help.effort`
+   * replaces the low effort that is enough for sorting and extracting.
    */
-  async runEphemeral(instructions: string, input: string, outputSchema?: object, timeoutMs = 180_000): Promise<string> {
+  async runEphemeral(instructions: string, input: string, outputSchema?: object, timeoutMs = 180_000, help: { tools?: string[]; effort?: string } = {}): Promise<string> {
+    const tools = help.tools ?? [];
     const res = await this.client.request<ThreadStartResponse>("thread/start", {
       model: this.model,
       cwd: config.workspace,
@@ -343,14 +348,18 @@ export class Session {
       approvalPolicy: "never",
       developerInstructions: instructions,
       ephemeral: true,
-      config: { model_reasoning_effort: "low", web_search: "disabled", ...codexChannels(true) },
+      config: { model_reasoning_effort: help.effort ?? "low", web_search: "disabled", ...codexChannels(true) },
+      ...(tools.length ? { dynamicTools: TOOL_SPECS.filter((t) => tools.includes(t.name)) } : {}),
     });
     const threadId = res.thread.id;
     this.ephemeralThreads.add(threadId);
+    // Enforced when a tool is called, not only by what the thread was offered.
+    this.tools.limit(threadId, tools);
     return new Promise<string>((resolve, reject) => {
       const done = (fn: () => void) => {
         clearTimeout(timer);
         this.client.off("notification", onNote);
+        this.tools.unlimit(threadId);
         fn();
       };
       const timer = setTimeout(() => done(() => reject(new Error("background turn timed out"))), timeoutMs);

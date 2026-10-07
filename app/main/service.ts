@@ -10,7 +10,7 @@ import { randomUUID } from "node:crypto";
 import { Session, type Mode } from "../../src/session.js";
 import { config } from "../../src/config.js";
 import { appDataDir, imagesDir, loadSettings, updateSettings } from "../../src/settings.js";
-import { activityLabel, activityNotes } from "../../src/activity.js";
+import { activityLabel, activityNotes, draftOf } from "../../src/activity.js";
 import { runtime } from "../../src/runtime.js";
 import { backgroundSuggestion, claimDueNow, handleGeneratedImage, scanTripsNow, startBackgroundWork, summariseNow, tripScanLines, turnInputs, withoutNotes } from "../../src/assistant.js";
 import { digestHeadline, digestRest, digestToast, sinceLabel, summaryTimes, type MailDigest } from "../../src/headsup/mailsummary.js";
@@ -30,13 +30,17 @@ import {
   buildRaw,
   displayName,
   hasGmailAccess,
+  isPlainText,
   splitAddresses,
   UNREAD_QUERY,
   type Message,
   type MessageSummary,
   type Outgoing,
 } from "../../src/google/gmail.js";
-import { startFrom, WRITE_INSTRUCTIONS } from "../../src/google/compose.js";
+import { confirmRecipients, fillWritten, fromDraft, parseWritten, startFrom, WRITE_SCHEMA, WRITE_TOOLS, writeInput, writeInstructions } from "../../src/google/compose.js";
+import { draftChanged, draftHandle, type DraftText } from "../../src/google/gmail-tools.js";
+import { aboutUser } from "../../src/memory/prompt.js";
+import { recallFor } from "../../src/memory/recall.js";
 import { STARTER_LISTS, TasksClient } from "../../src/google/tasks.js";
 import { DEFAULT_MODEL, DEFAULT_VOICE, hasVoiceKey, looksLikeKey, removeVoiceKey, saveVoiceKey, speakable, VOICES } from "../../src/voice/voice.js";
 import { answerCall, checkKey } from "./voice.js";
@@ -180,6 +184,27 @@ export class EdwardService implements A.EdwardApi {
     this.emit({ type: "entry", entry });
   }
 
+  /** A draft the model just saved: its card, which can open it. The card of an earlier version steps back. */
+  private pushDraft(d: DraftText) {
+    const h = draftHandle(d.ref);
+    this.closeDrafts((e) => e.ref === d.ref, "replaced");
+    this.push({ kind: "draft", id: randomUUID(), ...draftCard(d), draftKey: h ? `${h.account}/${h.draftId}` : undefined });
+  }
+
+  /** Cards of drafts that can still be opened from here (never those of a conversation reopened later). */
+  private liveDrafts(match: (e: Extract<A.ChatEntry, { kind: "draft" }>) => boolean) {
+    return this.entries.filter((e): e is Extract<A.ChatEntry, { kind: "draft" }> => e.kind === "draft" && Boolean(e.draftKey) && !e.state && match(e));
+  }
+
+  /** Sent, or replaced by a newer version: the card stays to read, without its buttons. */
+  private closeDrafts(match: (e: Extract<A.ChatEntry, { kind: "draft" }>) => boolean, state: "sent" | "replaced") {
+    for (const e of this.liveDrafts(match)) {
+      e.state = state;
+      e.draftKey = undefined;
+      this.emit({ type: "entry", entry: e });
+    }
+  }
+
   private pushState() {
     void this.state().then((state) => this.emit({ type: "state", state }));
   }
@@ -280,12 +305,21 @@ export class EdwardService implements A.EdwardApi {
                 allowImage(r.record.path);
                 this.push({ kind: "image", id: randomUUID(), url: imageUrl(r.record.path), path: r.record.path, prompt: line, revised: r.record.revisedPrompt ? clean(r.record.revisedPrompt) : undefined });
               } else this.push({ kind: "notice", id: randomUUID(), tone: "warn", text: capitalise(r.problem ?? "no picture") });
+            } else if (draftOf(item)) {
+              // A draft is shown whole, with buttons to edit or send it: no trip to Gmail to read it.
+              finishReply();
+              this.pushDraft(draftOf(item)!);
             } else {
               const lines = activityNotes(item).map(plain);
               if (lines.length) {
                 finishReply();
                 const [first, ...rest] = lines;
                 this.push({ kind: "activity", id: randomUUID(), icon: activityIcon(item), text: first!, detail: rest.length ? rest : undefined });
+              }
+              // The model sent a draft (the user approved it): its card says so and loses its buttons.
+              if (item.type === "dynamicToolCall" && item.tool === "gmail_send" && item.success !== false && item.status !== "failed") {
+                const ref = String((item.arguments as { draft?: unknown } | null)?.draft ?? "").replace(/^\[|\]$/g, "");
+                this.closeDrafts((e) => e.ref === ref, "sent");
               }
             }
             const suggestion = backgroundSuggestion(item);
@@ -832,7 +866,70 @@ export class EdwardService implements A.EdwardApi {
     const writer = new GmailWriter(this.session.accounts.auth(account));
     const raw = buildRaw(out);
     const { id } = d.draftId ? await writer.updateDraft(d.draftId, raw, d.threadId) : await writer.createDraft(raw, d.threadId);
+    // A draft the model wrote and the user then changed here: its card and the model's handle follow.
+    draftChanged(id, out);
+    for (const e of this.liveDrafts((x) => x.draftKey === `${account.id}/${id}`)) {
+      Object.assign(e, { to: clean(out.to.join(", ")), cc: clean(out.cc.join(", ")), subject: clean(out.subject), body: clean(out.body.trim()) });
+      this.emit({ type: "entry", entry: e });
+    }
     return { writer, draftId: id };
+  }
+
+  /** The drafts in Gmail, from every mail account, newest first. Read as they are now; nothing is kept. */
+  async mailDrafts(): Promise<A.DraftsView> {
+    const acc = this.session.accounts;
+    const accounts = acc.for("mail");
+    if (!accounts.length) return { connected: false, items: [] };
+    const problems: string[] = [];
+    const lists = await Promise.all(
+      accounts.map(async (a) => {
+        try {
+          return (await new GmailWriter(acc.auth(a)).listDrafts(30)).map((d) => ({ d, a }));
+        } catch (e) {
+          problems.push(accounts.length > 1 ? `${acc.label(a)}: ${googleProblem(e)}` : googleProblem(e));
+          return [];
+        }
+      }),
+    );
+    const items = lists
+      .flat()
+      .sort((x, y) => y.d.message.date.getTime() - x.d.message.date.getTime())
+      .map(({ d, a }) => ({
+        ...this.from(a),
+        id: `${a.id}/${d.draftId}`,
+        to: clean(splitAddresses(d.message.to).map(displayName).join(", ")) || "(no recipient yet)",
+        subject: clean(d.message.subject) || "(no subject)",
+        snippet: clean(d.message.snippet || d.message.body.replace(/\s+/g, " ").slice(0, 140)),
+        date: shortWhen(d.message.date),
+        editable: isPlainText(d.message),
+      }));
+    return { connected: true, items, problem: problems.join(" · ") || undefined, manyAccounts: accounts.length > 1 };
+  }
+
+  /** A Gmail draft as it is now, for the form: from the Drafts list or from a draft card in the conversation. */
+  async mailDraftOpen(key: string): Promise<A.Result & { opened?: A.OpenedDraft }> {
+    try {
+      const acc = this.session.accounts;
+      const slash = String(key).indexOf("/");
+      const a = slash > 0 ? acc.get(String(key).slice(0, slash)) : undefined;
+      if (!a || !acc.usable(a, "mail")) return { ok: false, message: "That draft's account isn't connected any more." };
+      const draftId = String(key).slice(slash + 1);
+      const m = await new GmailWriter(acc.auth(a)).getDraft(draftId);
+      if (!m) return { ok: false, message: "That draft isn't in Gmail any more: it was deleted, or already sent." };
+      const f = fromDraft(m);
+      const from = acc.state(a)?.email ?? acc.label(a);
+      return {
+        ...ok(),
+        opened: {
+          draft: { mode: f.mode, from: a.id, to: clean(f.to.join(", ")), cc: clean(f.cc.join(", ")), subject: clean(f.subject), body: clean(f.body), threadId: f.threadId, inReplyTo: f.inReplyTo, references: f.references, draftId },
+          editable: f.editable,
+          from,
+          gmailUrl: `https://mail.google.com/mail/?authuser=${encodeURIComponent(from)}#drafts`,
+        },
+      };
+    } catch (e) {
+      return fail(e);
+    }
   }
 
   async mailSaveDraft(d: A.ComposeDraft): Promise<A.Result & { draftId?: string }> {
@@ -848,21 +945,43 @@ export class EdwardService implements A.EdwardApi {
     try {
       const { writer, draftId } = await this.saveDraft(d);
       await writer.sendDraft(draftId);
+      // It is gone from Drafts: the model can't send it again, and its card says it was sent.
+      draftChanged(draftId, null);
+      this.closeDrafts((e) => e.draftKey === `${d.from}/${draftId}`, "sent");
       return ok("Sent");
     } catch (e) {
       return fail(e);
     }
   }
 
-  async mailWrite(d: A.ComposeDraft, notes: string): Promise<A.Result & { body?: string }> {
+  /**
+   * "Ask Edward to write". The model gets what a conversation would have: what Edward knows about the
+   * user, the memories the notes bring up, and tools that only read (search and read mail, search
+   * memory) to find the person and what was last said. Everything goes through the privacy guard,
+   * like any message. What comes back is checked here: a recipient is put in the form only when the
+   * user has corresponded with that address or typed it.
+   */
+  async mailWrite(d: A.ComposeDraft, notes: string): Promise<A.Result & { fill?: { to?: string; subject?: string; body: string } }> {
     const what = String(notes ?? "").trim();
     if (!what) return { ok: false, message: "Say what the email should say." };
     try {
-      // Everything here goes to the model through the privacy guard, like any message.
-      const replyingTo = d.mode === "reply" || d.mode === "replyAll" || d.mode === "forward" ? String(d.body ?? "").slice(0, 8000) : "";
-      const input = [`To: ${d.to}`, `Subject: ${d.subject}`, "", `The user's notes: ${what}`, ...(replyingTo ? ["", "What is in the email so far (with the quoted email it answers):", replyingTo] : [])].join("\n");
-      const body = stripControl(await this.session.runEphemeral(WRITE_INSTRUCTIONS, input)).trim();
-      return { ...ok("Written. Read it through before sending."), body };
+      const { session } = this;
+      const acc = session.accounts;
+      const form = { mode: d.mode, to: String(d.to ?? ""), cc: String(d.cc ?? ""), subject: String(d.subject ?? ""), body: String(d.body ?? "") };
+      const account = acc.get(d.from);
+      const recalled = recallFor(`${what} ${form.to} ${form.subject}`, session.memory, new Set());
+      const input = [writeInput(form, what, account ? acc.state(account)?.email : undefined, toLocal(new Date())), ...(recalled ? ["", recalled.note] : [])].join("\n");
+      const raw = await session.runEphemeral(writeInstructions(aboutUser(session.memory)), input, WRITE_SCHEMA, 240_000, { tools: WRITE_TOOLS, effort: session.effort });
+      const w = parseWritten(raw);
+      // An address the model found is only as good as its source: one that appears only inside some
+      // email's text (where anyone can write anything) has no From/To/Cc match, and is left out.
+      const boxes = acc.for("mail").map((a) => new GmailClient(acc.auth(a)));
+      const inMail = async (address: string) => (await Promise.all(boxes.map((g) => g.listIds(`{from:${address} to:${address} cc:${address}}`, 1).catch(() => [])))).some((ids) => ids.length > 0);
+      const { kept, dropped } = form.to.trim() ? { kept: [], dropped: [] } : await confirmRecipients(w.to, what, inMail);
+      const fill = fillWritten(form, { to: kept.map(clean), subject: clean(w.subject), body: clean(w.body) });
+      const missing = !form.to.trim() && !kept.length;
+      const note = dropped.length ? " Edward couldn't confirm the recipient's address from your mail, so add it yourself." : missing ? " Add who it goes to." : "";
+      return { ...ok(`Written.${note} Read it through before sending.`), fill };
     } catch (e) {
       return fail(e);
     }
@@ -1706,10 +1825,18 @@ function historyEntries(item: ThreadItem): A.ChatEntry[] {
     case "imageGeneration":
       return [{ kind: "activity", id, icon: "image", text: "Made a picture" }];
     default: {
+      // Readable, but without buttons: a draft's handle is only good in the run that wrote it.
+      const draft = draftOf(item);
+      if (draft) return [{ kind: "draft", id, ...draftCard(draft) }];
       const lines = activityNotes(item).map(plain);
       return lines.length ? [{ kind: "activity", id, icon: activityIcon(item), text: lines[0]!, detail: lines.length > 1 ? lines.slice(1) : undefined }] : [];
     }
   }
+}
+
+/** A draft as the model's tool reported it, for the window. */
+function draftCard(d: DraftText): A.DraftCard {
+  return { ref: d.ref, from: clean(d.from), to: clean(d.to), cc: clean(d.cc), subject: clean(d.subject), body: clean(d.body) };
 }
 
 function activityIcon(item: ThreadItem): string {

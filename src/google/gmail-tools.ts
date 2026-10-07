@@ -269,7 +269,7 @@ export const GMAIL_TOOLS: Tool[] = [
             "",
             out.body,
             "",
-            `To send it, call gmail_send with draft ${ref}; the user approves the final version in a preview.`,
+            `${SEND_HINT}${ref}; the user approves the final version in a preview. Edward shows the user this draft itself.`,
           ].join("\n");
         },
       };
@@ -342,6 +342,49 @@ function lookupDraft(ref: unknown): string {
   const r = typeof ref === "string" ? ref.trim().replace(/^\[|\]$/g, "") : "";
   if (!drafts.has(r)) throw new Error(`unknown draft "${String(ref)}"; only drafts Edward wrote in this session (gmail_draft) can be revised or sent`);
   return r;
+}
+
+/** Where a draft Edward wrote in this session is in Gmail, for the app's draft card; undefined once it is gone or after a restart. */
+export function draftHandle(ref: unknown): { ref: string; account: string; draftId: string } | undefined {
+  const r = typeof ref === "string" ? ref.trim().replace(/^\[|\]$/g, "") : "";
+  const d = drafts.get(r);
+  return d ? { ref: r, account: d.account, draftId: d.draftId } : undefined;
+}
+
+/**
+ * The user changed (or, with null, sent) one of these drafts in the app: the handle follows, so a later
+ * "make it shorter" starts from what the user has, and a sent draft can't be sent again.
+ */
+export function draftChanged(draftId: string, fields: Outgoing | null): void {
+  for (const [ref, d] of drafts) {
+    if (d.draftId !== draftId) continue;
+    if (fields) drafts.set(ref, { ...d, fields });
+    else drafts.delete(ref);
+  }
+}
+
+export interface DraftText {
+  /** The handle the model knows it by ("d2"). */
+  ref: string;
+  from: string;
+  to: string;
+  cc: string;
+  subject: string;
+  body: string;
+}
+
+const SEND_HINT = "To send it, call gmail_send with draft ";
+
+/** What gmail_draft answered, taken apart again: the draft to show the user. Null for anything else (a failed call). */
+export function parseDraftResult(text: string): DraftText | null {
+  const lines = text.split("\n");
+  const ref = /^Draft \[(d\d+)\] saved in the Gmail drafts of /.exec(lines[0] ?? "")?.[1];
+  const blank = lines.indexOf("");
+  if (!ref || blank < 0) return null;
+  const head = (name: string) => lines.slice(1, blank).find((l) => l.startsWith(`${name}: `))?.slice(name.length + 2) ?? "";
+  const rest = lines.slice(blank + 1).join("\n");
+  const hint = rest.lastIndexOf(`\n\n${SEND_HINT}`);
+  return { ref, from: head("From"), to: head("To"), cc: head("Cc"), subject: head("Subject"), body: (hint >= 0 ? rest.slice(0, hint) : rest).trim() };
 }
 
 /** Activity line for a finished Gmail call; undefined if not a Gmail tool. */
