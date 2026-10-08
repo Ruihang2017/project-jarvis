@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- **Choose what Edward runs on.** Besides a ChatGPT plan, Edward can now use your own OpenAI API key: no
+  ChatGPT plan needed, OpenAI bills the key for what Edward uses. The first start asks which, and
+  Settings → The assistant → **Change** switches later (one at a time; conversations, memory and Google
+  accounts stay). A key is checked with OpenAI before anything is switched, so a wrong one changes
+  nothing. With a key there are no plan limits to show, and no pictures yet. Voice uses the same key:
+  there is no second one to enter. The terminal version follows
+  the choice made in the app (they share the sign-in), and `/usage` and `/doctor` say which is in use.
+- The sign-in to the AI is now kept encrypted, with its key in the Windows credential store or the Mac
+  keychain. A sign-in from an earlier version keeps working as it is, and is replaced by an encrypted one
+  the next time you sign in or switch.
+
 ## 0.3.1 — 2026-10-07
 
 Writing email.

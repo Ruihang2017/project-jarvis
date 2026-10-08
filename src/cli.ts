@@ -16,7 +16,7 @@ import { dirname, resolve } from "node:path";
 import { wipeData } from "./data/wipe.js";
 import { formatChecks, runDoctor } from "./doctor.js";
 import { Accounts } from "./accounts/accounts.js";
-import { Session } from "./session.js";
+import { Session, signInOf } from "./session.js";
 import { appDataDir, envVar } from "./settings.js";
 import { tildify } from "./util.js";
 
@@ -111,7 +111,8 @@ export async function setupCli(): Promise<void> {
     account: async () => {
       const s = await codex();
       const { account } = await s.client.request<{ account: { type: string; email?: string } | null }>("account/read", { refreshToken: false });
-      return account?.type === "chatgpt" ? (account.email ?? "") : null;
+      // An API key has no email to show.
+      return signInOf(account) ? ((account?.type === "chatgpt" && account.email) || "") : null;
     },
     signIn: async () => {
       const s = await codex();

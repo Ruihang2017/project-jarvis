@@ -45,7 +45,7 @@ export class CodexClient extends EventEmitter<{
   exit: [number | null];
   serverRequestCancelled: [RequestId];
 }> {
-  private proc: ChildProcessWithoutNullStreams;
+  private proc!: ChildProcessWithoutNullStreams;
   private startError?: Error;
   private nextId = 1;
   private pending = new Map<RequestId, Pending>();
@@ -56,32 +56,57 @@ export class CodexClient extends EventEmitter<{
   };
 
   constructor(
-    bin: string,
-    args: string[] = [],
-    env: NodeJS.ProcessEnv = process.env,
+    private readonly bin: string,
+    private readonly args: string[] = [],
+    private readonly env: NodeJS.ProcessEnv = process.env,
     private readonly filter?: OutgoingFilter,
   ) {
     super();
-    this.proc = spawn(bin, ["app-server", ...args], { stdio: ["pipe", "pipe", "pipe"], env });
-    createInterface({ input: this.proc.stdout }).on("line", (line) => this.onLine(line));
+    this.start();
+  }
+
+  private start() {
+    const proc = spawn(this.bin, ["app-server", ...this.args], { stdio: ["pipe", "pipe", "pipe"], env: this.env });
+    this.proc = proc;
+    this.startError = undefined;
+    // A process that restart() replaced may still say a few things: they are no longer ours.
+    const current = () => proc === this.proc;
+    createInterface({ input: proc.stdout }).on("line", (line) => current() && this.onLine(line));
     // app-server logs to stderr; surface it only when debugging.
-    this.proc.stderr.on("data", (d) => {
+    proc.stderr.on("data", (d) => {
       if (envVar("DEBUG")) process.stderr.write(d);
     });
     // Codex couldn't be started at all (not installed, or not where Edward looks): every request
     // fails with that reason ("spawn codex ENOENT") instead of the whole program stopping.
-    this.proc.on("error", (e) => {
+    proc.on("error", (e) => {
+      if (!current()) return;
       this.startError = e;
       for (const p of this.pending.values()) p.reject(e);
       this.pending.clear();
       this.emit("exit", null);
     });
-    this.proc.stdin.on("error", () => {}); // a write after it has gone
-    this.proc.on("exit", (code) => {
+    proc.stdin.on("error", () => {}); // a write after it has gone
+    proc.on("exit", (code) => {
+      if (!current()) return;
       for (const p of this.pending.values()) p.reject(new Error(`codex app-server exited (${code}) during ${p.method}`));
       this.pending.clear();
       this.emit("exit", code);
     });
+  }
+
+  /**
+   * Stops this app-server and starts a fresh one: same program, arguments, environment and guard.
+   * Requests in flight fail, nothing is loaded in the new one, and the caller sends "initialize"
+   * again. There is no "exit" event: it didn't stop by itself.
+   */
+  restart() {
+    const old = this.proc;
+    for (const p of this.pending.values()) p.reject(new Error(`codex app-server restarted during ${p.method}`));
+    this.pending.clear();
+    this.inflight.clear();
+    this.start();
+    old.stdin.end();
+    old.kill();
   }
 
   onServerRequest(handler: ServerRequestHandler) {

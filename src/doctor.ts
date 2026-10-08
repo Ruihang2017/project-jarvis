@@ -118,7 +118,8 @@ export async function runDoctor(session?: Session): Promise<Check[]> {
   if (session) {
     try {
       const { account } = await session.client.request<{ account: { type: string; email?: string } | null }>("account/read", { refreshToken: false });
-      checks.push(account?.type === "chatgpt" ? { name: "ChatGPT", status: "ok", detail: `signed in${account.email ? ` as ${account.email}` : ""}` } : { name: "ChatGPT", status: "fail", detail: "not signed in — restart Edward to sign in" });
+      if (account?.type === "apiKey") checks.push({ name: "OpenAI", status: "ok", detail: "using an API key (no ChatGPT plan: no plan limits to show, no image generation)" });
+      else checks.push(account?.type === "chatgpt" ? { name: "ChatGPT", status: "ok", detail: `signed in${account.email ? ` as ${account.email}` : ""}` } : { name: "ChatGPT", status: "fail", detail: "not signed in — restart Edward to sign in" });
     } catch (e) {
       checks.push({ name: "ChatGPT", status: "fail", detail: `couldn't ask Codex: ${e instanceof Error ? e.message : String(e)}` });
     }

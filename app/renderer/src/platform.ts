@@ -7,4 +7,7 @@ export const backgroundTask = isMac ? "A small macOS background task" : "A small
 /** Who keeps the sign-ins encrypted. */
 export const secretKeeper = isMac ? "with a key in your Mac's keychain" : "by Windows for your user account";
 
+/** Where Codex keeps an OpenAI API key (P): an encrypted file, its key held by the system. */
+export const keyKeeper = isMac ? "encrypted with a key in your Mac's keychain" : "encrypted with a key that Windows keeps for your user account";
+
 export const microphoneSettings = isMac ? "System Settings → Privacy & Security → Microphone" : "Windows Settings → Privacy → Microphone";

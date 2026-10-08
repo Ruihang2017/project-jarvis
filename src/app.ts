@@ -1,4 +1,4 @@
-import { Session } from "./session.js";
+import { Session, signInOf } from "./session.js";
 import { repl, runTurn } from "./ui.js";
 import { openBrowser } from "./util.js";
 import { ensureDataVersion } from "./data/version.js";
@@ -26,8 +26,8 @@ export async function main(args: string[]) {
       });
       ({ account } = await session.init());
     }
-    if (account?.type !== "chatgpt") {
-      console.error(`Expected a ChatGPT account, got: ${account?.type ?? "none"}`);
+    if (!signInOf(account)) {
+      console.error(`Expected a ChatGPT account or an OpenAI API key, got: ${account?.type ?? "none"}`);
       process.exitCode = 1;
       return;
     }

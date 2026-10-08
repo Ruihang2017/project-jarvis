@@ -243,6 +243,7 @@ const COMMANDS: Record<string, Command> = {
     usage: "/usage",
     help: "Show ChatGPT plan usage limits",
     run: async (_, session) => {
+      if (session.signIn === "apiKey") return console.log(dim("[an API key has no plan limits — usage and cost are on your OpenAI account page]"));
       const res = await session.rateLimits();
       const snap = res.rateLimits;
       console.log(`plan: ${bold(snap.planType ?? "unknown")}`);

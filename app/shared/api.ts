@@ -10,8 +10,12 @@ export type Tone = "ok" | "warn" | "fail";
 
 export interface AppState {
   ready: boolean;
-  /** Set until the ChatGPT sign-in is done. */
+  /** Set until the sign-in is done: a ChatGPT plan, or an OpenAI API key. */
   signedIn: boolean;
+  /** Codex is using an OpenAI API key: no plan limits to show, and no image generation. */
+  apiKey: boolean;
+  /** Edward has an OpenAI API key for voice: the one it runs on, or one added for voice alone. */
+  voiceKey: boolean;
   email?: string;
   plan?: string;
   model: string;
@@ -582,7 +586,10 @@ export interface Result {
 
 export interface EdwardApi {
   state(): Promise<AppState>;
+  /** Sign in with ChatGPT in the browser; also how to switch back from an API key. */
   signIn(): Promise<Result>;
+  /** Switch to an OpenAI API key (P): checked with OpenAI first, then handed to Codex; not kept by the window. */
+  aiUseKey(key: string): Promise<Result>;
 
   // conversation
   send(text: string): Promise<void>;

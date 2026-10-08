@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useApp, Shell } from "../App";
+import { AiAccount } from "../AiAccount";
 import { call, useData } from "../api";
 import type { AccountInfo } from "../../../shared/api";
 import { Button, Card, Confirm, Icon, IconButton, Loading, Note, Segmented, Spot, Tag, Toggle } from "../ui";
@@ -30,8 +31,11 @@ function SettingsLink({ icon, text, page }: { icon: string; text: string; page: 
 }
 
 export function Settings() {
-  const { refresh, toast } = useApp();
+  const { state, refresh, toast } = useApp();
   const { data, reload } = useData(() => call("settings"));
+  const [changing, setChanging] = useState(false);
+  // Models and plan limits belong to the sign-in.
+  useEffect(() => reload(), [state.apiKey, state.signedIn]);
   const [currency, setCurrency] = useState<string | null>(null);
   const set = async (patch: Parameters<typeof call<"updateSettings">>[1]) => {
     await call("updateSettings", patch);
@@ -47,6 +51,24 @@ export function Settings() {
         <div className="grid-3" style={{ alignItems: "start" }}>
           <Card className="pad stack">
             <h2>The assistant</h2>
+            <div className="runs-on">
+              <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>
+                Edward runs on
+              </div>
+              <div className="row" style={{ gap: 12 }}>
+                <span className="mark">
+                  <Icon name={state.apiKey ? "key" : "users"} size={20} width={1.8} />
+                </span>
+                <div className="grow" style={{ minWidth: 0 }}>
+                  <b style={{ display: "block", fontSize: 15 }}>{state.apiKey ? "OpenAI API key" : "ChatGPT plan"}</b>
+                  <span className="muted ellipsis" style={{ display: "block" }}>
+                    {state.apiKey ? "Billed by OpenAI" :[state.email, state.plan && state.plan[0]!.toUpperCase() + state.plan.slice(1)].filter(Boolean).join(" · ") || "Signed in"}
+                  </span>
+                </div>
+                <Button onClick={() => setChanging(true)}>Change</Button>
+              </div>
+            </div>
+            {changing && <AiAccount onClose={() => setChanging(false)} />}
             <Row name="Model">
               <select className="input" aria-label="Model" value={data.model} onChange={(e) => set({ model: e.target.value })} style={{ width: 180 }}>
                 {data.models.map((m) => (
@@ -57,7 +79,7 @@ export function Settings() {
                 {!data.models.length && <option value={data.model}>{data.model}</option>}
               </select>
             </Row>
-            <Row name="How hard it thinks" help="Higher is slower and uses more of your plan." />
+            <Row name="How hard it thinks" help={state.apiKey ? "Higher is slower and costs more." : "Higher is slower and uses more of your plan."} />
             <Segmented label="Reasoning effort" value={data.effort} onChange={(v) => set({ effort: v })} options={(model?.efforts.length ? model.efforts : ["low", "medium", "high"]).map((e) => ({ value: e, label: e[0]!.toUpperCase() + e.slice(1) }))} />
             <Hr />
             <Row name="Search the web" help="Lets Edward look things up online.">
@@ -67,8 +89,16 @@ export function Settings() {
               <Toggle on={data.learning} label="Learn from conversations" onChange={(v) => set({ learning: v })} />
             </Row>
             <Hr />
-            <h3>Your ChatGPT plan</h3>
-            {data.limits.length ? (
+            <h3>{state.apiKey ? "OpenAI API key" : "Your ChatGPT plan"}</h3>
+            {state.apiKey ? (
+              <p className="muted">
+                Each reply is billed to your key, and so are the mail summary, bill scan and trips. There is no plan limit to show: usage, cost and your balance are at{" "}
+                <a href="https://platform.openai.com/usage" target="_blank" rel="noreferrer noopener">
+                  platform.openai.com/usage
+                </a>
+                . Pictures need a ChatGPT plan for now.
+              </p>
+            ) : data.limits.length ? (
               data.limits.map((l) => (
                 <div key={l.label} className="stack" style={{ gap: 6 }}>
                   <div className="between" style={{ fontSize: 13.5 }}>
@@ -95,7 +125,7 @@ export function Settings() {
               <input className="input" type="time" aria-label="Brief time" value={data.briefTime} onChange={(e) => e.target.value && set({ briefTime: e.target.value })} style={{ width: 120 }} />
             </Row>
             <Segmented label="Brief days" value={data.briefDays} onChange={(v) => set({ briefDays: v })} options={[{ value: "weekdays", label: "Weekdays" }, { value: "daily", label: "Daily" }, { value: "off", label: "Off" }]} />
-            <Row name="Mail summary" help="Edward reads your new mail and tells you what needs you. Uses your ChatGPT plan; only while Edward is open.">
+            <Row name="Mail summary" help={`Edward reads your new mail and tells you what needs you. ${state.apiKey ? "Billed to your API key" : "Uses your ChatGPT plan"}; only while Edward is open.`}>
               <Toggle on={data.mailSummaryTimes.length > 0} label="Mail summary" onChange={(v) => set({ mailSummaryTimes: v ? ["08:30", "18:00"] : "off" })} />
             </Row>
             {data.mailSummaryTimes.length > 0 && (
@@ -598,7 +628,7 @@ export function Data() {
                 <h2 style={{ color: "inherit" }}>Leaving</h2>
               </div>
               <p className="muted pretty">
-                <b style={{ color: "var(--ink)" }}>Delete everything.</b> Memory, reminders, bills, pictures and the Google sign-in, after withdrawing Google access and removing the background task. Your ChatGPT sign-in and your Google client file stay. Edward closes afterwards. This can't be undone.
+                <b style={{ color: "var(--ink)" }}>Delete everything.</b> Memory, reminders, bills, pictures and the Google sign-in, after withdrawing Google access and removing the background task. Your sign-in to ChatGPT (or your OpenAI API key) and your Google client file stay. Edward closes afterwards. This can't be undone.
               </p>
               <div>
                 <Button kind="danger" icon="trash" onClick={() => setStep(1)}>
@@ -661,23 +691,34 @@ export function Data() {
 
 /** Settings → Voice (V): the OpenAI key, the voice, and what voice means for privacy. */
 function VoiceCard() {
-  const { toast, voice } = useApp();
+  const { state, toast, voice } = useApp();
   const { data, reload } = useData(() => call("voiceInfo"));
   const [key, setKey] = useState("");
   const [busy, setBusy] = useState(false);
+  // Switching to an API key gives voice that key too, also when it was one key for another.
+  useEffect(() => reload(), [state.apiKey, state.voiceKey]);
   if (!data) return null;
+  /** One key for everything: the one Edward runs on. */
+  const shared = state.apiKey && state.voiceKey;
   return (
     <Card className="pad stack" style={{ gap: 10 }}>
       <h3>Voice</h3>
       <p className="muted pretty">
-        Talk to Edward with the microphone button next to the message box, and hear the reply. It uses OpenAI's realtime voice ({data.model}) with your own OpenAI API key, billed by OpenAI
-        separately from ChatGPT, a few cents a minute.
+        Talk to Edward with the microphone button next to the message box, and hear the reply. It uses OpenAI's realtime voice ({data.model}),{" "}
+        {state.apiKey ? "billed to the OpenAI API key Edward runs on" : "with your own OpenAI API key, billed by OpenAI separately from ChatGPT"}, a few cents a minute.
       </p>
       <Note tone="apricot" icon="warn">
         What you say goes to OpenAI as sound and isn't checked by the privacy guard. Don't say card or account numbers or passwords. The words Edward hears still go through the guard before
         Edward answers.
       </Note>
-      {data.hasKey ? (
+      {shared ? (
+        <div className="row" style={{ gap: 10, padding: "10px 12px", borderRadius: 12, background: "var(--soft)" }}>
+          <Icon name="key" size={18} width={1.8} color="var(--blue-ink)" />
+          <span>
+            <b>Uses the key Edward runs on.</b> <span className="muted">Nothing more to enter. To use another key, change it under The assistant.</span>
+          </span>
+        </div>
+      ) : state.voiceKey ? (
         <Row name="OpenAI API key" help="Saved, encrypted on this computer. It isn't shown again and never goes to Codex.">
           <Button kind="ghost" onClick={async () => (toast(await call("voiceRemoveKey")), voice.stop(), reload())}>
             Remove
@@ -696,7 +737,7 @@ function VoiceCard() {
             if (r.ok) (setKey(""), reload());
           }}
         >
-          <input className="input grow" type="password" autoComplete="off" placeholder="OpenAI API key (sk-…)" value={key} onChange={(e) => setKey(e.target.value)} aria-label="OpenAI API key" />
+          <input className="input grow" type="password" autoComplete="off" placeholder={state.apiKey ? "Your OpenAI API key once more (sk-…)" : "OpenAI API key (sk-…)"} value={key} onChange={(e) => setKey(e.target.value)} aria-label="OpenAI API key" />
           <Button kind="primary" type="submit" disabled={busy || !key.trim()}>
             {busy ? "Checking…" : "Save"}
           </Button>
