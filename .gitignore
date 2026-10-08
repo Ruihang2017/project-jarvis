@@ -1,5 +1,7 @@
 node_modules/
 dist/
+# Local test secrets: never commit
+.env
 # Private list of personal details for scripts/scrub.mjs — never commit it.
 scripts/scrub-map.local.mjs
 

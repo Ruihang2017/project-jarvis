@@ -39,6 +39,7 @@ import { TripStore } from "./headsup/trips.js";
 import { BILL_INSTRUCTIONS } from "./bills/tools.js";
 import { googleInstructions } from "./google/instructions.js";
 import { codexEnv, config, PERSONA } from "./config.js";
+import { CREDENTIAL_STORE, saveKeyInCodex } from "./ai/account.js";
 import { guardOutgoing, type Source } from "./privacy/outgoing.js";
 import type { Category } from "./privacy/guard.js";
 import { relative, isAbsolute, resolve } from "node:path";
@@ -109,6 +110,14 @@ export function codexChannels(guarded: boolean) {
   };
 }
 
+/** How Codex is signed in, for the ones Edward runs on: a ChatGPT plan, or an OpenAI API key (P). */
+export type SignIn = "chatgpt" | "apiKey";
+
+/** null when Codex isn't signed in, or is signed in some way Edward hasn't been run with. */
+export function signInOf(account: { type: string } | null | undefined): SignIn | null {
+  return account?.type === "chatgpt" || account?.type === "apiKey" ? account.type : null;
+}
+
 interface ActiveTurn {
   threadId: string;
   turnId: string | null;
@@ -156,13 +165,14 @@ export class Session {
   /** Throwaway threads (runEphemeral): their redactions are reported as "background", not "your message". */
   private ephemeralThreads = new Set<string>();
 
+  private readonly codexHome = ensureCodexHome();
+
   constructor() {
-    const codexHome = ensureCodexHome();
     // Every message to Codex passes the privacy guard (S1), whichever code path produced it.
     const filter = guardOutgoing((source, removed, threadId) =>
       this.onRedacted?.(threadId && this.ephemeralThreads.has(threadId) ? "background" : source, removed),
     );
-    this.client = new CodexClient(config.codexBin, [], codexEnv({ CODEX_HOME: codexHome }), filter);
+    this.client = new CodexClient(config.codexBin, CREDENTIAL_STORE, codexEnv({ CODEX_HOME: this.codexHome }), filter);
     this.client.onServerRequest((req) => this.handleServerRequest(req));
     this.client.on("serverRequestCancelled", () => this.interactions.cancelPending?.());
     this.client.on("notification", (n) => {
@@ -246,7 +256,53 @@ export class Session {
       capabilities: { experimentalApi: true, requestAttestation: false },
     });
     this.client.notify("initialized");
-    return this.client.request<GetAccountResponse>("account/read", { refreshToken: false });
+    return this.readAccount();
+  }
+
+  /** Asks Codex how it is signed in now; what depended on the old sign-in (models, plan limits) is forgotten. */
+  async readAccount(): Promise<GetAccountResponse> {
+    const res = await this.client.request<GetAccountResponse>("account/read", { refreshToken: false });
+    const now = signInOf(res.account);
+    if (now !== this.signIn) {
+      this.modelCache = null;
+      this.limits = null;
+    }
+    this.signIn = now;
+    return res;
+  }
+
+  /** As of the last init() or readAccount(). An API key has no plan limits, and Codex gives it no image generation. */
+  signIn: SignIn | null = null;
+
+  /**
+   * Switches Codex to an OpenAI API key (P). The caller has checked the key with OpenAI first, so
+   * the sign-in that worked is only given up for one that works too. The key goes to Codex's own
+   * login over stdin (src/ai/account.ts), never through this JSON-RPC channel.
+   */
+  async useApiKey(key: string): Promise<void> {
+    if (this.busy) throw new Error("can't switch during a reply");
+    // One sign-in at a time; a plain auth.json from an older Edward goes with this too.
+    await this.client.request("account/logout", undefined).catch(() => {});
+    try {
+      await saveKeyInCodex(key, this.codexHome);
+    } finally {
+      // A Codex that is already running can't be relied on to notice a sign-in made beside it
+      // (usually within seconds, once not within 15); one that starts now reads it.
+      await this.restartCodex();
+    }
+    if (this.signIn !== "apiKey") throw new Error("Codex didn't take the key; sign in again");
+  }
+
+  /** A fresh app-server, signed in as the files say now, with the conversation loaded again. */
+  private async restartCodex(): Promise<void> {
+    this.client.restart();
+    this.openRequests.clear();
+    await this.init();
+    if (!this.threadId || !this.signIn) return;
+    // Without this the next message would go to a thread the new process doesn't have.
+    await this.client.request<ThreadResumeResponse>("thread/resume", { threadId: this.threadId, ...this.threadSettings() }).catch(() => {
+      this.threadId = null;
+    });
   }
 
   /**

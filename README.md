@@ -4,8 +4,8 @@ A personal assistant for your terminal that does things: keeps your calendar, re
 tracks bills, reminds you — and removes account numbers, card numbers and passwords before anything
 reaches the AI.
 
-Edward runs on your own computer, Windows or Mac. It uses your own ChatGPT account through the
-[Codex CLI](https://github.com/openai/codex) and, if you connect them, your own Google Calendar and Gmail.
+Edward runs on your own computer, Windows or Mac. It uses your own ChatGPT account, or your own OpenAI
+API key, through the [Codex CLI](https://github.com/openai/codex) and, if you connect them, your own Google Calendar and Gmail.
 There is no Edward server.
 
 > **Status: developer preview.** Windows, and macOS (new in 0.3.0, Intel and Apple silicon). You bring your own ChatGPT account, Codex CLI and (for
@@ -56,7 +56,9 @@ before you rely on Edward.
 
 - Windows 10 or 11, or macOS 12 or newer (Intel or Apple silicon)
 - [Node.js](https://nodejs.org) 24 or newer (the terminal version; the desktop app brings its own)
-- The Codex CLI (`npm install -g @openai/codex`) and a ChatGPT plan that includes it
+- The Codex CLI (`npm install -g @openai/codex`), and either a ChatGPT plan that includes it or an OpenAI
+  API key (billed by OpenAI for what Edward uses; no pictures yet). The desktop app asks which at the first
+  start, and Settings → Change switches later
 - Optional, for calendar and mail: a Google account and your own free Google Cloud project
   ([15-minute guide](docs/google-cloud-setup.md))
 

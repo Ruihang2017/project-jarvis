@@ -1,7 +1,7 @@
 # Security and privacy
 
 Edward is a personal assistant that runs on your own computer (Windows or macOS). It talks to an AI model through
-the Codex CLI and your own ChatGPT account, and — if you connect them — to your own Google Calendar,
+the Codex CLI, with your own ChatGPT account or your own OpenAI API key, and — if you connect them — to your own Google Calendar,
 Gmail and Google Tasks. Two more only when used: OpenAI's realtime voice service (with your own API key)
 and Open-Meteo for the weather where a trip goes (a place name and a date). There is no Edward server:
 nothing is sent anywhere else.
@@ -140,6 +140,21 @@ encrypted, and never logged:
   files themselves are AES-256-GCM. If the keychain can't be used, saving fails; the token is never
   written unprotected.
 
+**How Edward is signed in to the AI** is kept by Codex, in `codex-home`. You choose one in Settings (or at
+the first start): your ChatGPT account, in the browser, or an OpenAI API key.
+
+- A sign-in made with this version or later is kept encrypted (`codex-home/secrets`), with its key in the
+  system's own store: the Windows credential store, or the keychain on a Mac. A sign-in made with an
+  earlier Edward stays as it was, a plain file (`codex-home/auth.json`) protected only by your user
+  account, until you sign in again or switch.
+- An API key you type is first shown to OpenAI once, to check it (a request for the list of models, with
+  nothing else in it). Then it is handed to Codex's own sign-in over a pipe: never on a command line, never
+  through the channel the model is on. The desktop app keeps one more copy, encrypted like the Google
+  sign-ins, so that voice (below) works with the same key. A key OpenAI rejects changes nothing.
+- With an API key the same things are sent to OpenAI as with a ChatGPT account, through the same guard.
+  What differs is OpenAI's side: its API terms apply, and it bills the key for what Edward uses, the
+  mail summary, bill scan and trips included.
+
 Both protect against someone copying the files, a backup that leaks, or another user of the computer.
 Neither protects against a program running as you: it can ask Windows, or the keychain, the same way
 Edward does.
@@ -175,8 +190,9 @@ with PKCE on `127.0.0.1`.
 
 ## Voice (desktop app)
 
-Voice is off until you add your own OpenAI API key (Settings → Voice). It uses OpenAI's realtime model
-directly, billed to that key.
+Voice needs an OpenAI API key: the one Edward runs on, if you chose that (nothing more to enter), or one you
+add for voice alone (Settings → Voice) when Edward runs on a ChatGPT plan. It uses OpenAI's realtime model
+directly, billed to that key. It does nothing until you press the microphone button.
 
 - **What you say goes to OpenAI as sound, before the privacy guard can see it.** The guard works on text,
   so it can't take a card number out of your voice. The app says so in Settings and on the bar shown while
@@ -184,8 +200,8 @@ directly, billed to that key.
 - The realtime model only hears and speaks. What you said comes back as text and goes into the
   conversation like typed text, through the guard, to Codex; Edward's answer is then read aloud. The
   realtime model never answers on its own and has no tools.
-- The key is encrypted on your computer like the Google sign-ins (see "Where your data is"), never shown again, never logged and never sent
-  to Codex. The window never has it: the main process makes the connection. `edward delete-data` deletes it.
+- The key is encrypted on your computer like the Google sign-ins (see "Where your data is"), never shown again and never logged. It
+  goes to Codex only when you choose to run Edward on it, and never to the model. The window never has it: the main process makes the connection. `edward delete-data` deletes it.
 - What voice costs is estimated from the token counts OpenAI reports during a call; only those numbers are
   kept (`voice_spend` in `memory.db`), never what was said. Edward doesn't ask for an OpenAI admin key.
 - The microphone is allowed only for Edward's own page and only for sound (no camera); the email frame

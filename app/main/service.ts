@@ -7,7 +7,8 @@ import { app, clipboard, dialog, shell, type BrowserWindow } from "electron";
 import { copyFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { basename, extname, join } from "node:path";
 import { randomUUID } from "node:crypto";
-import { Session, type Mode } from "../../src/session.js";
+import { Session, signInOf, type Mode } from "../../src/session.js";
+import { checkOpenAiKey } from "../../src/ai/account.js";
 import { config } from "../../src/config.js";
 import { appDataDir, imagesDir, loadSettings, updateSettings } from "../../src/settings.js";
 import { activityLabel, activityNotes, draftOf } from "../../src/activity.js";
@@ -121,15 +122,23 @@ export class EdwardService implements A.EdwardApi {
       this.push({ kind: "notice", id: randomUUID(), tone: "guard", text: `${capitalise(describeRemoved(removed))} removed from ${where} before it left this computer. The model didn't see it.` });
     };
     this.session.client.on("exit", (code) => !this.closing && this.notice([`Codex stopped (${code}). Close and reopen Edward.`]));
-    const { account } = await this.session.init();
-    this.signedIn = account?.type === "chatgpt";
-    if (account?.type === "chatgpt") this.account.email = account.email ?? undefined;
-    if (this.signedIn) this.afterSignIn();
+    this.takeAccount((await this.session.init()).account);
     this.ready = true;
   }
 
+  /** How Codex is signed in now. The first sign-in also starts the work that needs one. */
+  private takeAccount(account: { type: string; email?: string | null } | null) {
+    this.signedIn = signInOf(account) !== null;
+    this.account = account?.type === "chatgpt" ? { email: account.email ?? undefined } : {};
+    if (!this.signedIn) return;
+    // Only a ChatGPT plan has limits to read.
+    if (this.session.signIn === "chatgpt") this.session.rateLimits().then((r) => (this.account.plan = r.rateLimits.planType ?? undefined), () => {});
+    if (!this.started) this.afterSignIn();
+    this.started = true;
+  }
+  private started = false;
+
   private afterSignIn() {
-    this.session.rateLimits().then((r) => (this.account.plan = r.rateLimits.planType ?? undefined), () => {});
     if (!runtime.noBackgroundWork) startBackgroundWork(this.session, (lines) => this.notice(lines), () => {});
     const check = () => {
       try {
@@ -217,6 +226,8 @@ export class EdwardService implements A.EdwardApi {
     return {
       ready: this.ready,
       signedIn: this.signedIn,
+      apiKey: s?.signIn === "apiKey",
+      voiceKey: hasVoiceKey(),
       email: this.account.email,
       plan: this.account.plan,
       model: s?.model ?? config.model,
@@ -236,15 +247,39 @@ export class EdwardService implements A.EdwardApi {
 
   async signIn(): Promise<A.Result> {
     try {
+      if (this.session.busy) return { ok: false, message: "Wait for Edward's reply to finish, then switch." };
       await this.session.login((url) => void shell.openExternal(url));
-      const { account } = await this.session.init();
-      this.signedIn = account?.type === "chatgpt";
-      if (account?.type === "chatgpt") this.account.email = account.email ?? undefined;
-      if (this.signedIn) this.afterSignIn();
+      this.takeAccount((await this.session.readAccount()).account);
       this.pushState();
-      return this.signedIn ? ok(`Signed in as ${this.account.email ?? "you"}`) : { ok: false, message: "That wasn't a ChatGPT account" };
+      return this.session.signIn === "chatgpt" ? ok(`Signed in as ${this.account.email ?? "you"}`) : { ok: false, message: "That wasn't a ChatGPT account" };
     } catch (e) {
       return fail(e);
+    }
+  }
+
+  /**
+   * Switches Edward to an OpenAI API key (P). The key is checked with OpenAI first, so a wrong one
+   * changes nothing; then Codex's own login takes it. Edward keeps one encrypted copy, for voice
+   * (openai-key.bin, as the voice key always was); the window keeps nothing.
+   */
+  async aiUseKey(key: string): Promise<A.Result> {
+    const k = String(key ?? "").trim();
+    if (!looksLikeKey(k)) return { ok: false, message: "That doesn't look like an OpenAI API key (it starts with sk-)." };
+    if (this.session.busy) return { ok: false, message: "Wait for Edward's reply to finish, then switch." };
+    const check = await checkOpenAiKey(k);
+    if (check === "rejected") return { ok: false, message: "OpenAI didn't accept this key. Check that all of it was copied and that it hasn't been deleted. Nothing was changed." };
+    if (check === "unreachable") return { ok: false, message: "Couldn't reach OpenAI to check the key. Nothing was changed." };
+    try {
+      await this.session.useApiKey(k);
+      // Voice runs on the same key: Edward keeps its own encrypted copy for it, where the voice key always was.
+      const forVoice = await saveVoiceKey(k).then(() => true, () => false);
+      return ok(forVoice ? "Edward now runs on your OpenAI API key" : "Edward now runs on your OpenAI API key. It couldn't be kept for voice: add it under Settings, Voice.");
+    } catch (e) {
+      return fail(e);
+    } finally {
+      // Whatever happened, show the sign-in Codex has now.
+      this.takeAccount((await this.session.readAccount()).account);
+      this.pushState();
     }
   }
 
@@ -361,6 +396,7 @@ export class EdwardService implements A.EdwardApi {
     try {
       await checkKey(k);
       await saveVoiceKey(k);
+      this.pushState();
       return ok("Saved. Edward can talk now.");
     } catch (e) {
       return fail(e);
@@ -369,6 +405,7 @@ export class EdwardService implements A.EdwardApi {
 
   async voiceRemoveKey(): Promise<A.Result> {
     removeVoiceKey();
+    this.pushState();
     return ok("Removed from this computer");
   }
 

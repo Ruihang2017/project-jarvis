@@ -192,6 +192,17 @@ a { color: var(--blue-ink); }
 .modal-back { position: fixed; inset: 0; background: rgba(26, 34, 54, 0.32); display: flex; align-items: center; justify-content: center; z-index: 60; padding: 24px; }
 .modal { width: 100%; max-width: 480px; padding: 22px; border-radius: 18px; background: var(--surface); box-shadow: var(--shadow-lg); display: flex; flex-direction: column; gap: 12px; }
 .modal.danger { border: 1px solid var(--rose-line); }
+/* One of several, as a card: what Edward runs on (P). */
+.choice { display: flex; align-items: flex-start; gap: 14px; width: 100%; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); text-align: left; }
+.choice:hover:not(:disabled) { border-color: #c8d1df; }
+.choice[aria-checked="true"] { border-color: var(--blue); box-shadow: 0 0 0 1px var(--blue); background: #f6f8fe; }
+.choice:disabled { opacity: 1; }
+.choice:disabled[aria-checked="false"] { border-style: dashed; background: var(--bg); }
+.choice .dot { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; flex-shrink: 0; margin-top: 2px; border: 2px solid var(--ink3); border-radius: 50%; }
+.choice[aria-checked="true"] .dot { border-color: var(--blue); }
+.choice[aria-checked="true"] .dot::after { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--blue); }
+.runs-on { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid var(--blue-line); border-radius: 14px; background: #f6f8fe; }
+.runs-on .mark { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; flex-shrink: 0; border-radius: 12px; background: var(--blue-soft); color: var(--blue-ink); }
 
 .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }

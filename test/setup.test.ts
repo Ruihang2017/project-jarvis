@@ -110,6 +110,62 @@ ok("old Node: stops with the reason", (await s.run()) === false && s.said.some((
 s = scenario({ supported: false, hasClient: true, connected: "x@gmail.com", answers: [""] });
 ok("not Windows: says background is unavailable and carries on", (await s.run()) === true && s.said.some((l) => l.includes("Only available on Windows")));
 
+// --- which Codex sign-ins Edward runs on (P) ---
+const { signInOf } = await import("../src/session.js");
+eq("sign-in: a ChatGPT plan or an OpenAI API key, nothing else", [signInOf({ type: "chatgpt" }), signInOf({ type: "apiKey" }), signInOf({ type: "amazonBedrock" }), signInOf(null), signInOf(undefined)], ["chatgpt", "apiKey", null, null, null]);
+
+// --- switching to an OpenAI API key (P): checked first, then handed to Codex over stdin ---
+const { checkOpenAiKey, saveKeyInCodex, CREDENTIAL_STORE } = await import("../src/ai/account.js");
+const KEY = `sk-test-${"a".repeat(40)}`;
+const asked: { url: string; auth: string | null }[] = [];
+const openai = (status: number): typeof fetch => async (url, init) => {
+  asked.push({ url: String(url), auth: new Headers(init?.headers).get("authorization") });
+  return new Response("{}", { status });
+};
+eq("key check: OpenAI knows it", await checkOpenAiKey(KEY, openai(200)), "ok");
+eq("key check: only the key is sent, to OpenAI's model list", asked, [{ url: "https://api.openai.com/v1/models", auth: `Bearer ${KEY}` }]);
+eq("key check: 401 means the key is wrong", await checkOpenAiKey(KEY, openai(401)), "rejected");
+eq("key check: a key that may not list models is still a key", await checkOpenAiKey(KEY, openai(403)), "ok");
+eq("key check: no network is not a wrong key", await checkOpenAiKey(KEY, async () => Promise.reject(new Error("offline"))), "unreachable");
+
+const ran: { args: string[]; home: string | undefined; input: string }[] = [];
+await saveKeyInCodex(`  ${KEY}\n`, "C:/scratch/codex-home", async (_bin, args, env, input) => (ran.push({ args, home: env.CODEX_HOME, input }), { code: 0, output: "Successfully logged in" }));
+eq("save key: Codex's own login, encrypted store, in Edward's Codex folder, the key on stdin", ran, [{ args: ["login", "--with-api-key", ...CREDENTIAL_STORE], home: "C:/scratch/codex-home", input: `${KEY}\n` }]);
+ok("save key: never on the command line", !ran[0]!.args.join(" ").includes(KEY));
+const failed = await saveKeyInCodex(KEY, "C:/scratch/codex-home", async () => ({ code: 1, output: `error: could not store ${KEY}` })).then(() => "", (e: Error) => e.message);
+ok("save key: a failure is reported without repeating the key", failed.includes("couldn't save the key") && !failed.includes(KEY), failed);
+const refused = await saveKeyInCodex("not a key", "C:/scratch/codex-home", async () => ({ code: 0, output: "" })).then(() => "", (e: Error) => e.message);
+ok("save key: something that isn't a key never reaches Codex", refused.includes("doesn't look like") && ran.length === 1, refused);
+
+// --- restarting the app-server (after a sign-in made beside it): a stand-in program that answers every request with its pid ---
+const { CodexClient } = await import("../src/rpc.js");
+const { writeFileSync } = await import("node:fs");
+writeFileSync(
+  join(dir, "app-server"),
+  `require("node:readline").createInterface({ input: process.stdin }).on("line", (l) => {
+  const m = JSON.parse(l);
+  if (m.id !== undefined && m.method !== "hang") process.stdout.write(JSON.stringify({ id: m.id, result: { pid: process.pid } }) + "\\n");
+});`,
+);
+const cwd = process.cwd();
+process.chdir(dir); // node runs "app-server" from here
+const client = new CodexClient(process.execPath);
+let stopped = 0;
+client.on("exit", () => stopped++);
+const ask = (method: string) => client.request<{ pid: number }>(method as never, undefined as never);
+const first = (await ask("ping")).pid;
+const hanging = ask("hang").then(() => "answered", (e: Error) => e.message);
+client.restart();
+eq("restart: a request in flight fails, saying why", await hanging, "codex app-server restarted during hang");
+const second = (await ask("ping")).pid;
+ok("restart: a new process answers", first !== second, `${first} → ${second}`);
+await new Promise((r) => setTimeout(r, 300));
+eq("restart: the old process ending is not reported as Codex stopping", stopped, 0);
+client.close();
+await new Promise((r) => setTimeout(r, 300));
+eq("close: that one is reported", stopped, 1);
+process.chdir(cwd);
+
 rmSync(dir, { recursive: true, force: true });
 console.log(results.map(([n, pass, info]) => `${pass ? "PASS" : "FAIL"}  ${n}${pass ? "" : "  → " + info}`).join("\n"));
 if (results.some(([, pass]) => !pass)) process.exitCode = 1;

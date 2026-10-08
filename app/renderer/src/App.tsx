@@ -244,6 +244,10 @@ function Sidebar({ badges }: { badges: { bills: number; mail: number } }) {
       </div>
       <div className="nav-status">
         <div>
+          <span>AI</span>
+          <span className={state.signedIn ? "on" : "off"}>{!state.signedIn ? "Not signed in" : state.apiKey ? "API key" : "ChatGPT plan"}</span>
+        </div>
+        <div>
           <span>Google</span>
           <span className={g.expired ? "bad" : g.connected ? "on" : "off"}>{g.expired ? "Sign in again" : g.connected ? (g.accounts.length > 1 ? `${g.accounts.length} accounts` : "Connected") : "Not connected"}</span>
         </div>

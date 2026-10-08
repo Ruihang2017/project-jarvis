@@ -4,10 +4,11 @@ import { useApp } from "../App";
 import { call } from "../api";
 import { art, Button, Card, Icon, Loading, Note, Segmented, Spot, Tag, Toggle } from "../ui";
 import { backgroundTask } from "../platform";
+import { AiAccount, AI_FACTS } from "../AiAccount";
 
 const STEPS = [
   ["This computer", "Codex and what Edward needs"],
-  ["ChatGPT", "Edward runs on your own plan"],
+  ["The AI", "A ChatGPT plan or your own key"],
   ["Reminders in the background", "Also when Edward is closed"],
   ["Google", "Calendar and Gmail, optional"],
   ["Dates and currency", "How to read 10/12 and $"],
@@ -22,6 +23,8 @@ export function Setup() {
   const [google, setGoogle] = useState<GoogleInfo>(state.google);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [busy, setBusy] = useState(false);
+  /** The dialog for choosing the AI or entering a key (step 2). */
+  const [ai, setAi] = useState<"choose" | "key" | null>(null);
   // "setup-3" jumps to a step (used by the screenshot checks).
   useEffect(() => {
     const m = /^setup-(\d|done)$/.exec(route.page);
@@ -51,7 +54,7 @@ export function Setup() {
           </p>
           <div className="stack" style={{ gap: 14 }}>
             {[
-              ["Sign in with ChatGPT", "Edward runs on your own ChatGPT plan through Codex"],
+              ["Choose the AI", "Your ChatGPT plan, or your own OpenAI API key"],
               ["Turn on reminders", "So they arrive even when Edward is closed"],
               ["Connect Google, if you like", "Calendar and Gmail, through your own Google Cloud project"],
             ].map(([t, s], i) => (
@@ -158,31 +161,59 @@ export function Setup() {
       }
       case 1:
         return (
-          <Section title="Sign in with ChatGPT" lead="Edward uses your own ChatGPT plan. Your browser opens for the sign-in; Edward never sees your password.">
-            <Card className="pad stack">
-              {state.signedIn ? (
+          <Section title="What should Edward run on?" lead="Edward needs an AI to think with. Use the ChatGPT plan you already have, or your own OpenAI API key. You can change this later in Settings.">
+            {state.signedIn ? (
+              <Card className="pad between">
                 <div className="row">
                   <Icon name="check" width={2.2} color="var(--sage-ink)" />
-                  <b>Signed in{state.email ? ` as ${state.email}` : ""}</b>
+                  <b>{state.apiKey ? "Edward runs on your OpenAI API key" : `Signed in to ChatGPT${state.email ? ` as ${state.email}` : ""}`}</b>
                 </div>
-              ) : (
-                <div>
-                  <Button
-                    kind="primary"
-                    icon="link"
-                    disabled={busy}
-                    onClick={async () => {
-                      setBusy(true);
-                      toast(await call("signIn"));
-                      setBusy(false);
-                      refresh();
-                    }}
-                  >
-                    {busy ? "Waiting for the browser…" : "Sign in with ChatGPT"}
-                  </Button>
-                </div>
-              )}
-            </Card>
+                <Button small onClick={() => setAi("choose")}>
+                  Change
+                </Button>
+              </Card>
+            ) : (
+              <div className="grid-2">
+                {(["chatgpt", "apiKey"] as const).map((id) => (
+                  <Card key={id} className="pad stack" style={id === "chatgpt" ? { borderColor: "var(--blue)", boxShadow: "0 0 0 1px var(--blue), var(--shadow)" } : undefined}>
+                    <div className="row">
+                      <h2>{AI_FACTS[id].name}</h2>
+                      {id === "chatgpt" && <Tag tone="blue">Most people</Tag>}
+                    </div>
+                    {AI_FACTS[id].facts.map((f) => (
+                      <div className="row" key={f} style={{ alignItems: "flex-start", fontSize: 13.5 }}>
+                        <Icon name="check" size={16} width={2.2} color="var(--sage-ink)" />
+                        <span>{f}</span>
+                      </div>
+                    ))}
+                    <div style={{ marginTop: "auto", paddingTop: 6 }}>
+                      {id === "chatgpt" ? (
+                        <Button
+                          kind="primary"
+                          icon="link"
+                          wide
+                          disabled={busy}
+                          onClick={async () => {
+                            setBusy(true);
+                            toast(await call("signIn"));
+                            setBusy(false);
+                            refresh();
+                          }}
+                        >
+                          {busy ? "Waiting for the browser…" : "Sign in with ChatGPT"}
+                        </Button>
+                      ) : (
+                        <Button icon="key" wide disabled={busy} onClick={() => setAi("key")}>
+                          Use an API key
+                        </Button>
+                      )}
+                    </div>
+                    <span className="muted">{id === "chatgpt" ? "Your browser opens for the sign-in. Edward never sees your password." : "The key stays on this computer."}</span>
+                  </Card>
+                ))}
+              </div>
+            )}
+            {ai && <AiAccount start={ai} onClose={() => setAi(null)} />}
           </Section>
         );
       case 2:
