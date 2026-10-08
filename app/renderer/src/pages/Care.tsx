@@ -35,7 +35,7 @@ export function Settings() {
   const { data, reload } = useData(() => call("settings"));
   const [changing, setChanging] = useState(false);
   // Models and plan limits belong to the sign-in.
-  useEffect(() => reload(), [state.apiKey, state.signedIn]);
+  useEffect(() => reload(), [state.apiKey, state.signedIn, state.custom?.host, state.custom?.model]);
   const [currency, setCurrency] = useState<string | null>(null);
   const set = async (patch: Parameters<typeof call<"updateSettings">>[1]) => {
     await call("updateSettings", patch);
@@ -57,18 +57,21 @@ export function Settings() {
               </div>
               <div className="row" style={{ gap: 12 }}>
                 <span className="mark">
-                  <Icon name={state.apiKey ? "key" : "users"} size={20} width={1.8} />
+                  <Icon name={state.custom ? "globe" : state.apiKey ? "key" : "users"} size={20} width={1.8} />
                 </span>
                 <div className="grow" style={{ minWidth: 0 }}>
-                  <b style={{ display: "block", fontSize: 15 }}>{state.apiKey ? "OpenAI API key" : "ChatGPT plan"}</b>
+                  <b style={{ display: "block", fontSize: 15 }}>{state.custom ? state.custom.name : state.apiKey ? "OpenAI API key" : "ChatGPT plan"}</b>
                   <span className="muted ellipsis" style={{ display: "block" }}>
-                    {state.apiKey ? "Billed by OpenAI" :[state.email, state.plan && state.plan[0]!.toUpperCase() + state.plan.slice(1)].filter(Boolean).join(" · ") || "Signed in"}
+                    {state.custom ? `${state.custom.model} · ${state.custom.host}` : state.apiKey ? "Billed by OpenAI" : [state.email, state.plan && state.plan[0]!.toUpperCase() + state.plan.slice(1)].filter(Boolean).join(" · ") || "Signed in"}
                   </span>
                 </div>
                 <Button onClick={() => setChanging(true)}>Change</Button>
               </div>
             </div>
             {changing && <AiAccount onClose={() => setChanging(false)} />}
+            {state.custom ? (
+              <ModelName key={data.model} current={data.model} onSave={(m) => set({ model: m })} />
+            ) : (
             <Row name="Model">
               <select className="input" aria-label="Model" value={data.model} onChange={(e) => set({ model: e.target.value })} style={{ width: 180 }}>
                 {data.models.map((m) => (
@@ -79,18 +82,24 @@ export function Settings() {
                 {!data.models.length && <option value={data.model}>{data.model}</option>}
               </select>
             </Row>
-            <Row name="How hard it thinks" help={state.apiKey ? "Higher is slower and costs more." : "Higher is slower and uses more of your plan."} />
-            <Segmented label="Reasoning effort" value={data.effort} onChange={(v) => set({ effort: v })} options={(model?.efforts.length ? model.efforts : ["low", "medium", "high"]).map((e) => ({ value: e, label: e[0]!.toUpperCase() + e.slice(1) }))} />
+            )}
+            {!state.custom && <Row name="How hard it thinks" help={state.apiKey ? "Higher is slower and costs more." : "Higher is slower and uses more of your plan."} />}
+            {!state.custom && <Segmented label="Reasoning effort" value={data.effort} onChange={(v) => set({ effort: v })} options={(model?.efforts.length ? model.efforts : ["low", "medium", "high"]).map((e) => ({ value: e, label: e[0]!.toUpperCase() + e.slice(1) }))} />}
             <Hr />
-            <Row name="Search the web" help="Lets Edward look things up online.">
-              <Toggle on={data.webSearch} label="Search the web" onChange={(v) => set({ webSearch: v })} />
+            <Row name="Search the web" help={state.custom ? `Not available with ${state.custom.name}.` : "Lets Edward look things up online."}>
+              <Toggle on={data.webSearch && !state.custom} disabled={Boolean(state.custom)} label="Search the web" onChange={(v) => set({ webSearch: v })} />
             </Row>
             <Row name="Learn from conversations" help="Remember things worth keeping.">
               <Toggle on={data.learning} label="Learn from conversations" onChange={(v) => set({ learning: v })} />
             </Row>
             <Hr />
-            <h3>{state.apiKey ? "OpenAI API key" : "Your ChatGPT plan"}</h3>
-            {state.apiKey ? (
+            <h3>{state.custom ? state.custom.name : state.apiKey ? "OpenAI API key" : "Your ChatGPT plan"}</h3>
+            {state.custom ? (
+              <p className="muted">
+                What you ask, and what Edward reads for you, goes to {state.custom.host} instead of OpenAI, after the privacy guard. That service bills you: usage and cost are on its own pages. There is
+                no web search and no pictures, and how well Edward's calendar, mail and reminders work depends on the model.
+              </p>
+            ) : state.apiKey ? (
               <p className="muted">
                 Each reply is billed to your key, and so are the mail summary, bill scan and trips. There is no plan limit to show: usage, cost and your balance are at{" "}
                 <a href="https://platform.openai.com/usage" target="_blank" rel="noreferrer noopener">
@@ -125,7 +134,7 @@ export function Settings() {
               <input className="input" type="time" aria-label="Brief time" value={data.briefTime} onChange={(e) => e.target.value && set({ briefTime: e.target.value })} style={{ width: 120 }} />
             </Row>
             <Segmented label="Brief days" value={data.briefDays} onChange={(v) => set({ briefDays: v })} options={[{ value: "weekdays", label: "Weekdays" }, { value: "daily", label: "Daily" }, { value: "off", label: "Off" }]} />
-            <Row name="Mail summary" help={`Edward reads your new mail and tells you what needs you. ${state.apiKey ? "Billed to your API key" : "Uses your ChatGPT plan"}; only while Edward is open.`}>
+            <Row name="Mail summary" help={`Edward reads your new mail and tells you what needs you. ${state.custom ? `Billed by ${state.custom.name}` : state.apiKey ? "Billed to your API key" : "Uses your ChatGPT plan"}; only while Edward is open.`}>
               <Toggle on={data.mailSummaryTimes.length > 0} label="Mail summary" onChange={(v) => set({ mailSummaryTimes: v ? ["08:30", "18:00"] : "off" })} />
             </Row>
             {data.mailSummaryTimes.length > 0 && (
@@ -690,6 +699,26 @@ export function Data() {
 }
 
 /** Settings → Voice (V): the OpenAI key, the voice, and what voice means for privacy. */
+/** Another AI service's model (P): a name to type, since its list can't be read. */
+function ModelName({ current, onSave }: { current: string; onSave: (model: string) => void }) {
+  const [name, setName] = useState(current);
+  const changed = name.trim() !== "" && name.trim() !== current;
+  return (
+    <form className="stack" style={{ gap: 6 }} onSubmit={(e) => (e.preventDefault(), changed && onSave(name.trim()))}>
+      <label htmlFor="model-name" style={{ fontWeight: 600 }}>
+        Model
+      </label>
+      <div className="row" style={{ gap: 8 }}>
+        <input id="model-name" className="input mono grow" spellCheck={false} value={name} onChange={(e) => setName(e.target.value)} />
+        <Button type="submit" disabled={!changed}>
+          Use
+        </Button>
+      </div>
+      <span className="muted">The name the service lists. Pick one that can call tools.</span>
+    </form>
+  );
+}
+
 function VoiceCard() {
   const { state, toast, voice } = useApp();
   const { data, reload } = useData(() => call("voiceInfo"));

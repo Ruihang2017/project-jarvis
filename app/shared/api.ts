@@ -16,6 +16,8 @@ export interface AppState {
   apiKey: boolean;
   /** Edward has an OpenAI API key for voice: the one it runs on, or one added for voice alone. */
   voiceKey: boolean;
+  /** Edward runs on another AI service instead of OpenAI (P): what goes to the model goes to this host. */
+  custom?: { name: string; host: string; model: string };
   email?: string;
   plan?: string;
   model: string;
@@ -590,6 +592,8 @@ export interface EdwardApi {
   signIn(): Promise<Result>;
   /** Switch to an OpenAI API key (P): checked with OpenAI first, then handed to Codex; not kept by the window. */
   aiUseKey(key: string): Promise<Result>;
+  /** Switch to another AI service (P): tried once first; the key is kept encrypted by the main process, not by the window. */
+  aiUseService(s: { baseUrl: string; model: string; key: string }): Promise<Result>;
 
   // conversation
   send(text: string): Promise<void>;

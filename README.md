@@ -40,6 +40,23 @@ you › reply to Sam's update and ask whether the energy account is set up
 | **Daily brief** | Today's events, reminders, bills and unread mail in one glance |
 | **Heads-ups** | Before an event with a place or people (and the related emails); a mail summary twice a day; the week ahead on Sunday evening; trips from booking emails, with when to leave |
 
+## How it works
+
+![How Edward is built: the desktop app, the terminal version and the background job share one core; Codex is the AI engine; the AI model, Google, OpenAI's voice service and Open-Meteo are the only things outside your computer](docs/architecture.svg)
+
+Three ways in (the desktop app, the terminal, a background job that runs for a moment every minute) share
+one core. The core reaches the AI only through Codex, a process on your own computer, and everything on
+that path passes the privacy guard. Calendar, mail and lists come from Google with your own sign-in. There
+is no Edward server.
+
+![How a message reaches the AI: from you through Edward's core and the privacy guard to Codex and the model; the model asks for tools, Edward's code runs them, and anything that writes asks you first](docs/ai-architecture.svg)
+
+The model only reads and writes text. It can't send an email or change your calendar: it asks for one of
+Edward's tools, Edward's own code does the work, and anything that changes something waits for your OK.
+What comes back from outside (an email, a calendar entry) is cleaned and passes the guard before the model
+sees it. The model itself is your choice: a ChatGPT plan, an OpenAI API key, or another service that speaks
+OpenAI's Responses format, such as OpenRouter or Qwen on Alibaba Cloud (experimental).
+
 ## Privacy guard
 
 Before anything is sent to the model, Edward's own code removes card numbers, bank and account numbers,
@@ -58,7 +75,9 @@ before you rely on Edward.
 - [Node.js](https://nodejs.org) 24 or newer (the terminal version; the desktop app brings its own)
 - The Codex CLI (`npm install -g @openai/codex`), and either a ChatGPT plan that includes it or an OpenAI
   API key (billed by OpenAI for what Edward uses; no pictures yet). The desktop app asks which at the first
-  start, and Settings → Change switches later
+  start, and Settings → Change switches later. Experimental: another AI service instead of OpenAI, with
+  its address, a model name and your key (OpenRouter, Qwen on Alibaba Cloud, anything that speaks OpenAI's
+  Responses format); then there is no web search and no pictures
 - Optional, for calendar and mail: a Google account and your own free Google Cloud project
   ([15-minute guide](docs/google-cloud-setup.md))
 

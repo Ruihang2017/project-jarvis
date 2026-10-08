@@ -7,8 +7,9 @@ import { app, clipboard, dialog, shell, type BrowserWindow } from "electron";
 import { copyFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { basename, extname, join } from "node:path";
 import { randomUUID } from "node:crypto";
-import { Session, signInOf, type Mode } from "../../src/session.js";
+import { Session, type Mode } from "../../src/session.js";
 import { checkOpenAiKey } from "../../src/ai/account.js";
+import { checkAddress, checkService, hostOf, saveCustom, setCustomModel, validModel } from "../../src/ai/custom.js";
 import { config } from "../../src/config.js";
 import { appDataDir, imagesDir, loadSettings, updateSettings } from "../../src/settings.js";
 import { activityLabel, activityNotes, draftOf } from "../../src/activity.js";
@@ -128,7 +129,7 @@ export class EdwardService implements A.EdwardApi {
 
   /** How Codex is signed in now. The first sign-in also starts the work that needs one. */
   private takeAccount(account: { type: string; email?: string | null } | null) {
-    this.signedIn = signInOf(account) !== null;
+    this.signedIn = this.session.signIn !== null;
     this.account = account?.type === "chatgpt" ? { email: account.email ?? undefined } : {};
     if (!this.signedIn) return;
     // Only a ChatGPT plan has limits to read.
@@ -228,6 +229,7 @@ export class EdwardService implements A.EdwardApi {
       signedIn: this.signedIn,
       apiKey: s?.signIn === "apiKey",
       voiceKey: hasVoiceKey(),
+      custom: s?.custom ? { name: s.custom.name, host: hostOf(s.custom.baseUrl), model: s.custom.model } : undefined,
       email: this.account.email,
       plan: this.account.plan,
       model: s?.model ?? config.model,
@@ -248,12 +250,49 @@ export class EdwardService implements A.EdwardApi {
   async signIn(): Promise<A.Result> {
     try {
       if (this.session.busy) return { ok: false, message: "Wait for Edward's reply to finish, then switch." };
-      await this.session.login((url) => void shell.openExternal(url));
+      const browser = () => this.session.login((url) => void shell.openExternal(url));
+      if (this.session.custom) {
+        // From another AI service. Codex may still be signed in to ChatGPT: then leaving the service is all.
+        // Otherwise sign in while still on the service, so closing the browser changes nothing; if Codex
+        // can't do that there, leave first.
+        if (this.session.openAi !== "chatgpt") await browser().catch(async () => (await this.session.leaveCustom(), browser()));
+        await this.session.leaveCustom();
+        this.entries = [];
+      } else await browser();
       this.takeAccount((await this.session.readAccount()).account);
       this.pushState();
       return this.session.signIn === "chatgpt" ? ok(`Signed in as ${this.account.email ?? "you"}`) : { ok: false, message: "That wasn't a ChatGPT account" };
     } catch (e) {
       return fail(e);
+    }
+  }
+
+  /**
+   * Switches Edward to another AI service (P, src/ai/custom.ts): OpenRouter, Qwen on Alibaba Cloud,
+   * anything that speaks OpenAI's Responses format. It is tried once first, so a wrong address, key
+   * or model changes nothing. What Edward sends then goes to that service, still through the guard.
+   */
+  async aiUseService(s: { baseUrl: string; model: string; key: string }): Promise<A.Result> {
+    const address = checkAddress(String(s?.baseUrl ?? ""));
+    if (!address.url) return { ok: false, message: address.problem ?? "That isn't a web address." };
+    const model = String(s?.model ?? "").trim();
+    if (!validModel(model)) return { ok: false, message: "That doesn't look like a model name. Use the name the service lists, like qwen-plus." };
+    const key = String(s?.key ?? "").trim();
+    if (key.length < 8 || key.split(/\s/).length > 1) return { ok: false, message: "That doesn't look like a key." };
+    if (this.session.busy) return { ok: false, message: "Wait for Edward's reply to finish, then switch." };
+    const ai = { baseUrl: address.url, model };
+    const check = await checkService(ai, key);
+    if (!check.ok) return check;
+    try {
+      await saveCustom(ai, key);
+      await this.session.useCustom();
+      this.entries = [];
+      return ok(`Edward now runs on ${this.session.custom?.name ?? "that service"}`);
+    } catch (e) {
+      return fail(e);
+    } finally {
+      this.takeAccount((await this.session.readAccount()).account);
+      this.pushState();
     }
   }
 
@@ -269,6 +308,7 @@ export class EdwardService implements A.EdwardApi {
     const check = await checkOpenAiKey(k);
     if (check === "rejected") return { ok: false, message: "OpenAI didn't accept this key. Check that all of it was copied and that it hasn't been deleted. Nothing was changed." };
     if (check === "unreachable") return { ok: false, message: "Couldn't reach OpenAI to check the key. Nothing was changed." };
+    if (this.session.custom) this.entries = [];
     try {
       await this.session.useApiKey(k);
       // Voice runs on the same key: Edward keeps its own encrypted copy for it, where the voice key always was.
@@ -1529,7 +1569,10 @@ export class EdwardService implements A.EdwardApi {
 
   async updateSettings(p: A.SettingsPatch): Promise<A.Settings> {
     const session = this.session;
-    if (p.model) {
+    if (p.model && session.custom) {
+      // Another service's models can't be listed: the name is typed.
+      if (validModel(p.model)) (setCustomModel(p.model), (session.model = p.model), this.pushState());
+    } else if (p.model) {
       const m = (await session.listModels()).find((x) => x.id === p.model);
       if (m) {
         session.model = m.id;
