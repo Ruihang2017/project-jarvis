@@ -1,3 +1,4 @@
+import { setCustomModel, validModel } from "./ai/custom.js";
 import { acceptBill, editBill, ignoreBill, markPaid } from "./bills/actions.js";
 import { existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -201,6 +202,14 @@ const COMMANDS: Record<string, Command> = {
     usage: "/model [id]",
     help: "List models, or switch model",
     run: async (args, session) => {
+      if (session.custom) {
+        // Another service's models aren't listed anywhere Edward can read: the name is typed.
+        if (!args) return console.log(`* ${session.model}  ${dim(`on ${session.custom.name}; /model <name> switches`)}`);
+        if (!validModel(args)) return console.log(dim("[that doesn't look like a model name]"));
+        setCustomModel(args);
+        session.model = args;
+        return console.log(dim(`[model: ${args}]`));
+      }
       const models = (await session.listModels()).filter((m) => !m.hidden);
       if (!args) {
         for (const m of models) {
@@ -243,6 +252,7 @@ const COMMANDS: Record<string, Command> = {
     usage: "/usage",
     help: "Show ChatGPT plan usage limits",
     run: async (_, session) => {
+      if (session.custom) return console.log(dim(`[${session.custom.name} bills you itself: see its own usage page]`));
       if (session.signIn === "apiKey") return console.log(dim("[an API key has no plan limits — usage and cost are on your OpenAI account page]"));
       const res = await session.rateLimits();
       const snap = res.rateLimits;

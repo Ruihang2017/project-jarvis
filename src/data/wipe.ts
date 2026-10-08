@@ -10,10 +10,11 @@ import { forgetKey } from "../google/keychain.js";
 import { appDataDir, envVar } from "../settings.js";
 
 /** Files and folders in the data directory that hold the user's data. */
-const DATA_ENTRIES = ["memory.db", "memory.db-wal", "memory.db-shm", "settings.json", "google.json", "google-token.bin", "accounts.json", "accounts", "openai-key.bin", "images", "images.jsonl", "logs", "backups", "exports", "tick-heartbeat.txt", "tick.vbs"];
+const DATA_ENTRIES = ["memory.db", "memory.db-wal", "memory.db-shm", "settings.json", "google.json", "google-token.bin", "accounts.json", "accounts", "openai-key.bin", "ai-key.bin", "images", "images.jsonl", "logs", "backups", "exports", "tick-heartbeat.txt", "tick.vbs"];
 /** Kept unless `all`: the ChatGPT sign-in, the user's own Google Cloud client file, and files they made in assist mode. */
 const KEPT = ["codex-home/auth.json", "codex-home/config.toml", "google-client.json", "workspace"];
-const CODEX_KEEP = new Set(["auth.json", "config.toml", "installation_id"]);
+// "secrets": where Codex keeps a sign-in encrypted (P); auth.json is the older plain one.
+const CODEX_KEEP = new Set(["auth.json", "secrets", "config.toml", "installation_id"]);
 
 const inside = (parent: string, child: string) => {
   const rel = relative(resolve(parent), resolve(child));

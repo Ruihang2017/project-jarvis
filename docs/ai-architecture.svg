@@ -1,0 +1,153 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" width="1200" height="800" role="img" aria-labelledby="t d" font-family="'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif">
+  <title id="t">How a message reaches the AI, and what the AI can do</title>
+  <desc id="d">A message goes from you through Edward's core, which adds what it remembers, then through the privacy guard, to Codex and on to the model you chose. The model cannot act: it asks for one of Edward's tools, Edward's code runs it (asking you first for anything that writes), and the result goes back through the guard. Background turns, permission modes and voice are shown below.</desc>
+  <style>
+    .bg { fill: #f3f6fa; }
+    .box { fill: #ffffff; stroke: #c8d1df; stroke-width: 1.5; }
+    .core { fill: #e6ecfb; stroke: #2a52be; stroke-width: 1.5; }
+    .guard { fill: #e1f0e5; stroke: #1f5e3a; stroke-width: 1.5; }
+    .ext { fill: #fdecdd; stroke: #c9792f; stroke-width: 1.5; }
+    .stop { fill: #fbe6e3; stroke: #9c261d; stroke-width: 1.5; }
+    .soft { fill: #edf1f7; stroke: #5f6b85; stroke-width: 1.5; }
+    .h { font-size: 15px; font-weight: 700; fill: #1a2236; }
+    .s { font-size: 12.5px; fill: #4a566e; }
+    .lab { font-size: 12px; fill: #1f3e94; font-weight: 600; }
+    .big { font-size: 22px; font-weight: 700; fill: #1a2236; }
+    .n { font-size: 13px; font-weight: 700; fill: #ffffff; }
+    .line { stroke: #4a566e; stroke-width: 1.6; fill: none; marker-end: url(#a); }
+    .both { stroke: #4a566e; stroke-width: 1.6; fill: none; marker-end: url(#a); marker-start: url(#b); }
+    .dash { stroke: #4a566e; stroke-width: 1.6; fill: none; stroke-dasharray: 6 5; marker-end: url(#a); }
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#4a566e"/></marker>
+    <marker id="b" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10 0L0 5L10 10z" fill="#4a566e"/></marker>
+  </defs>
+  <rect class="bg" width="1200" height="800"/>
+  <text class="big" x="40" y="42">How a message reaches the AI, and what the AI can do</text>
+  <text class="s" x="40" y="64">The model only reads and writes text. Everything that touches your mail, calendar or files is Edward's own code, and anything that changes something asks you first.</text>
+
+  <!-- the answer, back along the top -->
+  <path class="line" d="M1060 150V112H140V148"/>
+  <circle cx="600" cy="112" r="11" fill="#2a52be"/>
+  <text class="n" x="596" y="117">6</text>
+  <text class="lab" x="620" y="104">The answer streams back; control codes are stripped before it is shown</text>
+
+  <!-- row 1: the way in -->
+  <rect class="box" x="40" y="150" width="200" height="130" rx="12"/>
+  <circle cx="62" cy="172" r="11" fill="#2a52be"/><text class="n" x="58" y="177">1</text>
+  <text class="h" x="82" y="177">You</text>
+  <text class="s" x="56" y="202">A message, typed or spoken,</text>
+  <text class="s" x="56" y="219">and pictures you attach.</text>
+  <text class="s" x="56" y="244">In the app, the terminal,</text>
+  <text class="s" x="56" y="261">or by voice.</text>
+
+  <rect class="core" x="270" y="150" width="200" height="130" rx="12"/>
+  <circle cx="292" cy="172" r="11" fill="#2a52be"/><text class="n" x="288" y="177">2</text>
+  <text class="h" x="312" y="177">Edward's core</text>
+  <text class="s" x="286" y="202">Adds who Edward is, the</text>
+  <text class="s" x="286" y="219">memories that fit this</text>
+  <text class="s" x="286" y="236">message, today's date, and</text>
+  <text class="s" x="286" y="253">the list of tools it offers.</text>
+
+  <rect class="guard" x="500" y="150" width="200" height="130" rx="12"/>
+  <circle cx="522" cy="172" r="11" fill="#1f5e3a"/><text class="n" x="518" y="177">3</text>
+  <text class="h" x="542" y="177">Privacy guard</text>
+  <text class="s" x="516" y="202">Cuts card, bank, account</text>
+  <text class="s" x="516" y="219">and ID numbers, passwords</text>
+  <text class="s" x="516" y="236">and codes out of every</text>
+  <text class="s" x="516" y="253">string. Nothing skips it.</text>
+
+  <rect class="box" x="730" y="150" width="200" height="130" rx="12"/>
+  <circle cx="752" cy="172" r="11" fill="#2a52be"/><text class="n" x="748" y="177">4</text>
+  <text class="h" x="772" y="177">Codex</text>
+  <text class="s" x="746" y="202">A local process. Keeps the</text>
+  <text class="s" x="746" y="219">conversation, sends it to</text>
+  <text class="s" x="746" y="236">the model, runs the tool</text>
+  <text class="s" x="746" y="253">loop, shortens long history.</text>
+
+  <rect class="ext" x="960" y="150" width="200" height="130" rx="12"/>
+  <circle cx="982" cy="172" r="11" fill="#c9792f"/><text class="n" x="978" y="177">5</text>
+  <text class="h" x="1002" y="177">The model</text>
+  <text class="s" x="976" y="202">ChatGPT plan, OpenAI API</text>
+  <text class="s" x="976" y="219">key, or another service you</text>
+  <text class="s" x="976" y="236">chose. The only part that</text>
+  <text class="s" x="976" y="253">is not on your computer.</text>
+
+  <path class="line" d="M240 215H268"/>
+  <path class="line" d="M470 215H498"/>
+  <path class="line" d="M700 215H728"/>
+  <path class="both" d="M930 215H958"/>
+
+  <!-- row 2: the tool loop -->
+  <path class="both" d="M830 280V338"/>
+  <text class="lab" x="842" y="306">asks for a tool by name ·</text>
+  <text class="lab" x="842" y="322">gets the result, guarded</text>
+
+  <rect class="core" x="500" y="340" width="430" height="150" rx="12"/>
+  <text class="h" x="516" y="364">Edward's tools: the model asks, Edward's code acts</text>
+  <text class="s" x="516" y="388">Reading runs at once: calendar, mail search, lists, memory, bills.</text>
+  <text class="s" x="516" y="408">Writing waits for you: send an email, add or move an event,</text>
+  <text class="s" x="516" y="425">mark a bill paid. You see exactly what will happen.</text>
+  <text class="s" x="516" y="449">Results are text from outside: control codes are stripped and</text>
+  <text class="s" x="516" y="466">they pass the privacy guard before the model sees them.</text>
+
+  <rect class="box" x="270" y="340" width="200" height="66" rx="12"/>
+  <text class="h" x="286" y="364">Your OK</text>
+  <text class="s" x="286" y="386">A card with Send / Cancel</text>
+  <path class="dash" d="M498 373H472"/>
+  <path class="dash" d="M270 373H242"/>
+  <text class="lab" x="276" y="428">writes only</text>
+  <path class="both" d="M498 462H242"/>
+  <text class="lab" x="330" y="456">reads</text>
+
+  <rect class="ext" x="40" y="340" width="200" height="150" rx="12"/>
+  <text class="h" x="56" y="364">What tools reach</text>
+  <text class="s" x="56" y="388">Google Calendar, Gmail and</text>
+  <text class="s" x="56" y="405">Tasks, with your sign-in.</text>
+  <text class="s" x="56" y="429">Edward's own stores on</text>
+  <text class="s" x="56" y="446">this computer: memories,</text>
+  <text class="s" x="56" y="463">reminders, bills, trips.</text>
+
+  <rect class="stop" x="960" y="340" width="200" height="150" rx="12"/>
+  <text class="h" x="976" y="364">No tool exists for</text>
+  <text class="s" x="976" y="388">• paying anything</text>
+  <text class="s" x="976" y="408">• signing in to a bank</text>
+  <text class="s" x="976" y="428">• deleting mail</text>
+  <text class="s" x="976" y="448">• doing what an email</text>
+  <text class="s" x="976" y="465">  tells Edward to do</text>
+
+  <!-- row 3: the rest -->
+  <rect class="soft" x="40" y="540" width="360" height="232" rx="12"/>
+  <text class="h" x="56" y="566">Work in the background</text>
+  <text class="s" x="56" y="590">Mail summary, bill scan, trips from booking emails,</text>
+  <text class="s" x="56" y="607">learning from conversations.</text>
+  <text class="s" x="56" y="633">• Each is a throwaway conversation of its own.</text>
+  <text class="s" x="56" y="653">• It has no tools unless a few reading ones are</text>
+  <text class="s" x="56" y="670">  named, and that is enforced when a tool is called.</text>
+  <text class="s" x="56" y="690">• The answer must fit a fixed JSON shape.</text>
+  <text class="s" x="56" y="710">• Code checks every field before anything is kept</text>
+  <text class="s" x="56" y="727">  or shown: an address the model made up is dropped.</text>
+  <text class="lab" x="56" y="754">Same path: core → guard → Codex → model</text>
+
+  <rect class="soft" x="420" y="540" width="360" height="232" rx="12"/>
+  <text class="h" x="436" y="566">Permission modes</text>
+  <text class="s" x="436" y="590">Chat (the default): Codex's own shell, file reading</text>
+  <text class="s" x="436" y="607">and browser are switched off. The model sees only</text>
+  <text class="s" x="436" y="624">what came through Edward and the guard.</text>
+  <text class="s" x="436" y="650">Manual, Semi-auto, Auto: Codex may run commands</text>
+  <text class="s" x="436" y="667">and edit files, asking each time, less often, or not</text>
+  <text class="s" x="436" y="684">at all. What it reads that way is outside the guard,</text>
+  <text class="s" x="436" y="701">and the app says so.</text>
+  <text class="lab" x="436" y="754">The mode is always shown at the top right</text>
+
+  <rect class="soft" x="800" y="540" width="360" height="232" rx="12"/>
+  <text class="h" x="816" y="566">Voice</text>
+  <text class="s" x="816" y="590">OpenAI's realtime model only hears and speaks:</text>
+  <text class="s" x="816" y="607">no tools, and it never answers by itself.</text>
+  <text class="s" x="816" y="633">What you said comes back as text and takes the</text>
+  <text class="s" x="816" y="650">path above (steps 2 to 6); the answer is read aloud.</text>
+  <text class="s" x="816" y="676">Your voice goes to OpenAI as sound, before the</text>
+  <text class="s" x="816" y="693">guard can see it: don't say card numbers or</text>
+  <text class="s" x="816" y="710">passwords. The app says so while voice is on.</text>
+  <text class="lab" x="816" y="754">Only while you hold a call open</text>
+</svg>

@@ -81,6 +81,8 @@ export interface Settings {
   mailSummaryTimes?: string[] | "off";
   /** Weekly review (H3): day (0 = Sunday) and time, default Sunday 19:00, or off. */
   weeklyReview?: { day: number; time: string } | "off";
+  /** Another AI service instead of OpenAI (P, src/ai/custom.ts): its address and model. Its key is in ai-key.bin, encrypted. */
+  ai?: { baseUrl: string; model: string };
 }
 
 const settingsPath = () => join(appDataDir(), "settings.json");

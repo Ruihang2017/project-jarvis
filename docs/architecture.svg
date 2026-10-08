@@ -1,0 +1,168 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" width="1200" height="800" role="img" aria-labelledby="t d" font-family="'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif">
+  <title id="t">How Edward is built</title>
+  <desc id="d">Everything inside the dashed frame runs on your computer: the desktop app, the terminal version and the background job, on one shared core, with Codex as the AI engine. Outside it are the services Edward talks to: the AI model you chose, Google, OpenAI's voice service and Open-Meteo.</desc>
+  <style>
+    .bg { fill: #f3f6fa; }
+    .frame { fill: none; stroke: #2a52be; stroke-width: 2; stroke-dasharray: 8 6; }
+    .box { fill: #ffffff; stroke: #c8d1df; stroke-width: 1.5; }
+    .core { fill: #e6ecfb; stroke: #2a52be; stroke-width: 1.5; }
+    .guard { fill: #e1f0e5; stroke: #1f5e3a; stroke-width: 1.5; }
+    .ext { fill: #fdecdd; stroke: #c9792f; stroke-width: 1.5; }
+    .disk { fill: #edf1f7; stroke: #5f6b85; stroke-width: 1.5; }
+    .h { font-size: 15px; font-weight: 700; fill: #1a2236; }
+    .s { font-size: 12.5px; fill: #4a566e; }
+    .lab { font-size: 12px; fill: #1f3e94; font-weight: 600; }
+    .big { font-size: 22px; font-weight: 700; fill: #1a2236; }
+    .zone { font-size: 13px; font-weight: 700; fill: #1f3e94; letter-spacing: 0.04em; }
+    .line { stroke: #4a566e; stroke-width: 1.6; fill: none; marker-end: url(#a); }
+    .both { stroke: #4a566e; stroke-width: 1.6; fill: none; marker-end: url(#a); marker-start: url(#b); }
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#4a566e"/></marker>
+    <marker id="b" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10 0L0 5L10 10z" fill="#4a566e"/></marker>
+  </defs>
+  <rect class="bg" width="1200" height="800"/>
+  <text class="big" x="32" y="42">How Edward is built</text>
+  <text class="s" x="32" y="64">One core, three ways in. Everything in the dashed frame runs on your computer; there is no Edward server.</text>
+
+  <rect class="frame" x="24" y="84" width="852" height="696" rx="18"/>
+  <text class="zone" x="44" y="108">YOUR COMPUTER</text>
+
+  <!-- three ways in -->
+  <rect class="box" x="44" y="124" width="388" height="150" rx="12"/>
+  <text class="h" x="60" y="148">Desktop app (Electron)</text>
+  <rect class="box" x="60" y="162" width="164" height="96" rx="10"/>
+  <text class="h" x="74" y="186" font-size="13.5">Window</text>
+  <text class="s" x="74" y="206">React pages, sandboxed,</text>
+  <text class="s" x="74" y="223">no Node, no secrets,</text>
+  <text class="s" x="74" y="240">no outside HTML</text>
+  <rect class="box" x="264" y="162" width="152" height="96" rx="10"/>
+  <text class="h" x="278" y="186" font-size="13.5">Main process</text>
+  <text class="s" x="278" y="206">service.ts: the only</text>
+  <text class="s" x="278" y="223">API the window gets</text>
+  <text class="s" x="278" y="240">(a fixed whitelist)</text>
+  <path class="both" d="M226 210H262"/>
+  <text class="lab" x="231" y="202">IPC</text>
+
+  <rect class="box" x="452" y="124" width="196" height="150" rx="12"/>
+  <text class="h" x="468" y="148">Terminal version</text>
+  <text class="s" x="468" y="170">edward: a REPL with slash</text>
+  <text class="s" x="468" y="187">commands, approvals and</text>
+  <text class="s" x="468" y="204">Markdown in the terminal</text>
+  <text class="s" x="468" y="230">edward setup, doctor,</text>
+  <text class="s" x="468" y="247">delete-data, uninstall</text>
+
+  <rect class="box" x="668" y="124" width="188" height="150" rx="12"/>
+  <text class="h" x="684" y="148">Background job</text>
+  <text class="s" x="684" y="170">Every minute, then ends:</text>
+  <text class="s" x="684" y="187">a scheduled task (Windows)</text>
+  <text class="s" x="684" y="204">or launchd agent (macOS)</text>
+  <text class="s" x="684" y="230">Reminders, bill notices,</text>
+  <text class="s" x="684" y="247">the morning brief</text>
+
+  <path class="line" d="M340 274V306"/>
+  <path class="line" d="M550 274V306"/>
+  <path class="line" d="M762 274V306"/>
+
+  <!-- core -->
+  <rect class="core" x="44" y="308" width="812" height="252" rx="14"/>
+  <text class="h" x="60" y="332">The core (src/, TypeScript on Node, no runtime dependencies)</text>
+
+  <rect class="box" x="60" y="346" width="180" height="92" rx="10"/>
+  <text class="h" x="74" y="370" font-size="13.5">Session</text>
+  <text class="s" x="74" y="390">Conversations, turns,</text>
+  <text class="s" x="74" y="407">permission modes,</text>
+  <text class="s" x="74" y="424">what Edward runs on</text>
+
+  <rect class="box" x="256" y="346" width="190" height="92" rx="10"/>
+  <text class="h" x="270" y="370" font-size="13.5">Edward's tools</text>
+  <text class="s" x="270" y="390">Calendar, Gmail, lists,</text>
+  <text class="s" x="270" y="407">reminders, memory, bills;</text>
+  <text class="s" x="270" y="424">writes ask you first</text>
+
+  <rect class="box" x="462" y="346" width="186" height="92" rx="10"/>
+  <text class="h" x="476" y="370" font-size="13.5">Heads-ups</text>
+  <text class="s" x="476" y="390">Meetings, mail summary,</text>
+  <text class="s" x="476" y="407">week ahead, trips: code</text>
+  <text class="s" x="476" y="424">checks what the AI returns</text>
+
+  <rect class="box" x="664" y="346" width="176" height="92" rx="10"/>
+  <text class="h" x="678" y="370" font-size="13.5">Accounts</text>
+  <text class="s" x="678" y="390">Several personal Google</text>
+  <text class="s" x="678" y="407">accounts; work accounts</text>
+  <text class="s" x="678" y="424">are refused in code</text>
+
+  <rect class="guard" x="60" y="454" width="386" height="90" rx="10"/>
+  <text class="h" x="74" y="478" font-size="13.5">Privacy guard</text>
+  <text class="s" x="74" y="498">Every string on its way to the AI passes one filter: card, bank,</text>
+  <text class="s" x="74" y="515">account and ID numbers, passwords and codes are cut out.</text>
+  <text class="s" x="74" y="532">The same check refuses to store them. Fail-closed.</text>
+
+  <rect class="box" x="462" y="454" width="378" height="90" rx="10"/>
+  <text class="h" x="476" y="478" font-size="13.5">Stores</text>
+  <text class="s" x="476" y="498">Memories, reminders, bills, mail summaries, trips, notices</text>
+  <text class="s" x="476" y="515">(one SQLite file), settings, pictures. Never a booking code,</text>
+  <text class="s" x="476" y="532">card number or password, not even in part.</text>
+
+  <!-- local engine and disk -->
+  <rect class="box" x="44" y="596" width="304" height="164" rx="12"/>
+  <text class="h" x="60" y="620">Codex app-server</text>
+  <text class="s" x="60" y="642">OpenAI's open-source agent engine, a local</text>
+  <text class="s" x="60" y="659">process. Keeps the conversation, runs the</text>
+  <text class="s" x="60" y="676">tool loop, compacts long context.</text>
+  <text class="s" x="60" y="702">In Chat mode its own shell, file reading</text>
+  <text class="s" x="60" y="719">and browser are switched off, so the AI</text>
+  <text class="s" x="60" y="736">sees only what passed the guard.</text>
+  <path class="both" d="M150 546V594"/>
+  <text class="lab" x="158" y="576">JSON-RPC over stdio, through the guard</text>
+
+  <rect class="disk" x="372" y="596" width="484" height="164" rx="12"/>
+  <text class="h" x="388" y="620">Data folder and the system</text>
+  <text class="s" x="388" y="642">%LOCALAPPDATA%\Edward, or ~/Library/Application Support/Edward</text>
+  <text class="s" x="388" y="666">• settings.json, memory.db, pictures, Codex's conversation history</text>
+  <text class="s" x="388" y="686">• Google sign-ins, the AI key and the voice key: encrypted with</text>
+  <text class="s" x="388" y="703">  Windows DPAPI, or a key in the Mac's login keychain</text>
+  <text class="s" x="388" y="723">• Notifications and the background job come from the system itself;</text>
+  <text class="s" x="388" y="740">  nothing needs administrator rights</text>
+  <path class="both" d="M650 546V594"/>
+
+  <!-- outside -->
+  <text class="zone" x="912" y="108">SERVICES IT TALKS TO</text>
+
+  <rect class="ext" x="912" y="124" width="264" height="190" rx="12"/>
+  <text class="h" x="928" y="148">The AI model (you choose one)</text>
+  <text class="s" x="928" y="172">• ChatGPT plan, through Codex</text>
+  <text class="s" x="928" y="192">• OpenAI API key</text>
+  <text class="s" x="928" y="212">• Another service that speaks</text>
+  <text class="s" x="928" y="229">  OpenAI's Responses format:</text>
+  <text class="s" x="928" y="246">  OpenRouter, Qwen… (experimental)</text>
+  <text class="s" x="928" y="266">• A model on your own computer</text>
+  <text class="s" x="928" y="283">  (planned)</text>
+  <text class="lab" x="928" y="304">Called by Codex only</text>
+
+  <rect class="ext" x="912" y="336" width="264" height="120" rx="12"/>
+  <text class="h" x="928" y="360">Google</text>
+  <text class="s" x="928" y="382">Calendar, Gmail and Tasks, with your</text>
+  <text class="s" x="928" y="399">own sign-in and the fewest permissions.</text>
+  <text class="s" x="928" y="419">Writes need your OK each time.</text>
+  <text class="lab" x="928" y="443">Called by the core's Google clients</text>
+
+  <rect class="ext" x="912" y="478" width="264" height="104" rx="12"/>
+  <text class="h" x="928" y="502">OpenAI realtime voice</text>
+  <text class="s" x="928" y="524">Only when you press the microphone.</text>
+  <text class="s" x="928" y="541">It only hears and speaks.</text>
+  <text class="lab" x="928" y="567">Called by the app's main process</text>
+
+  <rect class="ext" x="912" y="604" width="264" height="104" rx="12"/>
+  <text class="h" x="928" y="628">Open-Meteo</text>
+  <text class="s" x="928" y="650">The weather where a trip goes:</text>
+  <text class="s" x="928" y="667">a place name and a date, nothing else.</text>
+  <text class="lab" x="928" y="692">Called by the core</text>
+
+  <path class="both" d="M880 220H908"/>
+  <path class="both" d="M880 396H908"/>
+  <path class="both" d="M880 530H908"/>
+  <path class="both" d="M880 656H908"/>
+  <text class="s" x="912" y="740">Edward can't pay, sign in to a bank,</text>
+  <text class="s" x="912" y="757">or follow instructions found in an email.</text>
+</svg>

@@ -1,4 +1,4 @@
-import { Session, signInOf } from "./session.js";
+import { Session } from "./session.js";
 import { repl, runTurn } from "./ui.js";
 import { openBrowser } from "./util.js";
 import { ensureDataVersion } from "./data/version.js";
@@ -18,16 +18,16 @@ export async function main(args: string[]) {
   const session = new Session();
   try {
     let { account } = await session.init();
-    if (!account) {
+    if (!session.signIn && !account) {
       console.log("Edward needs its own ChatGPT sign-in (one time). Opening your browser…");
       await session.login((url) => {
         console.log(`If it doesn't open, visit:\n  ${url}\n`);
         openBrowser(url);
       });
-      ({ account } = await session.init());
+      ({ account } = await session.readAccount());
     }
-    if (!signInOf(account)) {
-      console.error(`Expected a ChatGPT account or an OpenAI API key, got: ${account?.type ?? "none"}`);
+    if (!session.signIn) {
+      console.error(`Edward isn't signed in to an AI it can use (Codex says: ${account?.type ?? "none"}). Choose one in the desktop app's Settings, or run: edward setup`);
       process.exitCode = 1;
       return;
     }

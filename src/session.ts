@@ -40,6 +40,7 @@ import { BILL_INSTRUCTIONS } from "./bills/tools.js";
 import { googleInstructions } from "./google/instructions.js";
 import { codexEnv, config, PERSONA } from "./config.js";
 import { CREDENTIAL_STORE, saveKeyInCodex } from "./ai/account.js";
+import { clearCustom, customLaunch, type CustomAi } from "./ai/custom.js";
 import { guardOutgoing, type Source } from "./privacy/outgoing.js";
 import type { Category } from "./privacy/guard.js";
 import { relative, isAbsolute, resolve } from "node:path";
@@ -110,11 +111,11 @@ export function codexChannels(guarded: boolean) {
   };
 }
 
-/** How Codex is signed in, for the ones Edward runs on: a ChatGPT plan, or an OpenAI API key (P). */
-export type SignIn = "chatgpt" | "apiKey";
+/** What Edward runs on (P): a ChatGPT plan or an OpenAI API key (Codex's own sign-ins), or another AI service. */
+export type SignIn = "chatgpt" | "apiKey" | "custom";
 
 /** null when Codex isn't signed in, or is signed in some way Edward hasn't been run with. */
-export function signInOf(account: { type: string } | null | undefined): SignIn | null {
+export function signInOf(account: { type: string } | null | undefined): "chatgpt" | "apiKey" | null {
   return account?.type === "chatgpt" || account?.type === "apiKey" ? account.type : null;
 }
 
@@ -126,7 +127,9 @@ interface ActiveTurn {
 }
 
 /** Per-thread Codex config: effort, the mode's channel switches, and web search off when the user turned it off. */
-export function threadConfig(effort: string, mode: Mode) {
+export function threadConfig(effort: string, mode: Mode, custom = false) {
+  // Another service (P): OpenAI's web search isn't there, and its models may not take an effort.
+  if (custom) return { ...codexChannels(MODES[mode].guarded), web_search: "disabled" };
   return { model_reasoning_effort: effort, ...codexChannels(MODES[mode].guarded), ...(loadSettings().webSearch === "off" ? { web_search: "disabled" } : {}) };
 }
 
@@ -250,6 +253,9 @@ export class Session {
   }
 
   async init(): Promise<GetAccountResponse> {
+    // Codex was started for OpenAI; another service chosen in the settings needs its own start.
+    if (!this.launched && loadSettings().ai) await this.launch();
+    this.launched = true;
     await this.client.request<InitializeResponse>("initialize", {
       clientInfo: { name: "edward", title: "Edward", version: "0.3.1" },
       // Needed for dynamicTools (Edward tools); experimental fields may change across codex versions.
@@ -262,7 +268,9 @@ export class Session {
   /** Asks Codex how it is signed in now; what depended on the old sign-in (models, plan limits) is forgotten. */
   async readAccount(): Promise<GetAccountResponse> {
     const res = await this.client.request<GetAccountResponse>("account/read", { refreshToken: false });
-    const now = signInOf(res.account);
+    this.openAi = signInOf(res.account);
+    // With another service chosen, an OpenAI sign-in that is still stored is not what Edward runs on.
+    const now: SignIn | null = loadSettings().ai ? (this.custom ? "custom" : null) : this.openAi;
     if (now !== this.signIn) {
       this.modelCache = null;
       this.limits = null;
@@ -273,6 +281,40 @@ export class Session {
 
   /** As of the last init() or readAccount(). An API key has no plan limits, and Codex gives it no image generation. */
   signIn: SignIn | null = null;
+  /** Another AI service Codex was started with (P, src/ai/custom.ts); null when Edward runs on OpenAI. */
+  custom: CustomAi | null = null;
+  /** How Codex itself is signed in to OpenAI, whatever Edward runs on. */
+  openAi: "chatgpt" | "apiKey" | null = null;
+  private launched = false;
+
+  /** Starts Codex afresh: for the service in the settings, or for OpenAI. */
+  private async launch(): Promise<void> {
+    const was = this.custom;
+    // A chosen service whose key can't be read leaves Edward signed out (readAccount): never quietly on OpenAI.
+    const c = await customLaunch().catch(() => null);
+    this.custom = c?.ai ?? null;
+    if (c) this.model = c.ai.model;
+    else if (was) this.model = config.model;
+    this.client.restart(c?.args ?? CREDENTIAL_STORE, codexEnv({ CODEX_HOME: this.codexHome, ...c?.env }));
+    this.openRequests.clear();
+  }
+
+  /** Switches to the AI service just saved in the settings. A new conversation: one belongs to the provider it began with. */
+  async useCustom(): Promise<void> {
+    if (this.busy) throw new Error("can't switch during a reply");
+    this.threadId = null;
+    await this.restartCodex();
+    if (this.signIn !== "custom") throw new Error("Codex couldn't be started with that service");
+  }
+
+  /** Back from another service to OpenAI, as Codex is signed in there (possibly not at all). */
+  async leaveCustom(): Promise<void> {
+    if (this.busy) throw new Error("can't switch during a reply");
+    if (!loadSettings().ai) return;
+    clearCustom();
+    this.threadId = null;
+    await this.restartCodex();
+  }
 
   /**
    * Switches Codex to an OpenAI API key (P). The caller has checked the key with OpenAI first, so
@@ -285,6 +327,8 @@ export class Session {
     await this.client.request("account/logout", undefined).catch(() => {});
     try {
       await saveKeyInCodex(key, this.codexHome);
+      // Leaving another service too: a conversation belongs to the provider it began with.
+      if (loadSettings().ai) (clearCustom(), (this.threadId = null));
     } finally {
       // A Codex that is already running can't be relied on to notice a sign-in made beside it
       // (usually within seconds, once not within 15); one that starts now reads it.
@@ -295,8 +339,8 @@ export class Session {
 
   /** A fresh app-server, signed in as the files say now, with the conversation loaded again. */
   private async restartCodex(): Promise<void> {
-    this.client.restart();
-    this.openRequests.clear();
+    await this.launch();
+    this.launched = true;
     await this.init();
     if (!this.threadId || !this.signIn) return;
     // Without this the next message would go to a thread the new process doesn't have.
@@ -335,7 +379,7 @@ export class Session {
       approvalPolicy: MODES[this.mode].approvalPolicy,
       // Rebuilt on every start/resume so the thread sees the current long-term core.
       developerInstructions: PERSONA + memoryInstructions(this.memory) + REMINDER_INSTRUCTIONS + googleInstructions(this.accounts) + BILL_INSTRUCTIONS,
-      config: threadConfig(this.effort, this.mode),
+      config: threadConfig(this.effort, this.mode, this.custom !== null),
     };
   }
 
@@ -404,7 +448,7 @@ export class Session {
       approvalPolicy: "never",
       developerInstructions: instructions,
       ephemeral: true,
-      config: { model_reasoning_effort: help.effort ?? "low", web_search: "disabled", ...codexChannels(true) },
+      config: { ...(this.custom ? {} : { model_reasoning_effort: help.effort ?? "low" }), web_search: "disabled", ...codexChannels(true) },
       ...(tools.length ? { dynamicTools: TOOL_SPECS.filter((t) => tools.includes(t.name)) } : {}),
     });
     const threadId = res.thread.id;
@@ -476,6 +520,8 @@ export class Session {
   private modelCache: Model[] | null = null;
 
   async listModels(): Promise<Model[]> {
+    // Codex only knows OpenAI's models; another service's model is the one the user named.
+    if (this.custom) return [];
     this.modelCache ??= (await this.client.request<ModelListResponse>("model/list", {})).data;
     return this.modelCache;
   }
@@ -573,7 +619,7 @@ export class Session {
             ...notes.map((note) => ({ type: "text" as const, text: note, text_elements: [] })),
           ],
           model: this.model,
-          effort: this.effort,
+          ...(this.custom ? {} : { effort: this.effort }),
           // Per-turn so /mode applies to the current thread immediately.
           approvalPolicy: MODES[this.mode].approvalPolicy,
           sandboxPolicy: MODES[this.mode].sandboxPolicy,

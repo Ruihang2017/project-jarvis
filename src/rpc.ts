@@ -57,8 +57,8 @@ export class CodexClient extends EventEmitter<{
 
   constructor(
     private readonly bin: string,
-    private readonly args: string[] = [],
-    private readonly env: NodeJS.ProcessEnv = process.env,
+    private args: string[] = [],
+    private env: NodeJS.ProcessEnv = process.env,
     private readonly filter?: OutgoingFilter,
   ) {
     super();
@@ -95,11 +95,14 @@ export class CodexClient extends EventEmitter<{
   }
 
   /**
-   * Stops this app-server and starts a fresh one: same program, arguments, environment and guard.
+   * Stops this app-server and starts a fresh one: the same program and guard, and the same arguments
+   * and environment unless others are given (another model provider, P).
    * Requests in flight fail, nothing is loaded in the new one, and the caller sends "initialize"
    * again. There is no "exit" event: it didn't stop by itself.
    */
-  restart() {
+  restart(args: string[] = this.args, env: NodeJS.ProcessEnv = this.env) {
+    this.args = args;
+    this.env = env;
     const old = this.proc;
     for (const p of this.pending.values()) p.reject(new Error(`codex app-server restarted during ${p.method}`));
     this.pending.clear();

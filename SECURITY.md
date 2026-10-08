@@ -1,7 +1,7 @@
 # Security and privacy
 
 Edward is a personal assistant that runs on your own computer (Windows or macOS). It talks to an AI model through
-the Codex CLI, with your own ChatGPT account or your own OpenAI API key, and — if you connect them — to your own Google Calendar,
+the Codex CLI, with your own ChatGPT account or your own OpenAI API key (or another AI service you choose), and — if you connect them — to your own Google Calendar,
 Gmail and Google Tasks. Two more only when used: OpenAI's realtime voice service (with your own API key)
 and Open-Meteo for the weather where a trip goes (a place name and a date). There is no Edward server:
 nothing is sent anywhere else.
@@ -154,6 +154,23 @@ the first start): your ChatGPT account, in the browser, or an OpenAI API key.
 - With an API key the same things are sent to OpenAI as with a ChatGPT account, through the same guard.
   What differs is OpenAI's side: its API terms apply, and it bills the key for what Edward uses, the
   mail summary, bill scan and trips included.
+
+**Another AI service instead of OpenAI (experimental).** You can point Edward at a service that speaks
+OpenAI's Responses format: OpenRouter, Qwen on Alibaba Cloud, or your own. Then:
+
+- **What Edward sends goes to that service, not to OpenAI:** your questions, and the mail and calendar
+  entries Edward reads for you, after the privacy guard as always. That service's terms apply, and the app
+  names its host wherever it says where things go. Choose one you trust with your mail.
+- The address must be `https://` (plain `http://` only for this computer), with no sign-in details in it.
+  Its name on screen comes from the address, and the model name may only have the characters model names
+  have: neither is free text.
+- Before switching, Edward sends the service one request with nothing of yours in it ("Reply with the
+  word: ok"), to see that the address, the key and the model work. If not, nothing changes.
+- The key is encrypted like the Google sign-ins (`ai-key.bin`). Codex gets it in its environment, never on
+  a command line, and Codex keeps variables with KEY in their name away from the commands it runs. If the
+  key can't be read, Edward is signed out: it never falls back to OpenAI by itself.
+- Web search is switched off (it is OpenAI's), and there are no pictures. Everything else is unchanged:
+  the one path to Codex, the guard, the approvals.
 
 Both protect against someone copying the files, a backup that leaks, or another user of the computer.
 Neither protects against a program running as you: it can ask Windows, or the keychain, the same way

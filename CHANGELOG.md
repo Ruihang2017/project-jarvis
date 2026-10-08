@@ -9,6 +9,14 @@
   nothing. With a key there are no plan limits to show, and no pictures yet. Voice uses the same key:
   there is no second one to enter. The terminal version follows
   the choice made in the app (they share the sign-in), and `/usage` and `/doctor` say which is in use.
+- **Experimental: another AI service.** Settings → Change → "Another AI service" runs Edward on a service
+  that speaks OpenAI's Responses format instead of on OpenAI: OpenRouter (Claude, Qwen, Gemini and more),
+  Qwen on Alibaba Cloud, or any other with its address, a model name and your key. Edward tries it once
+  before switching, so a wrong address, key or model changes nothing. What Edward sends then goes to that
+  service, still through the privacy guard. There is no web search and no pictures, the model's name is
+  typed rather than picked, and how well the calendar, mail and reminder tools work depends on the model.
+  Checked so far only with OpenAI's own address standing in for the service.
+- Two drawings in the README show how Edward is built and how a message reaches the AI.
 - The sign-in to the AI is now kept encrypted, with its key in the Windows credential store or the Mac
   keychain. A sign-in from an earlier version keeps working as it is, and is replaced by an encrypted one
   the next time you sign in or switch.

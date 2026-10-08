@@ -24,7 +24,7 @@ export function Setup() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [busy, setBusy] = useState(false);
   /** The dialog for choosing the AI or entering a key (step 2). */
-  const [ai, setAi] = useState<"choose" | "key" | null>(null);
+  const [ai, setAi] = useState<"choose" | "key" | "service" | null>(null);
   // "setup-3" jumps to a step (used by the screenshot checks).
   useEffect(() => {
     const m = /^setup-(\d|done)$/.exec(route.page);
@@ -166,7 +166,7 @@ export function Setup() {
               <Card className="pad between">
                 <div className="row">
                   <Icon name="check" width={2.2} color="var(--sage-ink)" />
-                  <b>{state.apiKey ? "Edward runs on your OpenAI API key" : `Signed in to ChatGPT${state.email ? ` as ${state.email}` : ""}`}</b>
+                  <b>{state.custom ? `Edward runs on ${state.custom.name}` : state.apiKey ? "Edward runs on your OpenAI API key" : `Signed in to ChatGPT${state.email ? ` as ${state.email}` : ""}`}</b>
                 </div>
                 <Button small onClick={() => setAi("choose")}>
                   Change
@@ -211,6 +211,13 @@ export function Setup() {
                     <span className="muted">{id === "chatgpt" ? "Your browser opens for the sign-in. Edward never sees your password." : "The key stays on this computer."}</span>
                   </Card>
                 ))}
+              </div>
+            )}
+            {!state.signedIn && (
+              <div>
+                <Button kind="ghost" small disabled={busy} onClick={() => setAi("service")}>
+                  Another AI service: OpenRouter, Qwen and others
+                </Button>
               </div>
             )}
             {ai && <AiAccount start={ai} onClose={() => setAi(null)} />}

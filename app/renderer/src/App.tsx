@@ -245,7 +245,7 @@ function Sidebar({ badges }: { badges: { bills: number; mail: number } }) {
       <div className="nav-status">
         <div>
           <span>AI</span>
-          <span className={state.signedIn ? "on" : "off"}>{!state.signedIn ? "Not signed in" : state.apiKey ? "API key" : "ChatGPT plan"}</span>
+          <span className={state.signedIn ? "on" : "off"}>{!state.signedIn ? "Not signed in" : state.custom ? state.custom.name : state.apiKey ? "API key" : "ChatGPT plan"}</span>
         </div>
         <div>
           <span>Google</span>
