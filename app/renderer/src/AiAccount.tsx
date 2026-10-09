@@ -22,11 +22,24 @@ export const AI_FACTS: Record<"chatgpt" | "apiKey", { name: string; facts: strin
 };
 
 /** Services with a known address. Any other that speaks OpenAI's Responses format works with its own address. */
-const SERVICES = [
-  { id: "openrouter", name: "OpenRouter", baseUrl: "https://openrouter.ai/api/v1", model: "the name OpenRouter lists, like qwen/qwen-plus" },
-  { id: "qwen", name: "Qwen (Alibaba Cloud)", baseUrl: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1", model: "the name Model Studio lists, like qwen-plus" },
-  { id: "other", name: "Other", baseUrl: "", model: "the name the service lists" },
-] as const;
+const SERVICES: { id: string; name: string; baseUrl: string; list?: { name: string; url: string }; example?: string; note?: string }[] = [
+  {
+    id: "openrouter",
+    name: "OpenRouter",
+    baseUrl: "https://openrouter.ai/api/v1",
+    list: { name: "OpenRouter's model list", url: "https://openrouter.ai/models" },
+    example: "qwen/qwen-plus",
+    note: "Free ones end in :free, and some of those keep what you send.",
+  },
+  {
+    id: "qwen",
+    name: "Qwen (Alibaba Cloud)",
+    baseUrl: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+    list: { name: "Model Studio's model list", url: "https://www.alibabacloud.com/help/en/model-studio/models" },
+    example: "qwen-plus",
+  },
+  { id: "other", name: "Other", baseUrl: "" },
+];
 
 const hostOf = (address: string) => {
   try {
@@ -49,8 +62,8 @@ export function AiAccount({ start = "choose", onClose }: { start?: Step; onClose
   const [step, setStep] = useState<Step>(start);
   const [pick, setPick] = useState<AiChoice>(current === "chatgpt" ? "apiKey" : "chatgpt");
   const [key, setKey] = useState("");
-  const [service, setService] = useState<(typeof SERVICES)[number]["id"]>("openrouter");
-  const [address, setAddress] = useState<string>(SERVICES[0].baseUrl);
+  const [service, setService] = useState("openrouter");
+  const [address, setAddress] = useState("https://openrouter.ai/api/v1");
   const [model, setModel] = useState("");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState("");
@@ -87,6 +100,7 @@ export function AiAccount({ start = "choose", onClose }: { start?: Step; onClose
   const names: Record<AiChoice, string> = { ...{ chatgpt: AI_FACTS.chatgpt.name, apiKey: AI_FACTS.apiKey.name }, custom: "Another AI service" };
   const title = step === "choose" ? "What should Edward run on?" : step === "key" ? "Use an OpenAI API key" : "Use another AI service";
   const host = hostOf(address);
+  const chosen = SERVICES.find((s) => s.id === service)!;
   const problemNote = problem && (
     <div role="alert">
       <Note tone="rose" icon="warn">
@@ -250,7 +264,20 @@ export function AiAccount({ start = "choose", onClose }: { start?: Step; onClose
                 Model
               </label>
               <input id="ai-model" className="input mono" spellCheck={false} value={model} disabled={busy} onChange={(e) => (setModel(e.target.value), setProblem(""))} />
-              <span className="muted">Type {SERVICES.find((s) => s.id === service)!.model}. Pick one that can call tools: Edward's calendar, mail and reminders depend on it.</span>
+              <span className="muted">
+                {chosen.list ? (
+                  <>
+                    Copy a name from{" "}
+                    <a href={chosen.list.url} target="_blank" rel="noreferrer noopener">
+                      {chosen.list.name}
+                    </a>
+                    , like <span className="mono">{chosen.example}</span>.
+                  </>
+                ) : (
+                  "The name the service lists for the model."
+                )}{" "}
+                {chosen.note} Pick one that can call tools: Edward's calendar, mail and reminders depend on it.
+              </span>
             </div>
             <div className="stack" style={{ gap: 6 }}>
               <label htmlFor="ai-service-key" style={{ fontWeight: 600 }}>

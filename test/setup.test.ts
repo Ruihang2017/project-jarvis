@@ -159,6 +159,8 @@ eq("try a service: it answers", await checkService(SERVICE, SERVICE_KEY, service
 eq("try a service: one small request to its Responses address, with nothing of the user's", tried, [{ url: "https://llm.example.org/v1/responses", auth: `Bearer ${SERVICE_KEY}`, body: { model: "qwen-plus", input: "Reply with the word: ok", max_output_tokens: 32 } }]);
 ok("try a service: a refused key", (await checkService(SERVICE, SERVICE_KEY, service(401))).message.includes("didn't accept the key"));
 ok("try a service: no Responses format there", (await checkService(SERVICE, SERVICE_KEY, service(404))).message.includes("Responses format"));
+const noSuchModel = (await checkService(SERVICE, SERVICE_KEY, service(404, { error: { message: "No endpoints found matching your data policy" } }))).message;
+ok("try a service: a 404 with its own words is about the model, not the address", noSuchModel.includes("said: No endpoints found matching your data policy. Check the model name") && !noSuchModel.includes("Responses format"), noSuchModel);
 const refusedModel = await checkService(SERVICE, SERVICE_KEY, service(400, { error: { message: `no model qwen-plus for ${SERVICE_KEY}\u001b[31m` } }));
 ok("try a service: its own words are shown plain, short and without the key", refusedModel.message.includes("said 400: no model qwen-plus") && !refusedModel.message.includes(SERVICE_KEY) && !refusedModel.message.includes("\u001b"), refusedModel.message);
 ok("try a service: not reachable", (await checkService(SERVICE, SERVICE_KEY, async () => Promise.reject(new Error("offline")))).message.includes("Couldn't reach llm.example.org"));
