@@ -1,5 +1,6 @@
 // Starts the packaged app once, hidden, on made-up data, and saves pictures of two pages: proof that
-// the build opens and draws on this system (CI runs it on Windows and macOS after packaging).
+// the build opens and draws on this system (CI runs it on Windows and macOS after packaging). Also
+// checks the Codex inside it (D53): the version the lock file names, runnable here, and started by Edward.
 //   node scripts/smoke.mjs            (after npm run dist, dist:dir or dist:mac)
 // Pictures and the page's console go to app/dist/smoke/. Nothing of the user's is read: its own data
 // folder, its own Codex folder (so no sign-in), and on a Mac its own keychain file.
@@ -73,6 +74,22 @@ function pngSize(file) {
 
 const problems = [];
 if (code !== 0) problems.push(`Edward ended with ${code}`);
+
+// The Codex inside: there, the version named, without the part left out, with its licences.
+const lock = JSON.parse(readFileSync(join(app, "codex.lock.json"), "utf8"));
+const codexDir = mac ? join(dirname(exe), "..", "Resources", "codex") : join(dirname(exe), "resources", "codex");
+const codex = join(codexDir, "bin", mac ? "codex" : "codex.exe");
+if (!existsSync(codex)) problems.push(`no Codex inside the app (${codex})`);
+else {
+  const v = spawnSync(codex, ["--version"], { encoding: "utf8", timeout: 60_000 });
+  console.log(`Codex inside: ${(v.stdout || v.stderr || String(v.error ?? "")).trim()}`);
+  if (v.status !== 0 || !v.stdout.includes(lock.version)) problems.push(`the Codex inside doesn't run as ${lock.version} here`);
+  for (const part of lock.leaveOut ?? []) if (existsSync(join(codexDir, part))) problems.push(`${part} should have been left out`);
+  for (const f of ["LICENSE", "NOTICE", "README.txt"]) if (!existsSync(join(codexDir, "licenses", f))) problems.push(`the Codex licence file ${f} is missing`);
+  // Codex writes this the first time it runs in a folder: Edward found a Codex and started it.
+  // (A build machine has no other Codex; the order Edward looks in has its own unit tests.)
+  if (!existsSync(join(env.EDWARD_CODEX_HOME, "installation_id"))) problems.push("Edward didn't start Codex");
+}
 for (const [page, file] of Object.entries(shots)) {
   if (!existsSync(file)) {
     problems.push(`no picture of ${page}`);
@@ -87,7 +104,7 @@ for (const [page, file] of Object.entries(shots)) {
 if (existsSync(log)) console.log(`--- page console ---\n${readFileSync(log, "utf8").slice(-4000)}`);
 try {
   // Codex may still be letting go of its files for a moment.
-  rmSync(scratch, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 });
+  rmSync(scratch, { recursive: true, force: true, maxRetries: 30, retryDelay: 500 });
 } catch {
   console.log(`(left behind: ${scratch})`);
 }

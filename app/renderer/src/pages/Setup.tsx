@@ -141,7 +141,7 @@ export function Setup() {
         const codex = checks?.find((c) => c.name === "Codex");
         const node = checks?.find((c) => c.name === "Node.js");
         return (
-          <Section title="This computer" lead="Edward talks to the AI through Codex, the program OpenAI makes for this. It needs to be installed once.">
+          <Section title="This computer" lead="Edward talks to the AI through Codex, the program OpenAI makes for this. It comes with Edward: there is nothing more to install.">
             {!checks ? (
               <Loading what="Looking" />
             ) : (
@@ -153,7 +153,8 @@ export function Setup() {
                     <span className="muted">{c!.detail}</span>
                   </div>
                 ))}
-                {codex?.status === "fail" && <Note tone="apricot" icon="warn">Install Codex from openai.com/codex, then come back and press Check again.</Note>}
+                {/* Only a run from source has no Codex of its own (the installer brings one, D53). */}
+                {codex?.status === "fail" && codex.detail.startsWith("not found") && <Note tone="apricot" icon="warn">Install Codex from openai.com/codex, then come back and press Check again.</Note>}
               </Card>
             )}
           </Section>

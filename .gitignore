@@ -10,6 +10,9 @@ app/build/
 app/dist/
 app/renderer/public/
 
+# The Codex that ships inside the installer (D53): downloaded by app/scripts/fetch-codex.mjs
+app/vendor/
+
 # The Google client built into the installer (D37): never commit
 app/build-secrets/
 
