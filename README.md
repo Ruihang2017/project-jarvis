@@ -8,8 +8,9 @@ Edward runs on your own computer, Windows or Mac. It uses your own ChatGPT accou
 API key, through the [Codex CLI](https://github.com/openai/codex) and, if you connect them, your own Google Calendar and Gmail.
 There is no Edward server.
 
-> **Status: developer preview.** Windows, and macOS (new in 0.3.0, Intel and Apple silicon). You bring your own ChatGPT account, Codex CLI and (for
-> calendar and mail) Google Cloud project. Expect rough edges.
+> **Status: developer preview.** Windows, and macOS (Intel and Apple silicon). You bring your own ChatGPT
+> account or OpenAI API key and (for calendar and mail) Google Cloud project; the terminal version also
+> needs the Codex CLI. Expect rough edges.
 
 ```
 you › what's on tomorrow, and is anything due this week?
@@ -73,7 +74,9 @@ before you rely on Edward.
 
 - Windows 10 or 11, or macOS 12 or newer (Intel or Apple silicon)
 - [Node.js](https://nodejs.org) 24 or newer (the terminal version; the desktop app brings its own)
-- The Codex CLI (`npm install -g @openai/codex`), and either a ChatGPT plan that includes it or an OpenAI
+- The Codex CLI (`npm install -g @openai/codex`) for the terminal version; the desktop app comes with
+  its own (see [The Codex inside the desktop app](#the-codex-inside-the-desktop-app))
+- Either a ChatGPT plan that includes Codex or an OpenAI
   API key (billed by OpenAI for what Edward uses; no pictures yet). The desktop app asks which at the first
   start, and Settings → Change switches later. Experimental: another AI service instead of OpenAI, with
   its address, a model name and your key (OpenRouter, Qwen on Alibaba Cloud, anything that speaks OpenAI's
@@ -83,11 +86,13 @@ before you rely on Edward.
 
 ## Install
 
-**Desktop app:** download `Edward-Setup-0.3.1.exe` (Windows) or `Edward-0.3.1-mac.dmg` (macOS, one file
-for Intel and Apple silicon) from the [releases](https://github.com/Ruihang2017/project-jarvis/releases)
-and follow the [install steps](https://ruihang2017.github.io/project-jarvis/#install). Codex first:
-`winget install -e --id OpenAI.Codex` on Windows, `curl -fsSL https://chatgpt.com/codex/install.sh | sh`
-on a Mac.
+**Desktop app:** download the installer from the
+[releases](https://github.com/Ruihang2017/project-jarvis/releases) and follow the
+[install steps](https://ruihang2017.github.io/project-jarvis/#install): `Edward-Setup-<version>.exe` for
+Windows, `Edward-<version>-mac-arm64.dmg` for a Mac with Apple silicon (M1 and later),
+`Edward-<version>-mac-x64.dmg` for a Mac with an Intel processor (Apple menu → About This Mac says
+which). Codex comes inside; there is nothing else to install. Versions up to 0.3.1 had one Mac file for
+both and needed Codex installed first.
 
 The Mac app isn't signed with an Apple Developer ID yet, so macOS stops it the first time: open it once,
 then go to System Settings → Privacy & Security and press **Open Anyway**.
@@ -129,11 +134,23 @@ npm run dist:mac  # build the macOS app for Intel and Apple silicon (on a Mac)
 npm run smoke     # start the packaged app once, hidden, on made-up data
 ```
 
-Every push is tested on Windows, macOS on Apple silicon and macOS on Intel, and both installers are built
-and started once (`.github/workflows/ci.yml`). A version tag puts them in a draft release.
+Every push is tested on Windows, macOS on Apple silicon and macOS on Intel, and the three installers are
+built and started once, each on its own kind of machine (`.github/workflows/ci.yml`). A version tag puts
+them in a draft release.
 
-The installed app runs its background reminders with its own executable, so it needs no separate Node;
-it still needs the Codex CLI.
+The installed app runs its background reminders with its own executable, so it needs no separate Node.
+
+### The Codex inside the desktop app
+
+The installers carry OpenAI's Codex CLI, so a new user installs one thing. It is OpenAI's own release
+package for the system, in the version Edward was verified with (`app/codex.lock.json`), downloaded from
+[OpenAI's releases](https://github.com/openai/codex/releases) when the installer is built and refused
+unless its SHA-256 is the one written in that file. Codex's own voice feature is left out (Edward
+doesn't use it); nothing else is changed. Its licences are in the app, in `resources/codex/licenses`.
+
+The app uses that Codex and no other: one you installed yourself is neither used nor touched, and your
+sign-in stays where it was. `npm run dist` fetches it (about 150 MB, once) into `app/vendor`. A run
+from source (`npm start`) and the terminal version use the Codex on your PATH.
 
 ### Permission modes
 
@@ -160,7 +177,8 @@ removes the background task, revokes Google access and offers to delete the data
   [SECURITY.md](SECURITY.md).
 - No phone app: reminders appear on the computer Edward runs on.
 - Built on Codex's `app-server` interface, including its experimental dynamic-tool support. A Codex
-  update can change it; `edward doctor` reports the Codex version Edward was verified with.
+  update can change it: the desktop app carries the version it was verified with, and for the terminal
+  version `edward doctor` reports which one that is.
 
 ## Development
 

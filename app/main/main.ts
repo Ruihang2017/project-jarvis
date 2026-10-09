@@ -9,7 +9,7 @@ import { join, sep } from "node:path";
 import { AUMID } from "../../src/background/notify.js";
 import { runtime } from "../../src/runtime.js";
 import { envVar } from "../../src/settings.js";
-import { INSTALL_CODEX, SHELL_NAME } from "../../src/config.js";
+import { codexBuiltIn, INSTALL_CODEX, SHELL_NAME } from "../../src/config.js";
 import { demoGoogle } from "../../src/demo/google.js";
 import "./builtin.js";
 import { handleScheme, registerScheme } from "./images.js";
@@ -216,9 +216,11 @@ app.whenReady().then(async () => {
   });
   const started = service.start().catch((e) => {
     const message = e instanceof Error ? e.message : String(e);
-    // The usual first-start problem: Codex isn't installed yet.
+    // A development run without Codex installed (the installer brings its own, D53).
     const lines = /ENOENT|not recognized|spawn codex/i.test(message)
-      ? ["Edward needs Codex, OpenAI's free app that connects to your ChatGPT account.", `Open ${SHELL_NAME} and run:  ${INSTALL_CODEX}  then open Edward again.`]
+      ? codexBuiltIn()
+        ? ["The Codex that comes with Edward couldn't be started. Install Edward again."]
+        : ["Edward needs Codex, OpenAI's free app that connects to your ChatGPT account.", `Open ${SHELL_NAME} and run:  ${INSTALL_CODEX}  then open Edward again.`]
       : [`Edward couldn't start: ${message}`];
     emit({ type: "notice", lines });
   });

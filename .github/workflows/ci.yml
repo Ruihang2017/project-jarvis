@@ -1,8 +1,9 @@
 name: CI
 
-# Every push and pull request: the tests on Windows and on both kinds of Mac, and the installers built
-# and started once. A version tag (v0.3.0) also puts the installers in a draft release; publishing it
-# is left to a person.
+# Every push and pull request: the tests on Windows and on both kinds of Mac, and the three installers
+# (Windows, Mac with Apple silicon, Mac with Intel) built and started once, each on its own kind of
+# machine. A version tag (v0.4.0) also puts the installers in a draft release; publishing it is left
+# to a person.
 on:
   push:
     branches: [main]
@@ -46,8 +47,9 @@ jobs:
       matrix:
         include:
           - { name: Windows, os: windows-latest, id: windows }
-          # One app for Intel and Apple silicon, built on Apple silicon.
-          - { name: macOS, os: macos-latest, id: macos }
+          # One installer for each kind of Mac (D53), each built and started on that kind.
+          - { name: macOS Apple silicon, os: macos-latest, id: macos-arm64 }
+          - { name: macOS Intel, os: macos-15-intel, id: macos-x64 }
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     defaults:
@@ -85,6 +87,16 @@ jobs:
             echo "::notice::No GOOGLE_CLIENT_JSON secret: this build has no built-in Google client."
           fi
 
+      # The Codex that goes inside the installer: OpenAI's release package for this system, in the
+      # version app/codex.lock.json names. The build fails when its SHA-256 isn't the one written there.
+      - uses: actions/cache@v6
+        with:
+          path: app/vendor/codex/.cache
+          key: codex-${{ matrix.id }}-${{ hashFiles('app/codex.lock.json') }}
+      - name: Codex for the installer
+        working-directory: app
+        run: npm run fetch-codex
+
       - name: Build the Windows installer
         if: matrix.id == 'windows'
         working-directory: app
@@ -94,7 +106,7 @@ jobs:
       # one it gets an ad-hoc signature (Apple silicon refuses unsigned code) and macOS asks the user
       # to allow it the first time.
       - name: Build the macOS app
-        if: matrix.id == 'macos'
+        if: startsWith(matrix.id, 'macos')
         working-directory: app
         env:
           MAC_CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
@@ -114,11 +126,15 @@ jobs:
           fi
 
       - name: What was built
-        if: matrix.id == 'macos'
+        if: startsWith(matrix.id, 'macos')
         run: |
           app="$(ls -d app/dist/mac*/Edward.app | head -1)"
-          lipo -archs "$app/Contents/MacOS/Edward"
+          codex="$app/Contents/Resources/codex/bin/codex"
+          echo "Edward: $(lipo -archs "$app/Contents/MacOS/Edward")   Codex inside: $(lipo -archs "$codex")   this machine: $(uname -m)"
           codesign -dv "$app" 2>&1 | grep -E "Signature|Authority|TeamIdentifier|flags" || true
+          codesign -dv "$codex" 2>&1 | grep -E "Signature|Authority|TeamIdentifier|flags" || true
+          # Every program inside the app must carry a signature macOS accepts, the Codex ones too.
+          codesign --verify --deep --strict "$app"
           ls -la app/dist/*.dmg
 
       # Starts the packaged app hidden, on made-up data, and saves pictures of two pages.
@@ -139,7 +155,7 @@ jobs:
           name: installer-${{ matrix.id }}
           path: |
             app/dist/Edward-Setup-*.exe
-            app/dist/Edward-*-mac.dmg
+            app/dist/Edward-*-mac-*.dmg
           if-no-files-found: error
           retention-days: 14
           compression-level: 0

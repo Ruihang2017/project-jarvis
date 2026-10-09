@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **Codex comes with Edward.** The desktop app's installer now carries OpenAI's Codex, so there is one
+  thing to install and no PowerShell or Terminal step. It is the version Edward was verified with,
+  OpenAI's own release package, checked against its SHA-256 when the installer is built. A Codex you
+  installed yourself is neither used nor touched, and your sign-in stays. The installers are bigger for
+  it. The terminal version still uses the Codex you install.
+- **Two Mac downloads instead of one**, to keep them small: one for Macs with Apple silicon (M1 and
+  later), one for Macs with an Intel processor. Apple menu → About This Mac says which you have.
+
 - **Choose what Edward runs on.** Besides a ChatGPT plan, Edward can now use your own OpenAI API key: no
   ChatGPT plan needed, OpenAI bills the key for what Edward uses. The first start asks which, and
   Settings → The assistant → **Change** switches later (one at a time; conversations, memory and Google

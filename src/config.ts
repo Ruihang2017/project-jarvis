@@ -12,9 +12,13 @@ export const config = {
   // Separate CODEX_HOME: own login, config and thread history; nothing inherited from ~/.codex.
   codexHome: envVar("CODEX_HOME") ?? join(appDataDir(), "codex-home"),
   codexBin: envVar("CODEX_BIN") ?? findCodex(),
-  // The Codex release Edward was last verified against (0.156 through 0.159 all worked).
+  // The Codex release Edward was last verified against (0.156 through 0.159 all worked). The desktop
+  // app's installer carries this one (app/codex.lock.json; a test keeps the two the same).
   testedCodex: "0.159.3",
 };
+
+/** True when Edward is using the Codex that came inside its own installer. */
+export const codexBuiltIn = () => config.codexBin === bundledCodex();
 
 /** How to get Codex, for messages (D44: the website and the first start say the same). */
 export const INSTALL_CODEX = process.platform === "win32" ? "winget install -e --id OpenAI.Codex" : "curl -fsSL https://chatgpt.com/codex/install.sh | sh";
@@ -35,6 +39,8 @@ interface Lookup {
   env?: NodeJS.ProcessEnv;
   exists?: (path: string) => boolean;
   home?: string;
+  /** The program this is running in: Edward's own when it is the desktop app. */
+  execPath?: string;
   /** What the user's login shell says `codex` is; the last resort on a Mac. */
   askShell?: (shell: string) => string | null;
 }
@@ -50,14 +56,32 @@ function askLoginShell(shell: string): string | null {
 }
 
 /**
- * "codex" from PATH. When PATH doesn't have it: on Windows, where OpenAI's installer puts it (a
- * program started from the Start menu right after installing Codex may still have the old PATH); on
- * a Mac, the usual folders, then the login shell.
+ * The Codex that came inside the desktop app's installer (D53), or null: next to Edward's own
+ * program, where the installer puts it. The background job is the same program run as Node, so it
+ * finds the same one. The terminal version runs in plain Node and has none.
+ */
+export function bundledCodex(o: Lookup = {}): string | null {
+  const platform = o.platform ?? process.platform;
+  const exe = o.execPath ?? process.execPath;
+  const at =
+    platform === "win32" ? win32.join(win32.dirname(exe), "resources", "codex", "bin", "codex.exe")
+    : platform === "darwin" ? posix.join(posix.dirname(exe), "..", "Resources", "codex", "bin", "codex")
+    : null;
+  return at && (o.exists ?? existsSync)(at) ? at : null;
+}
+
+/**
+ * The Codex inside the installer when there is one: its version is the one Edward was verified with,
+ * whatever else the computer has. Otherwise "codex" from PATH. When PATH doesn't have it: on Windows,
+ * where OpenAI's installer puts it (a program started from the Start menu right after installing
+ * Codex may still have the old PATH); on a Mac, the usual folders, then the login shell.
  */
 export function findCodex(o: Lookup = {}): string {
   const platform = o.platform ?? process.platform;
   const env = o.env ?? process.env;
   const exists = o.exists ?? existsSync;
+  const inside = bundledCodex(o);
+  if (inside) return inside;
   const dirs = (env.PATH ?? "").split(platform === "win32" ? ";" : ":").filter(Boolean);
   if (platform === "win32") {
     const onPath = dirs.some((d) => exists(win32.join(d, "codex.exe")) || exists(win32.join(d, "codex.cmd")));

@@ -270,6 +270,16 @@ separate data folder, so it can't mix with real accounts, and it is never on oth
 The core and the terminal version have no runtime dependencies beyond Node.js and the Codex CLI. The
 desktop app adds Electron and, in the window, React; they are bundled into the app at build time.
 
+**The Codex inside the desktop app.** The installers carry OpenAI's Codex CLI: OpenAI's own release
+package for the system, in one fixed version (named in `app/codex.lock.json`, the version Edward was
+verified with). It is downloaded from <https://github.com/openai/codex/releases> when the installer is
+built, and the build fails unless the file's SHA-256 is the one written in that lock file, so a release
+file replaced later would be noticed. Codex's own voice feature is left out; nothing else in the package
+is changed (on a Mac its programs are signed again as part of Edward's app, as everything inside an app
+is). The app uses this Codex and no other on the computer, and a newer Codex reaches you only with a new
+Edward. Codex is OpenAI's program, under the Apache 2.0 licence; Edward is not made by OpenAI. The
+terminal version uses whichever Codex you installed.
+
 ## Reporting a problem
 
 Please open an issue on the repository. If the problem would put users at risk before it is fixed, say so

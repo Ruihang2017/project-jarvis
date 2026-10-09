@@ -7,7 +7,7 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { styleText } from "node:util";
 import { backgroundSupported, taskStatus } from "./background/task.js";
-import { codexEnv, config, INSTALL_CODEX } from "./config.js";
+import { codexBuiltIn, codexEnv, config, INSTALL_CODEX } from "./config.js";
 import { DATA_VERSION, readDataVersion } from "./data/version.js";
 import { shortScope } from "./google/auth.js";
 import { missingFeatures } from "./google/instructions.js";
@@ -33,10 +33,12 @@ export function codexVersion(bin = config.codexBin): Promise<string | null> {
 }
 
 /** Same major.minor as the verified release is fine; anything else may work but hasn't been tried. */
-export function compareCodex(found: string | null, tested = config.testedCodex): Check {
+export function compareCodex(found: string | null, tested = config.testedCodex, builtIn = codexBuiltIn()): Check {
+  // The one inside the installer can't be missing; when it won't start, the installation is damaged.
+  if (!found && builtIn) return { name: "Codex", status: "fail", detail: "the Codex that comes with Edward couldn't be started — install Edward again" };
   if (!found) return { name: "Codex", status: "fail", detail: `not found — install it (${INSTALL_CODEX}, or npm i -g @openai/codex) and open Edward again` };
   const minor = (v: string) => v.split(".").slice(0, 2).join(".");
-  if (minor(found) === minor(tested)) return { name: "Codex", status: "ok", detail: found };
+  if (minor(found) === minor(tested)) return { name: "Codex", status: "ok", detail: builtIn ? `${found}, built in` : found };
   return { name: "Codex", status: "warn", detail: `${found} — Edward was verified with ${tested}; if something misbehaves, that is the first thing to suspect` };
 }
 
