@@ -80,7 +80,6 @@ export async function checkService(ai: { baseUrl: string; model: string }, key: 
   }
   if (res.ok) return { ok: true, message: "" };
   if (res.status === 401 || res.status === 403) return { ok: false, message: `${host} didn't accept the key. Nothing was changed.` };
-  if (res.status === 404) return { ok: false, message: `${host} has nothing at ${new URL(ai.baseUrl).pathname}/responses. Edward needs a service that speaks OpenAI's Responses format; check the address (and the model name). Nothing was changed.` };
   let said = "";
   try {
     const body = (await res.json()) as { error?: { message?: unknown } | string; message?: unknown };
@@ -90,6 +89,10 @@ export async function checkService(ai: { baseUrl: string; model: string }, key: 
   } catch {
     // not JSON
   }
+  // 404 with the service's own words is about the model (not there, or not allowed for this account);
+  // a bare 404 means the address has no Responses format.
+  if (res.status === 404 && !said) return { ok: false, message: `${host} has nothing at ${new URL(ai.baseUrl).pathname}/responses. Edward needs a service that speaks OpenAI's Responses format; check the address. Nothing was changed.` };
+  if (res.status === 404) return { ok: false, message: `${host} said: ${said}${/[.!?]$/.test(said) ? "" : "."} Check the model name, and that your account there may use it. Nothing was changed.` };
   return { ok: false, message: `${host} said ${res.status}${said ? `: ${said}` : ""}. Nothing was changed.` };
 }
 
