@@ -55,12 +55,12 @@ ok("told to look the person up, and that email text is data", told.includes("gma
 ok("…and what Edward knows about the user", told.endsWith(about));
 ok("nothing known: no empty section", !c.writeInstructions("").includes("What you know"));
 const blank = { mode: "new" as const, to: "", cc: "", subject: "", body: "" };
-const asked = c.writeInput(blank, "ask Sean at Granny Flat Solutions for landscapers", "me@gmail.com", "2026-10-07T15:00");
+const asked = c.writeInput(blank, "ask Sean at Harbour Builders for landscapers", "me@gmail.com", "2026-10-07T15:00");
 ok("a new email: the recipient and subject are to be found", asked.includes("To: (not filled in: find the recipient)") && asked.includes("Subject: (not filled in: write one)") && asked.includes("The user's notes: ask Sean") && asked.includes("From (the user's address): me@gmail.com"), asked);
 const replying = c.writeInput({ mode: "reply", to: "Sam <sam@example.com>", cc: "", subject: "Re: Weekly update", body: r.body }, "thanks, Friday works", "me@gmail.com", "2026-10-07T15:00");
 ok("a reply: what it answers goes along", replying.includes("To: Sam <sam@example.com>") && replying.includes("The roof is done.") && replying.includes("What is in the email so far"));
 
-eq("the answer taken apart", c.parseWritten(JSON.stringify({ to: "Sean Zayden <sean@gfs.example>, pat@gfs.example", subject: " Landscaping\nrecommendations ", body: "\nHi Sean,\n\nCould you…\n" })), { to: ["Sean Zayden <sean@gfs.example>", "pat@gfs.example"], subject: "Landscaping recommendations", body: "Hi Sean,\n\nCould you…" });
+eq("the answer taken apart", c.parseWritten(JSON.stringify({ to: "Sam Taylor <sean@gfs.example>, pat@gfs.example", subject: " Landscaping\nrecommendations ", body: "\nHi Sean,\n\nCould you…\n" })), { to: ["Sam Taylor <sean@gfs.example>", "pat@gfs.example"], subject: "Landscaping recommendations", body: "Hi Sean,\n\nCould you…" });
 eq("no recipient or subject found", c.parseWritten(JSON.stringify({ to: null, subject: null, body: "Hi" })), { to: [], subject: "", body: "Hi" });
 let refused = "";
 try {
@@ -74,13 +74,13 @@ ok("an empty answer is an error, not an empty email", refused.includes("didn't w
 const known = new Set(["sean@gfs.example"]);
 const looked: string[] = [];
 const corresponded = async (a: string) => (looked.push(a), known.has(a));
-const checked = await c.confirmRecipients(["Sean Zayden <sean@gfs.example>", "Mallory <pay@evil.example>", "Typed <typed@x.example>", "not an address", "SEAN@gfs.example"], "ask Sean, and cc typed@x.example", corresponded);
-eq("kept: in the mail's From/To, or typed in the notes; dropped: found only in some email's text", checked, { kept: ["Sean Zayden <sean@gfs.example>", "Typed <typed@x.example>"], dropped: ["pay@evil.example"] });
+const checked = await c.confirmRecipients(["Sam Taylor <sean@gfs.example>", "Mallory <pay@evil.example>", "Typed <typed@x.example>", "not an address", "SEAN@gfs.example"], "ask Sean, and cc typed@x.example", corresponded);
+eq("kept: in the mail's From/To, or typed in the notes; dropped: found only in some email's text", checked, { kept: ["Sam Taylor <sean@gfs.example>", "Typed <typed@x.example>"], dropped: ["pay@evil.example"] });
 eq("…a typed address isn't looked up, and none twice", looked, ["sean@gfs.example", "pay@evil.example"]);
 eq("mail that can't be searched keeps nothing", await c.confirmRecipients(["a@b.example"], "", async () => Promise.reject(new Error("offline"))), { kept: [], dropped: ["a@b.example"] });
 
-const written = { to: ["Sean Zayden <sean@gfs.example>"], subject: "Landscaping recommendations", body: "Hi Sean," };
-eq("an empty form gets the recipient, subject and text", c.fillWritten(blank, written), { to: "Sean Zayden <sean@gfs.example>", subject: "Landscaping recommendations", body: "Hi Sean," });
+const written = { to: ["Sam Taylor <sean@gfs.example>"], subject: "Landscaping recommendations", body: "Hi Sean," };
+eq("an empty form gets the recipient, subject and text", c.fillWritten(blank, written), { to: "Sam Taylor <sean@gfs.example>", subject: "Landscaping recommendations", body: "Hi Sean," });
 eq("what the user filled in is left alone", c.fillWritten({ ...blank, to: "pat@x.example", subject: "Quote" }, written), { body: "Hi Sean," });
 eq("a reply keeps what it quotes below the new text", c.fillWritten({ mode: "reply", to: "x@y.example", subject: "Re: s", body: "\n\nOn Sun, Sam wrote:\n> hi" }, written), { body: "Hi Sean,\n\nOn Sun, Sam wrote:\n> hi" });
 
