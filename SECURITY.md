@@ -263,7 +263,9 @@ On top of that:
 
 The tutorial videos are recorded with a demo mode (`EDWARD_DEMO`) in which Google is answered from
 made-up data built into Edward; it refuses every other address. It only starts together with its own
-separate data folder, so it can't mix with real accounts, and it is never on otherwise.
+separate data folder, so it can't mix with real accounts, and it is never on otherwise. In demo mode the
+app shows a made-up address in place of the real ChatGPT account and no usage of the real plan, and it can
+run at a made-up time of day; the chats in the videos are real answers from the model about the made-up data.
 
 ## Dependencies
 

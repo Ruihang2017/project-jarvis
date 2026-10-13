@@ -130,7 +130,8 @@ export class EdwardService implements A.EdwardApi {
   /** How Codex is signed in now. The first sign-in also starts the work that needs one. */
   private takeAccount(account: { type: string; email?: string | null } | null) {
     this.signedIn = this.session.signIn !== null;
-    this.account = account?.type === "chatgpt" ? { email: account.email ?? undefined } : {};
+    // In demo mode the real ChatGPT address is never shown: recordings are published.
+    this.account = account?.type === "chatgpt" ? { email: runtime.demoAccount ?? account.email ?? undefined } : {};
     if (!this.signedIn) return;
     // Only a ChatGPT plan has limits to read.
     if (this.session.signIn === "chatgpt") this.session.rateLimits().then((r) => (this.account.plan = r.rateLimits.planType ?? undefined), () => {});
@@ -1539,7 +1540,8 @@ export class EdwardService implements A.EdwardApi {
     const r = region();
     const models = await this.session.listModels().catch(() => []);
     const limits = this.session.limits;
-    const windows = [limits?.primary, limits?.secondary].filter((w): w is NonNullable<typeof w> => Boolean(w));
+    // Demo mode shows no usage of the real ChatGPT plan (recordings are published).
+    const windows = runtime.demoAccount ? [] : [limits?.primary, limits?.secondary].filter((w): w is NonNullable<typeof w> => Boolean(w));
     return {
       model: this.session.model,
       models: models.filter((m) => !m.hidden).map((m) => ({ id: m.id, description: clean(m.description), efforts: m.supportedReasoningEfforts.map((e) => e.reasoningEffort) })),
