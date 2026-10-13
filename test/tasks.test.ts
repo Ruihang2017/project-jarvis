@@ -92,10 +92,11 @@ eq("sort helper keeps done last", sortTasks([{ id: "a", listId: "x", title: "a",
 const accounts = fakeAccounts([{ auth: auth as never, email: "me@gmail.com" }]);
 const ctx = { accounts } as never;
 const tool = (name: string) => TASKS_TOOLS.find((t) => t.name === name)!;
-const add = await tool("tasks_add").prepare({ list: "Home", items: ["Fix the kitchen tap", "Paint the fence"], due: "2026-10-10" }, ctx);
+// A date far ahead: with a real date this started failing the day after it ("overdue, due …").
+const add = await tool("tasks_add").prepare({ list: "Home", items: ["Fix the kitchen tap", "Paint the fence"], due: "2099-10-10" }, ctx);
 eq("add: summary", add.summary, "add to Home: Fix the kitchen tap, Paint the fence");
 const added = await add.execute();
-ok("add: makes the Home list, both items with handles", (await c.findList("Home")) !== undefined && /\[t\d+\] ☐ Fix the kitchen tap \(due Sat 10-10\)/.test(added) && added.includes("Paint the fence"), added);
+ok("add: makes the Home list, both items with handles", (await c.findList("Home")) !== undefined && /\[t\d+\] ☐ Fix the kitchen tap \(due \w{3} 10-10\)/.test(added) && added.includes("Paint the fence"), added);
 const shown = await (await tool("tasks_show").prepare({}, ctx)).execute();
 ok("show: every list with its open items", shown.startsWith("List items") && shown.includes("Shopping") && shown.includes("☐ Eggs") && shown.includes("Home") && !shown.includes("Milk✓"), shown);
 const tap = /\[(t\d+)\] ☐ Fix the kitchen tap/.exec(added)![1]!;

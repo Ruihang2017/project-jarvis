@@ -26,6 +26,7 @@
   The form links to the service's model list, and says so when the service refuses the model. Tried so
   far with OpenRouter and one of its free models; other services are untried.
 - Two drawings in the README show how Edward is built and how a message reaches the AI.
+- A two-minute demo video of the desktop app, in the README and on the website.
 - The sign-in to the AI is now kept encrypted, with its key in the Windows credential store or the Mac
   keychain. A sign-in from an earlier version keeps working as it is, and is replaced by an encrypted one
   the next time you sign in or switch.

@@ -10,12 +10,13 @@ import { AUMID } from "../../src/background/notify.js";
 import { runtime } from "../../src/runtime.js";
 import { envVar } from "../../src/settings.js";
 import { codexBuiltIn, INSTALL_CODEX, SHELL_NAME } from "../../src/config.js";
-import { demoGoogle } from "../../src/demo/google.js";
+import { DEMO_EMAIL, demoGoogle } from "../../src/demo/google.js";
 import "./builtin.js";
 import { handleScheme, registerScheme } from "./images.js";
 import { handleMailScheme, MAIL_PRIVILEGES, MAIL_SCHEME } from "./mailview.js";
 import { EdwardService } from "./service.js";
 import { record, type Step } from "./record.js";
+import { shiftClock, shiftPageClock } from "./democlock.js";
 import type { EdwardApi, EdwardEvent } from "../shared/api.js";
 
 const MAC = process.platform === "darwin";
@@ -40,13 +41,19 @@ const SHOTS = (process.env.EDWARD_SHOT ?? "").split(";").filter(Boolean).map((s)
 const RECORD = process.env.EDWARD_RECORD;
 /** A hidden, automated run: screenshots or a recording. */
 const AUTOMATED = SHOTS.length > 0 || Boolean(RECORD);
+/** Demo mode at a made-up time of day (EDWARD_DEMO_TIME, democlock.ts): how far the clock is moved, in ms. */
+let clockOffset = 0;
 /**
  * Demo mode (D44): Google answered from made-up data, for the tutorial videos. Only with its own data
  * folder (filled by app/scripts/demo.ts), so it can never mix with real accounts.
  */
 if (process.env.EDWARD_DEMO) {
   if (!envVar("DATA_DIR")) throw new Error("EDWARD_DEMO needs EDWARD_DATA_DIR: a separate folder made by app/scripts/demo.ts");
+  // The clock first: the made-up data is laid out around "now".
+  const at = /^(\d{1,2}):(\d{2})$/.exec(process.env.EDWARD_DEMO_TIME ?? "");
+  if (at) clockOffset = shiftClock(Number(at[1]), Number(at[2]));
   runtime.googleHttp = demoGoogle();
+  runtime.demoAccount = DEMO_EMAIL;
   runtime.silent = true;
   app.setPath("userData", join(app.getPath("temp"), "edward-demo"));
 }
@@ -113,7 +120,10 @@ function createWindow() {
     }
   });
   if (!AUTOMATED) win.once("ready-to-show", () => win?.show());
-  void win.loadFile(RENDERER);
+  const load = () => void win?.loadFile(RENDERER);
+  // The page's clock can only be set once the window has a page: a blank one first.
+  if (clockOffset) void win.loadURL("about:blank").then(() => shiftPageClock(win!.webContents, clockOffset)).then(load, load);
+  else load();
 }
 
 const openWindow = () => {
@@ -242,9 +252,11 @@ app.on("window-all-closed", () => {
 
 async function makeRecording(stepsFile: string) {
   const w = win!;
-  await new Promise<void>((r) => w.webContents.once("did-finish-load", () => r()));
+  // Edward's own page, not the blank one a shifted clock loads first.
+  while (w.webContents.isLoading() || !w.webContents.getURL().endsWith("index.html")) await new Promise((r) => setTimeout(r, 100));
   await w.webContents.executeJavaScript("window.edward.ready()");
-  await new Promise((r) => setTimeout(r, 2500));
+  // Long enough for the first page to have its data: a video shouldn't open on "Getting today ready".
+  await new Promise((r) => setTimeout(r, 6000));
   const out = process.env.EDWARD_RECORD_OUT ?? join(app.getPath("temp"), "edward-recording");
   mkdirSync(out, { recursive: true });
   try {

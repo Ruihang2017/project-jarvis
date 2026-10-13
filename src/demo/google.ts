@@ -158,6 +158,16 @@ export function demoData(now = new Date()) {
       bill: true,
       body: `Your invoice of $79.00 will be paid by direct debit on ${nextDate(today, 11)}. Account number 12345678.`,
     },
+    // A fake bill, for the fraud checks: another sender, other payment details, five times the usual amount.
+    {
+      id: "d17",
+      from: "Northwind Energy Billing <accounts@northwind-energy-pay.example>",
+      subject: "Your electricity bill is ready",
+      ago: 28,
+      category: "updates",
+      bill: true,
+      body: `Your account will be suspended. Amount due: $1,245.30\nDue date: ${nextDate(today, 2)}\nPay by bank transfer to BSB 733-000 account 8765 4321 within 24 hours.`,
+    },
     // Sent mail, so a reply to these people isn't "first time".
     { id: "s01", from: `Alex Morgan <${DEMO_EMAIL}>`, to: "sam@carterbuilding.example", subject: "Re: Quote for the kitchen", ago: 200, sent: true, body: "Thanks Sam, let's go ahead." },
     { id: "s02", from: `Alex Morgan <${DEMO_EMAIL}>`, to: "priya.shah@mailbox.example", subject: "Re: Saturday", ago: 120, sent: true, body: "Sounds good!" },
