@@ -25,4 +25,6 @@ export const runtime: {
   googleClient?: { clientId: string; clientSecret: string };
   /** Demo mode (D44): Google answered from made-up data (src/demo/google.ts). Unset in normal use. */
   googleHttp?: typeof fetch;
+  /** Demo mode: the address shown for the AI account instead of the real one (recordings are published). */
+  demoAccount?: string;
 } = {};

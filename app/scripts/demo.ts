@@ -22,8 +22,10 @@ const dir = envVar("DATA_DIR");
 if (!dir) throw new Error("set EDWARD_DATA_DIR to an empty folder first");
 if (existsSync(join(dir, "memory.db")) || existsSync(join(dir, "accounts.json"))) throw new Error(`${dir} already has data; use an empty folder`);
 mkdirSync(dir, { recursive: true });
-// No morning brief popping up over the pages in the videos.
-updateSettings({ onboarded: true, backgroundSuggested: true, dateOrder: "dmy", currency: "AUD", briefDays: "off", billsRemindDays: "off" });
+// No morning brief popping up over the pages in the videos, and a picture Edward makes isn't opened in a viewer.
+updateSettings({ onboarded: true, backgroundSuggested: true, dateOrder: "dmy", currency: "AUD", briefDays: "off", billsRemindDays: "off", autoOpenImages: false });
+// EDWARD_DEMO_WEEKLY: the weekly review is due today, so the "Next week" card shows whatever day it is recorded.
+if (process.env.EDWARD_DEMO_WEEKLY) updateSettings({ weeklyReview: { day: new Date().getDay(), time: "00:00" } });
 
 // A Google sign-in that only the demo's made-up Google accepts.
 writeFileSync(join(appDataDir(), "google-client.json"), JSON.stringify({ installed: { client_id: "demo.apps.googleusercontent.com", client_secret: "demo" } }));
@@ -59,7 +61,19 @@ const bill = (b: Partial<Parameters<BillStore["add"]>[0]> & { payee: string; mes
 bill({ payee: "Northwind Energy", category: "electricity", amountCents: 24530, dueDate: nextDate(today, 3), messageId: "d05", senderDomain: "northwindenergy.example", title: "Your electricity bill is ready" });
 bill({ payee: "Harbour Water", category: "water", status: "pending", amountCents: 8650, dueDate: nextDate(today, 21), messageId: "d06", senderDomain: "harbourwater.example", title: "Your October water bill" });
 bill({ payee: "Fibreline Internet", category: "internet", kind: "autopay", status: "autopay", amountCents: 7900, dueDate: nextDate(today, 11), messageId: "d16", senderDomain: "fibreline.example", title: "Your invoice" });
-for (const id of ["d05", "d06", "d16"]) bills.markScanned(id, true);
+bill({
+  payee: "Northwind Energy Billing",
+  category: "electricity",
+  status: "pending",
+  amountCents: 124530,
+  dueDate: nextDate(today, 2),
+  messageId: "d17",
+  senderDomain: "northwind-energy-pay.example",
+  title: "Your electricity bill is ready",
+  needsCheck: true,
+  flags: ["Sent from a different address than Northwind Energy's earlier bills.", "The payment details differ from this payee's last bill.", "The amount is five times your usual bill."],
+});
+for (const id of ["d05", "d06", "d16", "d17"]) bills.markScanned(id, true);
 bills.close();
 
 // The bookings, read from the made-up emails' booking data (no model needed).

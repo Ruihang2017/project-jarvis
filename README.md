@@ -12,6 +12,16 @@ There is no Edward server.
 > account or OpenAI API key and (for calendar and mail) Google Cloud project; the terminal version also
 > needs the Codex CLI. Expect rough edges.
 
+## See it in two minutes
+
+[![The desktop app, sped up: Today with the next trip and the week ahead, the mail summary and a reply written by Edward, chat with the privacy guard removing a card number, a picture being made, the calendar, bills checked for fraud, reminders, lists, memory, settings and the privacy page](site/videos/00-demo-preview.gif)](https://ruihang2017.github.io/project-jarvis/videos/00-demo.mp4)
+
+▶ **[Watch the two-minute demo](https://ruihang2017.github.io/project-jarvis/videos/00-demo.mp4)** with captions (the
+picture above is the same video, four times faster). The [website](https://ruihang2017.github.io/project-jarvis/)
+has a short video for each part. Everything shown is made-up demo data.
+
+In the terminal it looks like this:
+
 ```
 you › what's on tomorrow, and is anything due this week?
   📅 checked calendar 2026-10-03 → 2026-10-03

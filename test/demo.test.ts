@@ -29,7 +29,7 @@ const gmail = (q: string) => get(`https://gmail.googleapis.com/gmail/v1/users/me
 eq("anything that isn't Google is refused", (await get("https://api.openai.com/v1/models")).status, 400);
 eq("a token refresh succeeds", (await get("https://oauth2.googleapis.com/token", { method: "POST" })).body.access_token, "demo");
 eq("unread in Primary", await gmail(UNREAD_QUERY), ["d01", "d02"]);
-eq("bills search", (await gmail(BILL_QUERY)).sort(), ["d05", "d06", "d16"]);
+eq("bills search", (await gmail(BILL_QUERY)).sort(), ["d05", "d06", "d16", "d17"]);
 eq("booking search", (await gmail(TRIP_QUERY)).sort(), ["d03", "d04"]);
 eq("adverts only when asked", [(await gmail("in:inbox newer_than:30d category:promotions")).length, (await gmail("in:inbox -category:promotions newer_than:1d")).includes("d12")], [4, false]);
 eq("from a person", await gmail("{from:sam@carterbuilding.example to:sam@carterbuilding.example} newer_than:30d"), ["d01"]);

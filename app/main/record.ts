@@ -30,6 +30,8 @@ export interface Step {
   until?: string;
   /** [target, pixels]: scrolls the element (or the page's scrolling body) by that much. */
   scroll?: [string, number];
+  /** From this step on everything is this many times faster: pointer, typing and waits (1 is the tutorial pace). */
+  speed?: number;
 }
 
 /** Helpers put into the page: a pointer, captions, finding things by their text, typing like a person. */
@@ -54,8 +56,9 @@ const HELPERS = `(() => {
   let x = innerWidth * 0.62, y = innerHeight * 0.55;
   const place = () => { cursor.style.left = x + "px"; cursor.style.top = y + "px"; };
   place();
-  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-  const visible = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 && r.bottom > 0 && r.top < innerHeight && getComputedStyle(el).visibility !== "hidden"; };
+  let S = 1; // pace: 2 is twice as fast
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms / S));
+  const visible =(el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 && r.bottom > 0 && r.top < innerHeight && getComputedStyle(el).visibility !== "hidden"; };
   const find = (q) => {
     if (q.startsWith("css:")) return [...document.querySelectorAll(q.slice(4))].find(visible) || null;
     const all = [...document.querySelectorAll("button, a, [role=button], [role=tab], label, input, textarea, select, .list-btn, h1, h2, h3, li")].filter(visible);
@@ -76,7 +79,7 @@ const HELPERS = `(() => {
     await sleep(80);
     const r = el.getBoundingClientRect();
     const tx = r.left + Math.min(r.width / 2, 60), ty = r.top + r.height / 2;
-    const fx = x, fy = y, dist = Math.hypot(tx - fx, ty - fy), ms = Math.min(900, 250 + dist * 0.9);
+    const fx = x, fy = y, dist = Math.hypot(tx - fx, ty - fy), ms = Math.min(900, 250 + dist * 0.9) / S;
     const t0 = performance.now();
     await new Promise((done) => {
       const step = (t) => {
@@ -104,6 +107,7 @@ const HELPERS = `(() => {
       return true;
     },
     has(q) { return Boolean(find(q)); },
+    speed(n) { S = n > 0 ? n : 1; return true; },
     async point(q) { const el = find(q); if (!el) throw new Error("not found: " + q); await moveTo(el); return true; },
     async type(q, text) {
       const el = find(q); if (!el) throw new Error("not found: " + q);
@@ -160,17 +164,26 @@ export async function record(w: BrowserWindow, steps: Step[], dir: string, o: { 
     }
   })();
   const q = (s: string) => JSON.stringify(s);
-  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  let speed = 1;
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms / speed));
   await sleep(800);
   try {
   for (const s of steps) {
+    if (s.speed) {
+      speed = s.speed > 0 ? s.speed : 1;
+      await js(`window.__rec.speed(${speed})`);
+    }
+    // A new page's caption comes with the page, not a moment after it.
+    const caption = async () => {
+      if (s.at) await js(`window.__rec.place(${q(s.at)})`);
+      if (s.caption !== undefined) await js(`window.__rec.caption(${q(s.caption ?? "")})`);
+    };
     if (s.go) {
       o.navigate(s.go);
+      await caption();
       await sleep(1200);
       await js(HELPERS); // a page change keeps the document, but be sure
-    }
-    if (s.at) await js(`window.__rec.place(${q(s.at)})`);
-    if (s.caption !== undefined) await js(`window.__rec.caption(${q(s.caption ?? "")})`);
+    } else await caption();
     if (s.point) await js(`window.__rec.point(${q(s.point)})`);
     if (s.click) await js(`window.__rec.click(${q(s.click)})`);
     if (s.type) await js(`window.__rec.type(${q(s.type[0])}, ${q(s.type[1])})`);
@@ -180,7 +193,7 @@ export async function record(w: BrowserWindow, steps: Step[], dir: string, o: { 
       const until = Date.now() + 120_000;
       const started = Date.now();
       while (Date.now() < until && !(await js(`window.__rec.has(${q(s.until)})`))) {
-        if (Date.now() - started > 2500) paused = true; // a long wait is cut, like a reply
+        if (Date.now() - started > 2500 / speed) paused = true; // a long wait is cut, like a reply
         await sleep(300);
       }
       paused = false;
