@@ -21,7 +21,7 @@ if (!existsSync(login)) throw new Error(`no ChatGPT sign-in at ${login}`);
 mkdirSync(outDir, { recursive: true });
 
 /** Seconds into a video for its poster, where the middle would be a dull frame. */
-const POSTER_AT = { "05-bills": 5, "00-demo": 4 };
+const POSTER_AT = { "05-bills": 5, "00-demo": 11 };
 /** Videos that also get <name>-preview.gif, this many times faster: plays by itself in the README, where GitHub shows no video. */
 const PREVIEW_SPEED = { "00-demo": 4 };
 /** Extra settings for the made-up data of one video (read by demo.ts). */
