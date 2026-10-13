@@ -1,0 +1,29 @@
+{
+  "model": "gpt-realtime-2.1",
+  "voice": "marin",
+  "speed": 1.2,
+  "style": "Speak softly and gently, with a smile in your voice. Keep the delivery light and even: do not stress or punch individual words. Warm, friendly and relaxed.",
+  "lines": [
+    { "at": 0.5, "say": "Meet Edward: an AI assistant for your mail, calendar, bills and to-dos." },
+    { "at": 5.3, "say": "Just ask, in plain words." },
+    { "at": 9.0, "say": "It checks your calendar, mail and bills, and tells you what matters." },
+    { "at": 13.7, "say": "It writes your email, too. Here's a reply to Sam, drafted for you. And nothing is sent until you say so." },
+    { "at": 26.2, "say": "Anything that changes something asks you first. Lunch with Jamie? One click, and it's in your calendar." },
+    { "at": 37.1, "say": "Reminders arrive on time, even when Edward is closed." },
+    { "at": 43.3, "say": "And the privacy guard: card and account numbers are removed before anything reaches the AI." },
+    { "at": 50.6, "say": "It keeps watch, too: your next trip, with the weather and when to leave." },
+    { "at": 55.0, "say": "The week ahead." },
+    { "at": 57.3, "say": "And before each event, the people and emails about it." },
+    { "at": 61.0, "say": "New mail arrives sorted: what needs you, and what's worth knowing." },
+    { "at": 67.9, "say": "Bills are found in your email, each one checked for fraud." },
+    { "at": 72.4, "say": "Your calendar: agenda, week and month, across all your accounts." },
+    { "at": 77.7, "say": "Lists live in Google Tasks, so they're on your phone too." },
+    { "at": 83.0, "say": "It remembers what you tell it, and forgets when you ask." },
+    { "at": 87.4, "say": "Ask for a picture, and it paints one." },
+    { "at": 94.4, "say": "It runs on your ChatGPT plan, or your own OpenAI key." },
+    { "at": 98.3, "say": "And you can talk to it." },
+    { "at": 100.3, "say": "Personal Google accounts only, never work ones." },
+    { "at": 103.5, "say": "Private by design: there is no Edward server." },
+    { "at": 106.9, "say": "Edward. Free, open source, for Windows and Mac." }
+  ]
+}
