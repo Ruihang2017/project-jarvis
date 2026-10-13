@@ -257,7 +257,7 @@ export class Session {
     if (!this.launched && loadSettings().ai) await this.launch();
     this.launched = true;
     await this.client.request<InitializeResponse>("initialize", {
-      clientInfo: { name: "edward", title: "Edward", version: "0.3.1" },
+      clientInfo: { name: "edward", title: "Edward", version: "0.4.0" },
       // Needed for dynamicTools (Edward tools); experimental fields may change across codex versions.
       capabilities: { experimentalApi: true, requestAttestation: false },
     });
