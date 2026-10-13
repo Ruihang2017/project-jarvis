@@ -14,7 +14,7 @@ There is no Edward server.
 
 ## See it in two minutes
 
-[![The desktop app, sped up: Today with the next trip and the week ahead, the mail summary and a reply written by Edward, chat with the privacy guard removing a card number, a picture being made, the calendar, bills checked for fraud, reminders, lists, memory, settings and the privacy page](site/videos/00-demo-preview.gif)](https://ruihang2017.github.io/project-jarvis/videos/00-demo.mp4)
+[![The desktop app, sped up: Edward is asked what needs attention today and answers from the calendar, mail and bills; it drafts a reply that is sent only after a confirmation, asks before adding an event, sets a reminder, and the privacy guard removes a card number; then Today with the next trip and the week ahead, the mail summary, bills checked for fraud, the calendar, lists, memory, a picture being made, settings and the privacy page](site/videos/00-demo-preview.gif)](https://ruihang2017.github.io/project-jarvis/videos/00-demo.mp4)
 
 ▶ **[Watch the two-minute demo](https://ruihang2017.github.io/project-jarvis/videos/00-demo.mp4)** with captions (the
 picture above is the same video, four times faster). The [website](https://ruihang2017.github.io/project-jarvis/)
