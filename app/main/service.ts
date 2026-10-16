@@ -85,7 +85,7 @@ const MAX_ATTACHMENTS = 5;
 const IMAGE_TYPES = ["png", "jpg", "jpeg", "gif", "webp"];
 
 const ok = (message = ""): A.Result => ({ ok: true, message });
-const fail = (e: unknown): A.Result => ({ ok: false, message: e instanceof Error ? e.message : String(e) });
+const fail = (e: unknown): A.Result => ({ ok: false, message: e instanceof GoogleAuthError && e.code === "api_disabled" ? googleProblem(e) : e instanceof Error ? e.message : String(e) });
 const clean = (s: string | undefined | null) => stripControl(s ?? "");
 
 export class EdwardService implements A.EdwardApi {
@@ -1990,6 +1990,14 @@ function bytes(n: number): string {
 
 function googleProblem(e: unknown): string {
   if (e instanceof GoogleAuthError && e.code === "rate_limited") return "Google is limiting requests for this account right now. Try again in a minute.";
+  // Not a broken connection: signing in again wouldn't help. With their own Google client the user can
+  // turn the API on; with the built-in one, only whoever runs that project can.
+  if (e instanceof GoogleAuthError && e.code === "api_disabled") {
+    const api = e.message.replace(/ isn't turned on.*$/, "");
+    return existsSync(clientPath())
+      ? `${api} isn't turned on in your Google Cloud project. Turn it on there (APIs & Services → Library → ${api} → Enable), then try again in a few minutes.`
+      : `${api} isn't available to Edward's Google sign-in yet. Nothing to fix on your side; try again later.`;
+  }
   if (e instanceof GoogleAuthError) return "The Google connection stopped working. Reconnect it in Settings.";
   return `Couldn't reach Google: ${clean(e instanceof Error ? e.message : String(e))}`;
 }
