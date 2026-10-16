@@ -172,6 +172,19 @@ apiReplies = [slow({ status: 403, reason: "dailyLimitExceeded" })];
 await rejects("…nor the daily limit", paced.api(GMAIL), "http_403");
 eq("…no waiting, one request each", [sleeps, sent()], [[], 2]);
 
+// An API that isn't enabled in the Cloud project is its own error: signing in again doesn't fix it.
+const disabled = (service: string) =>
+  new Response(JSON.stringify({ error: { code: 403, message: "Google Tasks API has not been used in project 123 before or it is disabled.", status: "PERMISSION_DENIED", details: [{ "@type": "type.googleapis.com/google.rpc.ErrorInfo", reason: "SERVICE_DISABLED", domain: "googleapis.com", metadata: { service, consumer: "projects/123" } }] } }), { status: 403, headers: { "content-type": "application/json" } });
+for (const [service, name] of [["tasks.googleapis.com", "Google Tasks API"], ["calendar-json.googleapis.com", "Google Calendar API"]]) {
+  apiReplies = [disabled(service)];
+  try {
+    await paced.api(GMAIL);
+    ok(`API not enabled (${service}) → refused`, false, "did not throw");
+  } catch (e) {
+    ok(`API not enabled (${service}) → "api_disabled" naming it, without the project number`, e instanceof GoogleAuthError && e.code === "api_disabled" && e.message.startsWith(`${name} isn't turned on`) && !e.message.includes("123"), String(e));
+  }
+}
+
 calls.length = 0;
 apiReplies = [slow(), slow(), slow(), slow(), json({ id: "never" })];
 await rejects("still limited after three more tries → a clear error", paced.api(GMAIL), "rate_limited");

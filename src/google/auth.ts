@@ -94,6 +94,29 @@ export function isRateLimit(status: number, body: string): boolean {
   }
 }
 
+const API_NAMES: Record<string, string> = {
+  "tasks.googleapis.com": "Google Tasks API",
+  "gmail.googleapis.com": "Gmail API",
+  "calendar-json.googleapis.com": "Google Calendar API",
+};
+
+/**
+ * The API's name when Google refuses because it isn't enabled in the Cloud project behind the sign-in
+ * (403 SERVICE_DISABLED / accessNotConfigured). Signing in again doesn't fix that; enabling it does.
+ */
+export function disabledApi(status: number, body: string): string | undefined {
+  if (status !== 403) return undefined;
+  try {
+    const error = (JSON.parse(body) as { error?: { errors?: { reason?: string }[]; details?: { reason?: string; metadata?: { service?: string } }[] } }).error;
+    const reasons = [...(error?.errors ?? []), ...(error?.details ?? [])].map((x) => x.reason);
+    if (!reasons.includes("SERVICE_DISABLED") && !reasons.includes("accessNotConfigured")) return undefined;
+    const service = error?.details?.find((d) => d.metadata?.service)?.metadata?.service ?? "";
+    return API_NAMES[service] ?? (/^[a-z-]+\.googleapis\.com$/.test(service) ? service : "A Google API Edward needs");
+  } catch {
+    return undefined;
+  }
+}
+
 /** Retry-After in milliseconds: seconds or a date; undefined when absent or unreadable. */
 function retryAfterMs(value: string | null, now: number): number | undefined {
   if (!value) return undefined;
@@ -246,6 +269,8 @@ export class GoogleAuth {
         continue;
       }
       if (!res.ok) {
+        const off = disabledApi(res.status, text);
+        if (off) throw new GoogleAuthError("api_disabled", `${off} isn't turned on in the Google Cloud project this sign-in uses`);
         let msg = text;
         try {
           msg = JSON.parse(text).error?.message ?? text;

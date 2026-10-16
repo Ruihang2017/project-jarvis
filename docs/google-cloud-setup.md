@@ -16,10 +16,10 @@ use. Accept the terms if asked. Do not start a free trial or add a card.
 
 Project picker (top left) → **New project** → name it `Edward` → **Create**, then switch to it.
 
-## 3. Enable two APIs
+## 3. Enable three APIs
 
 **APIs & Services → Library**: search for **Google Calendar API** → **Enable**; then **Gmail API** →
-**Enable**.
+**Enable**; then **Google Tasks API** → **Enable** (for Lists).
 
 ## 4. Configure the consent screen
 
